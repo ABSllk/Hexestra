@@ -1,0 +1,331 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-ui: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "Microsoft YaHei UI", monospace;
+  font-family: var(--font-ui);
+}
+
+/* ============================================================
+   Hexestra — Global Styles
+   ============================================================ */
+
+/* Smooth scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #11111b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #45475a;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #585b70;
+}
+
+/* Base overrides */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  background: #11111b;
+  color: #cdd6f4;
+  font-family: var(--font-ui);
+}
+
+html.dialog-overlay-root,
+html.dialog-overlay-root body,
+html.dialog-overlay-root #root {
+  background: transparent;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: rgba(137, 180, 250, 0.28);
+  color: #eef2ff;
+}
+
+button:not(:disabled),
+summary,
+select,
+input,
+textarea {
+  transition-duration: 140ms;
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-timing-function: ease-out;
+}
+
+button:not(:disabled):active {
+  transform: translateY(0.5px);
+}
+
+button:focus-visible,
+summary:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 1px solid rgba(137, 180, 250, 0.72);
+  outline-offset: 1px;
+}
+
+@layer components {
+  .ui-icon-button {
+    @apply inline-flex items-center justify-center rounded-md border border-transparent text-text-muted;
+  }
+
+  .ui-icon-button:hover:not(:disabled) {
+    @apply border-surface/80 bg-surface/45 text-text-primary;
+  }
+
+  .ui-segmented {
+    @apply rounded-lg border border-surface/80 bg-bg-primary/35 p-1;
+  }
+
+  .ui-segmented-item {
+    @apply rounded-md border border-transparent text-text-muted;
+  }
+
+  .ui-segmented-item:hover:not(:disabled) {
+    @apply bg-surface/35 text-text-secondary;
+  }
+
+  .ui-segmented-item-active {
+    @apply border-surface/70 bg-surface/45 text-text-primary shadow-sm shadow-black/10;
+  }
+
+  .ui-control {
+    @apply rounded-md border border-surface/80 bg-bg-primary/55 outline-none;
+  }
+
+  .ui-control:hover:not(:disabled) {
+    @apply border-surface-active/70 bg-bg-primary/80;
+  }
+
+  .ui-control:focus-within,
+  .ui-control:focus {
+    @apply border-accent-blue/45 shadow-[0_0_0_1px_rgba(137,180,250,0.08)];
+  }
+
+  .ui-hover-row {
+    @apply rounded-md border border-transparent;
+  }
+
+  .ui-hover-row:hover {
+    @apply border-surface/60 bg-surface/25;
+  }
+
+  .ui-card {
+    @apply rounded-lg border border-surface/70 bg-bg-tertiary/55 shadow-sm shadow-black/10;
+  }
+
+  .ui-popover {
+    @apply rounded-lg border border-surface/90 bg-bg-tertiary shadow-2xl shadow-black/35;
+  }
+}
+
+/* Xterm.js container fills its parent */
+.xterm-container {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.xterm-container .xterm {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+}
+
+.xterm-container .xterm-viewport {
+  overflow-y: scroll !important;
+  scrollbar-color: #45475a #11111b;
+  scrollbar-width: auto;
+}
+
+.xterm-container .xterm-viewport::-webkit-scrollbar {
+  width: 10px;
+}
+
+.xterm-container .xterm-viewport::-webkit-scrollbar-track {
+  background: #11111b;
+}
+
+.xterm-container .xterm-viewport::-webkit-scrollbar-thumb {
+  min-height: 24px;
+  border: 2px solid #11111b;
+  border-radius: 6px;
+  background: #585b70;
+}
+
+.xterm-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: #6c7086;
+}
+
+/* Hacknet-inspired NetMap */
+.netmap-shell {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(26, 80, 86, 0.14), transparent 42%),
+    #050b0e;
+}
+
+.netmap-canvas {
+  background:
+    linear-gradient(180deg, rgba(148, 226, 213, 0.018), transparent 35%),
+    #050b0e;
+}
+
+.netmap-grid {
+  opacity: 0.28;
+  background-image:
+    linear-gradient(rgba(86, 142, 149, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(86, 142, 149, 0.12) 1px, transparent 1px),
+    linear-gradient(rgba(86, 142, 149, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(86, 142, 149, 0.05) 1px, transparent 1px);
+  background-size: 72px 72px, 72px 72px, 18px 18px, 18px 18px;
+  mask-image: radial-gradient(circle at center, black 25%, transparent 88%);
+}
+
+.netmap-scanline {
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(148, 226, 213, 0.32), transparent);
+  box-shadow: 0 0 8px rgba(148, 226, 213, 0.08);
+  animation: netmap-scan 14s linear infinite;
+}
+
+.netmap-node {
+  outline: none;
+}
+
+.netmap-node:focus-visible rect {
+  stroke: #e6fffb;
+  stroke-width: 2;
+}
+
+.netmap-link-active {
+  animation: netmap-dash 3.2s linear infinite;
+}
+
+@keyframes netmap-scan {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.18;
+  }
+  72% {
+    opacity: 0.05;
+  }
+  100% {
+    transform: translateY(420px);
+    opacity: 0;
+  }
+}
+
+@keyframes netmap-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .netmap-scanline,
+  .netmap-link-active {
+    animation: none;
+  }
+}
+
+/* Resize handles */
+[data-panel-resize-handle-id] {
+  transition: background-color 0.15s ease;
+}
+
+[data-panel-resize-handle-id]:hover {
+  background-color: #89b4fa !important;
+}
+
+[data-panel-resize-handle-id][data-resize-handle-active] {
+  background-color: #89b4fa !important;
+}
+
+/* Tab bar styles */
+.tab-bar {
+  display: flex;
+  align-items: center;
+  background: #181825;
+  border-bottom: 1px solid #313244;
+  min-height: 36px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.tab-bar::-webkit-scrollbar {
+  height: 0;
+}
+
+.settings-input {
+  width: 100%;
+  height: 34px;
+  border: 1px solid #313244;
+  border-radius: 6px;
+  background: #11111b;
+  padding: 0 10px;
+  color: #cdd6f4;
+  font-size: 12px;
+  outline: none;
+}
+
+.settings-input:focus {
+  border-color: rgba(137, 180, 250, 0.7);
+  box-shadow: 0 0 0 1px rgba(137, 180, 250, 0.12);
+}
+
+.settings-input:hover:not(:focus) {
+  border-color: rgba(88, 91, 112, 0.85);
+}
+
+/* Animation for streaming messages */
+@keyframes pulse-dot {
+  0%, 80%, 100% { opacity: 0; }
+  40% { opacity: 1; }
+}
+
+.typing-indicator span {
+  animation: pulse-dot 1.4s infinite both;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}

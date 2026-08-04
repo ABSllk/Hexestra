@@ -1,0 +1,61 @@
+# Dependencies and package-manager caches
+node_modules/
+.npm-cache/
+*.log
+npm-debug.log*
+
+# Build, packaging, test, and automation output
+dist/
+dist-electron/
+release/
+coverage/
+artifacts/
+.ui-test/
+
+# Local AI and project-workflow state
+.agents/
+.claude/
+.codex/
+.trellis/
+AGENTS.md
+
+# Editor and operating-system state
+.idea/
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Environment, credentials, certificates, and user data
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+.hexestra/
+.pengent/
+
+# Security-testing captures and local project databases
+*.burp
+*.burp-project
+*.har
+*.pcap
+*.pcapng
+*.sqlite
+*.sqlite3
+
+# Reconstructed third-party/build artifacts
+resources/mitmproxy/bin/
+resources/burp-bridge/*.jar
+
+# Temporary archives and installers
+*.7z
+*.dmg
+*.exe
+*.msi
+*.zip
