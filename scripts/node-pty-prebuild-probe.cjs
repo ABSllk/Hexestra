@@ -1,6 +1,7 @@
 const pty = require('@lydell/node-pty');
 
 const sentinel = 'HEXESTRA_NODE_PTY_PREBUILD_OK';
+const probeTimeoutMs = process.env.CI ? 30_000 : 10_000;
 const shell = process.platform === 'win32'
   ? 'powershell.exe'
   : process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash');
@@ -20,7 +21,7 @@ let output = '';
 const timeout = setTimeout(() => {
   console.error('node-pty prebuilt probe timed out');
   process.exit(1);
-}, 5_000);
+}, probeTimeoutMs);
 
 terminal.onData((chunk) => {
   output += chunk;

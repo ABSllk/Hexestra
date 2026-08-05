@@ -1,12 +1,25 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const projectRoot = path.resolve(import.meta.dirname, '..');
+const packageJson = JSON.parse(readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
+const packageLock = JSON.parse(readFileSync(path.join(projectRoot, 'package-lock.json'), 'utf8'));
+const electronVersion = packageLock.packages?.['node_modules/electron']?.version;
+
+if (!electronVersion || packageJson.allowScripts?.[`electron@${electronVersion}`] !== true) {
+  throw new Error(
+    `The locked Electron version (${electronVersion || 'unknown'}) must have an exact enabled `
+    + '`allowScripts` entry in package.json before native prebuild verification.',
+  );
+}
+
 const electronExecutable = require('electron');
 const platformPackage = `@lydell/node-pty-${process.platform}-${process.arch}`;
 const probeScript = path.join(import.meta.dirname, 'node-pty-prebuild-probe.cjs');
+const probeTimeoutMs = process.env.CI ? 45_000 : 20_000;
 
 try {
   require.resolve(platformPackage);
@@ -26,7 +39,7 @@ const probe = spawnSync(
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
     encoding: 'utf8',
     windowsHide: true,
-    timeout: 15_000,
+    timeout: probeTimeoutMs,
   },
 );
 
