@@ -42,7 +42,7 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
       aria-label={`Asset details for ${node.label}`}
       className="pointer-events-auto flex max-h-full w-[min(320px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg border border-accent-teal/25 bg-[#071014]/95 shadow-2xl shadow-black/50 backdrop-blur-md"
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-cyan-300/10 px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between border-b border-cyan-300/10 px-3 py-2 select-none">
         <div className="min-w-0">
           <div className="font-mono text-[8px] uppercase tracking-[0.18em] text-accent-teal/70">Selected asset</div>
           <div className="truncate font-mono text-xs font-semibold text-text-primary">{node.label}</div>
@@ -71,7 +71,7 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
         <DetailRow label="Vulnerabilities" value={String(node.vulnCount)} danger={node.vulnCount > 0} />
 
         {target && (
-          <div className="border-t border-surface/70 pt-2">
+          <div className="border-t border-surface/70 pt-2 select-none">
             <div className="mb-1.5 flex items-center justify-between font-medium text-text-muted">
               <span>Open Ports &amp; Services</span>
               <span className="font-mono">{openPorts.length}</span>
@@ -113,7 +113,7 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
         <button
           disabled={isProcessing || node.status === 'out_of_scope'}
           onClick={() => void requestRescan()}
-          className="flex w-full items-center justify-center gap-2 rounded border border-accent-teal/30 bg-accent-teal/5 px-2 py-1.5 text-accent-teal hover:bg-accent-teal/10 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex w-full items-center justify-center gap-2 rounded border border-accent-teal/30 bg-accent-teal/5 px-2 py-1.5 text-accent-teal hover:bg-accent-teal/10 disabled:cursor-not-allowed disabled:opacity-40 select-none"
         >
           <Icon name="activity" size={12} />
           {node.status === 'out_of_scope' ? 'Out of scope' : 'Rescan with Agent'}

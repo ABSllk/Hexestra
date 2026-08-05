@@ -42,7 +42,7 @@ export function AssetWorkspaceTab() {
   return (
     <div className="flex h-full flex-col">
       <div className="shrink-0 border-b border-surface bg-bg-tertiary/50 p-2">
-        <div className="ui-segmented mb-2 grid grid-cols-3">
+        <div className="ui-segmented mb-2 grid grid-cols-3 select-none">
           {(['inventory', 'changes', 'scope'] as const).map((option) => (
             <button key={option} onClick={() => setView(option)} className={`ui-segmented-item px-1 py-1 font-mono text-[9px] uppercase tracking-wider ${view === option ? 'ui-segmented-item-active' : ''}`}>
               {t(option === 'inventory' ? 'assets.inventory' : option === 'changes' ? 'assets.changes' : 'assets.scope')}
@@ -50,7 +50,7 @@ export function AssetWorkspaceTab() {
           ))}
         </div>
         {view === 'inventory' && <div ref={filtersRef}>
-          <label className={`ui-control flex h-7 items-center gap-2 px-2 ${filtersExpanded ? 'border-accent-blue/35' : ''}`}>
+          <label className={`ui-control flex h-7 items-center gap-2 px-2 ${filtersExpanded ? '!border-accent-blue/35' : ''} hover:!bg-bg-primary/55 select-none`}>
             <Icon name="search" size={12} />
             <input
               aria-label={t('assets.search')}
@@ -60,9 +60,9 @@ export function AssetWorkspaceTab() {
               onFocus={() => setFiltersExpanded(true)}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t('assets.searchPlaceholder')}
-              className="h-full min-w-0 flex-1 bg-transparent text-2xs text-text-primary outline-none placeholder:text-text-muted"
+              className="h-full min-w-0 flex-1 bg-transparent text-2xs text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none"
             />
-            {(query || typeFilter !== 'all' || statusFilter !== 'all') && <span className="h-1.5 w-1.5 rounded-full bg-accent-blue" aria-label="Filters active" />}
+            {(query || typeFilter !== 'all' || statusFilter !== 'all') && <span className="h-1.5 w-1.5 rounded-full bg-accent-blue select-none" aria-label="Filters active" />}
             <span className="font-mono text-[9px]">{visibleNodes.length}/{assetNodes.length}</span>
           </label>
           {filtersExpanded && <div id="asset-inventory-filters" className="mt-1.5">
@@ -80,10 +80,10 @@ export function AssetWorkspaceTab() {
             const target = targets.find((candidate) => candidate.id === node.id);
             const asset = assets.find((candidate) => candidate.id === node.id);
             const updatedAt = target?.lastUpdated ?? asset?.lastUpdated;
-            return <button key={node.id} onClick={() => selectNode(node.id)} className={`ui-hover-row mx-1.5 my-0.5 w-[calc(100%-0.75rem)] px-2.5 py-2 text-left ${selectedNodeId === node.id ? 'border-accent-blue/30 bg-accent-blue/10 shadow-sm shadow-black/10' : ''}`}>
-              <div className="mb-1 flex items-center justify-between gap-2"><span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><StatusBadge status={node.status} /></div>
-              <div className="flex items-center gap-2 text-[9px] text-text-muted"><span className="uppercase text-accent-teal">{node.type}</span><span className="min-w-0 flex-1 truncate">{target?.ip ?? assetPrimaryValue(asset) ?? node.key ?? node.label}</span>{node.portCount > 0 && <span>{node.portCount} ports</span>}</div>
-              {updatedAt && <div className="mt-1 font-mono text-[8px] text-text-muted/70">Seen {formatTime(updatedAt)}</div>}
+            return <button key={node.id} onClick={() => selectNode(node.id)} className={`ui-hover-row mx-1.5 my-0.5 w-[calc(100%-0.75rem)] px-2.5 py-2 text-left ${selectedNodeId === node.id ? '!border-accent-blue/30 !bg-accent-blue/10 shadow-sm shadow-black/10' : ''}`}>
+              <div className="mb-1 flex items-center justify-between gap-2 select-none"><span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><StatusBadge status={node.status} /></div>
+              <div className="flex items-center gap-2 text-[9px] text-text-muted select-none"><span className="uppercase text-accent-teal select-none">{node.type}</span><span className="min-w-0 flex-1 truncate">{target?.ip ?? assetPrimaryValue(asset) ?? node.key ?? node.label}</span>{node.portCount > 0 && <span>{node.portCount} ports</span>}</div>
+              {updatedAt && <div className="mt-1 font-mono text-[8px] text-text-muted/70 select-none">Seen {formatTime(updatedAt)}</div>}
             </button>;
           })}
         </div>

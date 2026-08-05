@@ -28,7 +28,7 @@ export function LeftPanelContainer() {
     <div className="isolate flex h-full min-h-0 overflow-hidden">
       <nav
         aria-label="Primary sidebar"
-        className="relative z-20 flex w-11 shrink-0 flex-col items-center gap-1 border-r border-surface bg-bg-tertiary py-1.5"
+        className="relative z-20 flex w-11 shrink-0 flex-col items-center gap-1 border-r border-surface bg-bg-tertiary py-1.5 select-none"
       >
         {TABS.map((tab) => (
           <div key={tab.id} className="group relative">

@@ -28,7 +28,7 @@ export function TargetsTab() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b border-surface bg-bg-tertiary/50 px-3 py-2 text-2xs text-text-muted">
+      <div className="shrink-0 border-b border-surface !bg-bg-tertiary/50 px-3 py-2 text-2xs text-text-muted">
         {visibleNodes.length} asset{visibleNodes.length !== 1 ? 's' : ''} discovered
       </div>
       <div className="flex-1 overflow-y-auto">

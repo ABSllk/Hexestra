@@ -344,20 +344,20 @@ export function NetMapView() {
       <header className="flex shrink-0 items-center justify-between border-b border-cyan-300/10 bg-[#071014]/95 px-3 py-1.5">
         <div className="flex items-center gap-2">
           <Icon name="network" size={14} className="text-accent-teal" />
-          <span className="font-mono text-xs font-semibold tracking-[0.16em] text-text-secondary">
+          <span className="font-mono text-xs font-semibold tracking-[0.16em] text-text-secondary select-none">
             NETMAP
           </span>
-          <span className="font-mono text-[9px] text-text-muted">
+          <span className="font-mono text-[9px] text-text-muted select-none">
             {renderedNodes.length} NODES / {renderedEdges.length} LINKS
           </span>
           {isPreview && (
-            <span className="rounded-md border border-accent-teal/20 bg-accent-teal/5 px-1.5 py-0.5 font-mono text-[8px] tracking-wider text-accent-teal/70">
+            <span className="rounded-md border border-accent-teal/20 bg-accent-teal/5 px-1.5 py-0.5 font-mono text-[8px] tracking-wider text-accent-teal/70 select-none">
               PREVIEW TOPOLOGY
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 select-none">
           <MapControl label="Zoom out" icon="zoom-out" onClick={() => zoomBy(0.86)} />
           <span className="min-w-10 text-center font-mono text-[9px] text-text-muted">
             {Math.round(view.scale * 100)}%
@@ -450,7 +450,7 @@ export function NetMapView() {
 
       </div>
 
-      <footer className="flex shrink-0 items-center gap-3 border-t border-cyan-300/10 bg-[#071014]/95 px-3 py-1 font-mono text-[8px] text-text-muted">
+      <footer className="flex shrink-0 items-center gap-3 border-t border-cyan-300/10 bg-[#071014]/95 px-3 py-1 font-mono text-[8px] text-text-muted select-none">
         {Object.entries(NODE_COLORS).map(([status, color]) => (
           <div key={status} className="flex items-center gap-1.5">
             <span
@@ -491,7 +491,7 @@ const AssetEdge = memo(function AssetEdge({
 
   return (
     <g
-      className="pointer-events-auto"
+      className="pointer-events-auto select-none"
       data-edge-source={edge.source}
       data-edge-target={edge.target}
       onMouseEnter={() => setHovered(true)}
@@ -646,7 +646,7 @@ const AssetNode = memo(function AssetNode({
         </g>
       )}
       {showLabels && <text
-        className="font-mono"
+        className="font-mono select-none"
         y={riskSize + 15}
         fill={selected ? '#e6fffb' : '#b7c8cb'}
         fontSize="8"
@@ -658,7 +658,7 @@ const AssetNode = memo(function AssetNode({
       </text>}
       {showLabels && showSecondaryLabel && (
         <text
-          className="font-mono"
+          className="font-mono select-none"
           y={riskSize + 24}
           fill="#58767c"
           fontSize="6"
@@ -754,7 +754,7 @@ function MapControl({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="ui-icon-button h-6 w-6 hover:border-cyan-200/15 hover:bg-accent-teal/10 hover:text-accent-teal"
+      className="ui-icon-button h-6 w-6 hover:border-cyan-200/15 hover:bg-accent-teal/10 hover:text-accent-teal select-none"
     >
       <Icon name={icon} size={13} />
     </button>

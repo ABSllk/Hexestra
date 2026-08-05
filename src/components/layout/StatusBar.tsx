@@ -33,12 +33,12 @@ export function StatusBar() {
           className={cn(
             'flex h-5 items-center gap-1 rounded-md border px-1.5',
             isNetMapVisible
-              ? 'border-transparent text-text-muted hover:border-surface hover:bg-surface/35 hover:text-text-secondary'
-              : 'border-accent-teal/20 bg-accent-teal/10 text-accent-teal hover:border-accent-teal/40',
+              ? 'border-accent-teal/20 bg-accent-teal/10 text-accent-teal hover:border-accent-teal/40'
+              : 'border-transparent text-text-muted hover:border-surface hover:bg-surface/35 hover:text-text-secondary',
           )}
         >
           <Icon name="network" size={11} />
-          <span>{language === 'zh-CN' ? '网络图' : 'NetMap'}: {isNetMapVisible ? 'ON' : 'OFF'}</span>
+          <span>{language === 'zh-CN' ? 'NetMap' : 'NetMap'}: {isNetMapVisible ? 'ON' : 'OFF'}</span>
         </button>
       </div>
     </div>

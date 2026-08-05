@@ -130,7 +130,7 @@ export function ChatInput() {
 
   return (
     <div ref={composerRef} className="relative z-30 shrink-0 border-t border-surface bg-bg-secondary/95 p-3">
-      <div className="rounded-xl border border-surface/80 bg-bg-tertiary shadow-lg shadow-black/10 transition-colors hover:border-surface-active/60 focus-within:border-accent-blue/45">
+      <div className="rounded-xl border border-surface/80 bg-bg-tertiary shadow-lg shadow-black/10 transition-colors focus-within:!border-accent-blue/45 hover:border-surface-active/60">
         {contextRefs.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-3">
             {contextRefs.map((ref) => (
@@ -177,19 +177,19 @@ export function ChatInput() {
           onKeyDown={handleKeyDown}
           placeholder={t('agent.placeholder')}
           rows={2}
-          className="max-h-36 min-h-16 w-full resize-none bg-transparent px-4 pb-2 pt-3 font-sans text-xs leading-5 text-text-primary outline-none placeholder:text-text-muted"
+          className="max-h-36 min-h-16 w-full resize-none bg-transparent px-4 pb-2 pt-3 font-sans text-xs leading-5 text-text-primary focus-visible:outline-none placeholder:text-text-muted select-none rounded-xl border-0"
           disabled={isProcessing}
         />
 
         {composerError && <div className="px-4 pb-1 text-[9px] text-severity-critical">{composerError}</div>}
 
         <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
-          <div className="flex min-w-0 items-center gap-1">
+          <div className="flex min-w-0 items-center gap-1 select-none">
             <ComposerTrigger active={openMenu === 'attachments'} ariaLabel={t('agent.addFilesImages')} onClick={() => setOpenMenu((current) => current === 'attachments' ? null : 'attachments')} icon="plus" />
             <ComposerTrigger active={openMenu === 'mode'} ariaLabel={`Claude mode ${modeLabel}`} onClick={() => setOpenMenu((current) => current === 'mode' ? null : 'mode')} icon="shield" label={modeLabel} danger={permissionMode === 'bypassPermissions'} />
           </div>
 
-          <div className="flex min-w-0 items-center justify-end gap-1">
+          <div className="flex min-w-0 items-center justify-end gap-1 select-none">
             <ComposerTrigger active={openMenu === 'model'} ariaLabel={`Model ${modelLabel}`} onClick={() => setOpenMenu((current) => current === 'model' ? null : 'model')} icon="bot" label="MODEL" />
             <ComposerTrigger active={openMenu === 'autonomy'} ariaLabel={`Autonomy ${autonomyLevel}`} onClick={() => setOpenMenu((current) => current === 'autonomy' ? null : 'autonomy')} icon="sparkles" label={autonomyLevel.toUpperCase()} />
             <button
@@ -251,7 +251,7 @@ function agentContextTitle(ref: AgentContextRef) {
 }
 
 function ComposerTrigger({ active, ariaLabel, onClick, icon, label, danger = false }: { active: boolean; ariaLabel: string; onClick: () => void; icon: 'plus' | 'shield' | 'bot' | 'sparkles'; label?: string; danger?: boolean }) {
-  return <button aria-label={ariaLabel} aria-expanded={active} onClick={onClick} className={cn('flex h-7 min-w-7 items-center justify-center gap-1 rounded-lg px-1.5 text-[9px] font-medium transition-colors', danger ? 'text-severity-critical' : active ? 'bg-surface text-text-primary' : 'text-text-muted hover:bg-surface/60 hover:text-text-secondary')}>
+  return <button aria-label={ariaLabel} aria-expanded={active} onClick={onClick} className={cn('flex h-7 min-w-7 items-center justify-center gap-1 rounded-lg px-1.5 text-[9px] font-medium transition-colors', danger ? 'text-severity-critical hover:bg-severity-critical/10' : active ? 'bg-surface text-text-primary' : 'text-text-muted hover:bg-surface/60 hover:text-text-secondary')}>
     <Icon name={icon} size={13} />
     {label && <span>{label}</span>}
     {label && <Icon name="chevron-right" size={9} className="rotate-90 opacity-60" />}
