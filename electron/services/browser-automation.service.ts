@@ -1,6 +1,6 @@
 import { chromium, type Browser, type Page } from 'playwright-core';
 import type { Rectangle, WebContents } from 'electron';
-import type { BrowserPageSnapshot } from '../contracts/browser';
+import type { BrowserEvaluationResult, BrowserPageSnapshot, BrowserStorageSnapshot } from '../contracts/browser';
 import { IntegratedBrowserCdpTransport } from './browser-cdp-transport';
 
 const PAGE_TIMEOUT_MS = 10_000;
@@ -52,6 +52,34 @@ export class BrowserAutomationSession {
         elements,
       };
     }, { generation });
+  }
+
+  async readStorage(): Promise<BrowserStorageSnapshot> {
+    const page = await this.getPage();
+    return page.evaluate(() => {
+      const read = (storage: Storage) => {
+        const values: Record<string, string> = {};
+        for (let index = 0; index < storage.length; index += 1) {
+          const key = storage.key(index);
+          if (key === null) continue;
+          const value = storage.getItem(key);
+          if (value !== null) values[key] = value;
+        }
+        return values;
+      };
+      return {
+        url: location.href,
+        origin: location.origin,
+        localStorage: read(localStorage),
+        sessionStorage: read(sessionStorage),
+      };
+    });
+  }
+
+  async evaluate(source: string): Promise<BrowserEvaluationResult> {
+    const page = await this.getPage();
+    const result: unknown = await page.evaluate(source);
+    return { url: page.url(), result: result === undefined ? null : result };
   }
 
   async navigate(url: string) {

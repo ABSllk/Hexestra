@@ -10,7 +10,8 @@ vi.mock('../traffic.service', () => ({ trafficService: {} }));
 vi.mock('../sync-targets.service', () => ({ syncTargetsService: {} }));
 
 const expectedToolNames = [
-  'browser_tabs', 'browser_read', 'browser_navigate', 'browser_back', 'browser_forward',
+  'browser_tabs', 'browser_read', 'browser_cookies', 'browser_storage', 'browser_evaluate',
+  'browser_navigate', 'browser_back', 'browser_forward',
   'browser_reload', 'browser_click', 'browser_type', 'browser_fill', 'browser_press',
   'browser_hover', 'browser_wait', 'browser_screenshot',
   'shell_profiles', 'shell_sessions', 'shell_read', 'shell_audit_list', 'shell_profile_create',
