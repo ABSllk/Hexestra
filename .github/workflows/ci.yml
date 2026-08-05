@@ -5,6 +5,7 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -60,3 +61,15 @@ jobs:
       - name: Desktop startup smoke
         if: matrix.os != 'ubuntu-24.04'
         run: npm run test:startup
+
+      - name: Package desktop application
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        run: npm run electron:build
+
+      - name: Upload desktop package
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hexestra-${{ matrix.name }}
+          path: release/*
+          if-no-files-found: error
