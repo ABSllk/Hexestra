@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Icon, StatusBadge } from '@/components/shared';
-import { useChatStore, useNetMapStore, useSessionStore } from '@/stores';
-import type { AssetRecord, SessionScope } from '@/types';
+import { ContextMenu, Icon, StatusBadge, type ContextMenuItem } from '@/components/shared';
+import { useAppStore, useChatStore, useNetMapStore, usePentestTreeStore, useSessionStore } from '@/stores';
+import { openBrowserTab } from '@/stores/useTabStore';
+import { assetBrowserUrl, assetJsonPayload, assetPrimaryValue, buildAssetRescanPlan } from '@/lib/assetActions';
+import type { SessionScope } from '@/types';
 import { useI18n } from '@/i18n';
 
 type AssetView = 'inventory' | 'changes' | 'scope';
+type AssetMenuState = { nodeId: string; x: number; y: number; target: HTMLButtonElement };
 
 export function AssetWorkspaceTab() {
   const { t } = useI18n();
@@ -13,11 +16,17 @@ export function AssetWorkspaceTab() {
   const nodes = useNetMapStore((s) => s.nodes);
   const selectedNodeId = useNetMapStore((s) => s.selectedNodeId);
   const selectNode = useNetMapStore((s) => s.selectNode);
+  const setNetMapVisible = useAppStore((s) => s.setNetMapVisible);
+  const upsertTask = usePentestTreeStore((s) => s.upsertTask);
+  const sendMessage = useChatStore((s) => s.sendMessage);
+  const isProcessing = useChatStore((s) => s.isProcessing);
+  const session = useSessionStore((s) => s.currentSession);
   const [view, setView] = useState<AssetView>('inventory');
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [menu, setMenu] = useState<AssetMenuState | null>(null);
   const filtersRef = useRef<HTMLDivElement>(null);
 
   const assetNodes = useMemo(() => nodes.filter((node) => node.type !== 'local'), [nodes]);
@@ -29,6 +38,51 @@ export function AssetWorkspaceTab() {
       return !needle || [node.label, node.ip, node.hostname, node.key, node.type]
         .some((value) => value?.toLowerCase().includes(needle));
     }), [assetNodes, query, statusFilter, typeFilter]);
+
+  const menuNode = menu ? nodes.find((node) => node.id === menu.nodeId) : undefined;
+  const menuTarget = menuNode ? targets.find((target) => target.id === menuNode.id) : undefined;
+  const menuAsset = menuNode ? assets.find((asset) => asset.id === menuNode.id) : undefined;
+  const menuBrowserUrl = menuNode ? assetBrowserUrl(menuNode, menuTarget, menuAsset) : undefined;
+  const menuItems = useMemo<ContextMenuItem[]>(() => {
+    if (!menu || !menuNode) return [];
+    return [
+      {
+        id: 'view-netmap',
+        label: t('assets.viewInNetMap'),
+        onSelect: () => {
+          selectNode(menuNode.id);
+          setNetMapVisible(true);
+        },
+      },
+      ...(menuBrowserUrl ? [{
+        id: 'open-browser',
+        label: t('assets.openInBrowser'),
+        onSelect: () => { openBrowserTab(menuBrowserUrl); },
+      }] : []),
+      {
+        id: 'copy-address',
+        label: t('assets.copyAddress'),
+        separatorBefore: true,
+        onSelect: () => window.hexestra.invoke('clipboard:write-text', assetPrimaryValue(menuNode, menuTarget, menuAsset)),
+      },
+      {
+        id: 'copy-json',
+        label: t('assets.copyJson'),
+        onSelect: () => window.hexestra.invoke('clipboard:write-text', JSON.stringify(assetJsonPayload(menuNode, menuTarget, menuAsset), null, 2)),
+      },
+      {
+        id: 'rescan',
+        label: t('assets.rescanWithAgent'),
+        separatorBefore: true,
+        disabled: isProcessing || menuNode.status === 'out_of_scope',
+        onSelect: async () => {
+          const plan = buildAssetRescanPlan(menuNode, menuTarget, session?.scope);
+          await upsertTask(plan.task);
+          await sendMessage(plan.message);
+        },
+      },
+    ];
+  }, [isProcessing, menu, menuAsset, menuBrowserUrl, menuNode, menuTarget, selectNode, sendMessage, session?.scope, setNetMapVisible, t, upsertTask]);
 
   useEffect(() => {
     if (!filtersExpanded) return;
@@ -80,9 +134,17 @@ export function AssetWorkspaceTab() {
             const target = targets.find((candidate) => candidate.id === node.id);
             const asset = assets.find((candidate) => candidate.id === node.id);
             const updatedAt = target?.lastUpdated ?? asset?.lastUpdated;
-            return <button key={node.id} onClick={() => selectNode(node.id)} className={`ui-hover-row mx-1.5 my-0.5 w-[calc(100%-0.75rem)] px-2.5 py-2 text-left ${selectedNodeId === node.id ? '!border-accent-blue/30 !bg-accent-blue/10 shadow-sm shadow-black/10' : ''}`}>
+            return <button
+              key={node.id}
+              onClick={() => selectNode(node.id)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenu({ nodeId: node.id, x: event.clientX, y: event.clientY, target: event.currentTarget });
+              }}
+              className={`ui-hover-row mx-1.5 my-0.5 w-[calc(100%-0.75rem)] px-2.5 py-2 text-left ${selectedNodeId === node.id ? '!border-accent-blue/30 !bg-accent-blue/10 shadow-sm shadow-black/10' : ''}`}
+            >
               <div className="mb-1 flex items-center justify-between gap-2 select-none"><span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><StatusBadge status={node.status} /></div>
-              <div className="flex items-center gap-2 text-[9px] text-text-muted select-none"><span className="uppercase text-accent-teal select-none">{node.type}</span><span className="min-w-0 flex-1 truncate">{target?.ip ?? assetPrimaryValue(asset) ?? node.key ?? node.label}</span>{node.portCount > 0 && <span>{node.portCount} ports</span>}</div>
+              <div className="flex items-center gap-2 text-[9px] text-text-muted select-none"><span className="uppercase text-accent-teal select-none">{node.type}</span><span className="min-w-0 flex-1 truncate">{assetPrimaryValue(node, target, asset)}</span>{node.portCount > 0 && <span>{node.portCount} ports</span>}</div>
               {updatedAt && <div className="mt-1 font-mono text-[8px] text-text-muted/70 select-none">Seen {formatTime(updatedAt)}</div>}
             </button>;
           })}
@@ -90,6 +152,14 @@ export function AssetWorkspaceTab() {
       </>}
       {view === 'changes' && <ChangesPanel />}
       {view === 'scope' && <ScopePanel />}
+      <ContextMenu
+        open={!!menu && !!menuNode}
+        x={menu?.x ?? 0}
+        y={menu?.y ?? 0}
+        items={menuItems}
+        returnFocus={menu?.target}
+        onClose={() => setMenu(null)}
+      />
     </div>
   );
 }
@@ -150,6 +220,5 @@ function ScopeField({ label, value, onChange, placeholder }: { label: string; va
   return <label className="mb-3 block"><span className="mb-1 block text-2xs font-medium text-text-secondary">{label}</span><textarea aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={5} className="w-full resize-y rounded border border-surface bg-bg-primary p-2 font-mono text-2xs text-text-primary outline-none placeholder:text-text-muted/60 focus:border-accent-blue/50" /></label>;
 }
 
-function assetPrimaryValue(asset?: AssetRecord) { if (!asset) return undefined; const value = asset.properties.url ?? asset.properties.domain ?? asset.properties.ip; return typeof value === 'string' ? value : asset.key; }
 function formatTime(value: string) { return new Date(value).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
 function lines(value: string) { return [...new Set(value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))]; }

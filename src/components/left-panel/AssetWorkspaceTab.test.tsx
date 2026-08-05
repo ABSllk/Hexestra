@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useChatStore, useNetMapStore, useSessionStore } from '@/stores';
+import { useAppStore, useChatStore, useNetMapStore, usePentestTreeStore, useSessionStore, useTabStore } from '@/stores';
 import type { AssetRecord, GraphNode, Session, Target } from '@/types';
 import { AssetWorkspaceTab } from './AssetWorkspaceTab';
 
@@ -17,6 +17,13 @@ describe('AssetWorkspaceTab', () => {
     useSessionStore.setState({ currentSession: session, targets: [], assets: [asset], scanRuns: [{ id: 'scan-1', tool: 'subfinder', startedAt: now, completedAt: now, changeCount: 1 }], assetChanges: [{ id: 'change-1', scanRunId: 'scan-1', assetId: asset.id, kind: 'asset_added', label: 'domain api.example.com', observedAt: now }], updateScope: vi.fn() });
     useNetMapStore.setState({ nodes: [{ id: 'local-operator', label: 'THIS DEVICE', type: 'local', status: 'scanned', portCount: 0, vulnCount: 0 }, node], edges: [], selectedNodeId: null, highlightedNodeIds: [], layout: 'force', isLoading: false, error: null });
     useChatStore.setState({ sendMessage: vi.fn(), isProcessing: false });
+    usePentestTreeStore.setState({ upsertTask: vi.fn() });
+    useAppStore.setState({ isNetMapVisible: false });
+    useTabStore.getState().resetProject();
+    Object.defineProperty(window, 'hexestra', {
+      configurable: true,
+      value: { invoke: vi.fn().mockResolvedValue(undefined), on: vi.fn(), once: vi.fn(), send: vi.fn() },
+    });
   });
 
   it('searches assets and exposes scan changes', () => {
@@ -60,6 +67,76 @@ describe('AssetWorkspaceTab', () => {
     fireEvent.click(screen.getByRole('button', { name: /api\.example\.com/i }));
     expect(useNetMapStore.getState().selectedNodeId).toBe(node.id);
     expect(screen.queryByText('Details')).not.toBeInTheDocument();
+  });
+
+  it('opens the asset context menu without changing selection and can reveal the NetMap', () => {
+    render(<AssetWorkspaceTab />);
+    const row = screen.getByRole('button', { name: /api\.example\.com/i });
+    fireEvent.contextMenu(row, { clientX: 120, clientY: 80 });
+
+    expect(useNetMapStore.getState().selectedNodeId).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'View in NetMap' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'View in NetMap' }));
+
+    expect(useNetMapStore.getState().selectedNodeId).toBe(node.id);
+    expect(useAppStore.getState().isNetMapVisible).toBe(true);
+  });
+
+  it('closes the asset context menu through Escape and outside interaction', () => {
+    render(<AssetWorkspaceTab />);
+    const row = screen.getByRole('button', { name: /api\.example\.com/i });
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+
+    fireEvent.contextMenu(row);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('copies asset data and opens a derived browser URL', async () => {
+    render(<AssetWorkspaceTab />);
+    const row = screen.getByRole('button', { name: /api\.example\.com/i });
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy address' }));
+    expect(window.hexestra.invoke).toHaveBeenCalledWith('clipboard:write-text', 'api.example.com');
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy asset as JSON' }));
+    expect(window.hexestra.invoke).toHaveBeenCalledWith('clipboard:write-text', JSON.stringify(asset, null, 2));
+
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Browser' }));
+    await waitFor(() => expect(useTabStore.getState().tabs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'browser', data: { url: 'https://api.example.com/' } }),
+    ])));
+  });
+
+  it('does not offer browser navigation for a host without a known web endpoint', () => {
+    const hostNode: GraphNode = { id: 'host-no-web', label: '192.0.2.44', type: 'host', status: 'scanned', ip: '192.0.2.44', portCount: 1, vulnCount: 0 };
+    useSessionStore.setState({ targets: [], assets: [] });
+    useNetMapStore.setState((state) => ({ ...state, nodes: [state.nodes[0], hostNode] }));
+    render(<AssetWorkspaceTab />);
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /192\.0\.2\.44/i }));
+    expect(screen.queryByRole('menuitem', { name: 'Open in Browser' })).not.toBeInTheDocument();
+  });
+
+  it('rescan action reuses the Agent task request and disables out-of-scope assets', async () => {
+    render(<AssetWorkspaceTab />);
+    const row = screen.getByRole('button', { name: /api\.example\.com/i });
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rescan with Agent' }));
+
+    await waitFor(() => {
+      expect(usePentestTreeStore.getState().upsertTask).toHaveBeenCalledWith(expect.objectContaining({ id: `asm-rescan-${node.id}`, stage: 'S2' }));
+      expect(useChatStore.getState().sendMessage).toHaveBeenCalledWith(expect.stringContaining('api.example.com'));
+    });
+
+    useNetMapStore.setState((state) => ({ ...state, nodes: state.nodes.map((item) => item.id === node.id ? { ...item, status: 'out_of_scope' } : item) }));
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole('menuitem', { name: 'Rescan with Agent' })).toBeDisabled();
   });
 
   it('asks the Agent to define an empty project scope', () => {

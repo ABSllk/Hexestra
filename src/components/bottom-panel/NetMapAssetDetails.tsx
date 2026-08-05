@@ -1,4 +1,5 @@
 import { Icon, StatusBadge } from '@/components/shared';
+import { buildAssetRescanPlan } from '@/lib/assetActions';
 import { listOpenPorts } from '@/lib/targetPresentation';
 import { useChatStore, useNetMapStore, usePentestTreeStore, useSessionStore } from '@/stores';
 import type { AssetRecord } from '@/types';
@@ -24,17 +25,9 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
 
   const openPorts = target ? listOpenPorts(target) : [];
   const requestRescan = async () => {
-    await upsertTask({
-      id: `asm-rescan-${node.id}`,
-      stage: 'S2',
-      title: `Rescan ${node.label}`,
-      status: 'in_progress',
-    });
-    await sendMessage(
-      `Rescan the selected asset ${node.label} (${target?.ip ?? node.key ?? node.id}). `
-      + `First verify it against the project Scope ${JSON.stringify(session?.scope ?? {})}, `
-      + 'use the smallest appropriate scan action, then update the asset, change record, and task status.',
-    );
+    const plan = buildAssetRescanPlan(node, target, session?.scope);
+    await upsertTask(plan.task);
+    await sendMessage(plan.message);
   };
 
   return (
