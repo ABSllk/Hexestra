@@ -1,0 +1,5 @@
+Hexestra Bridge is compiled against PortSwigger's Montoya API 2026.7.
+
+The Montoya API JAR is a compile-time dependency only and is not included in
+hexestra-burp-bridge.jar. Burp Suite provides the API at runtime. Review the
+applicable PortSwigger terms before redistributing Burp-related components.
