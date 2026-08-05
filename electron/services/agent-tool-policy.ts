@@ -8,6 +8,8 @@ const READ_ONLY_TOOLS = new Set([
   'mcp__hexestra__browser_read',
   'mcp__hexestra__browser_tabs',
   'mcp__hexestra__browser_screenshot',
+  'mcp__hexestra__browser_cookies',
+  'mcp__hexestra__browser_storage',
   'mcp__hexestra__target_list',
   'mcp__hexestra__finding_list',
   'mcp__hexestra__vulnerability_list',

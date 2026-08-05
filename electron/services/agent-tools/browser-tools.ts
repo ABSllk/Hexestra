@@ -21,6 +21,33 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
       }),
     ),
     sdk.tool(
+      'browser_cookies',
+      'Read every cookie in the active Hexestra project browser partition, including raw values and HttpOnly cookie metadata. This does not require Traffic Capture or an open browser tab.',
+      {},
+      async () => ({
+        content: [{ type: 'text', text: JSON.stringify(await browserService.readCookies(sessionId), null, 2) }],
+      }),
+    ),
+    sdk.tool(
+      'browser_storage',
+      'Read raw localStorage and sessionStorage key/value pairs from the selected integrated browser tab current origin.',
+      { tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab') },
+      async ({ tabId }) => ({
+        content: [{ type: 'text', text: JSON.stringify(await browserService.readStorage(sender.id, sessionId, tabId), null, 2) }],
+      }),
+    ),
+    sdk.tool(
+      'browser_evaluate',
+      'Execute arbitrary JavaScript in the selected integrated browser tab main page context and return its serializable result. The script can modify page, storage, navigation, and network state.',
+      {
+        source: z.string().min(1).max(100_000).describe('JavaScript source to execute in the page'),
+        tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab'),
+      },
+      async ({ source, tabId }) => ({
+        content: [{ type: 'text', text: JSON.stringify(await browserService.evaluate(sender.id, source, sessionId, tabId), null, 2) }],
+      }),
+    ),
+    sdk.tool(
       'browser_navigate',
       'Navigate a Hexestra integrated browser tab to any HTTP(S) URL through Playwright. If no Browser tab exists, create one automatically. The returned scopeState is informational and does not block navigation.',
       {

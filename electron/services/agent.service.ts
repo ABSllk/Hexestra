@@ -60,7 +60,7 @@ import { normalizeAgentContextRefs, type AgentContextRef } from '../agent-contex
 import { createHexestraAgentTools } from './agent-tools';
 
 type AgentSdk = typeof import('@anthropic-ai/claude-agent-sdk');
-const AGENT_CONTEXT_VERSION = 'hexestra-context-v6';
+const AGENT_CONTEXT_VERSION = 'hexestra-context-v7';
 type AgentState =
   | 'loading'
   | 'ready'
@@ -1085,8 +1085,8 @@ function describeToolUse(toolName: string, input: Record<string, unknown>) {
 
 function isTargetActionTool(toolName: string) {
   return toolName === 'Bash'
-    || /browser_(?:navigate|back|forward|reload|click|type|fill)$/i.test(toolName)
-    || /mcp__hexestra__browser_(?:navigate|back|forward|reload|click|type|fill|press|hover|wait)$/i.test(toolName)
+    || /browser_(?:navigate|back|forward|reload|click|type|fill|evaluate)$/i.test(toolName)
+    || /mcp__hexestra__browser_(?:navigate|back|forward|reload|click|type|fill|press|hover|wait|evaluate)$/i.test(toolName)
     || /mcp__hexestra__shell_(?:profile_create|profile_trust_host|connect|listener_create|listener_start|listener_stop|reverse_bind|execute|send_input|interrupt|disconnect|save_evidence)$/i.test(toolName);
 }
 

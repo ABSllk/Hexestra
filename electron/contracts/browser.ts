@@ -81,6 +81,18 @@ export interface BrowserPageSnapshot {
   elements: Array<{ ref: string; tag: string; text: string; type?: string }>;
 }
 
+export interface BrowserStorageSnapshot {
+  url: string;
+  origin: string;
+  localStorage: Record<string, string>;
+  sessionStorage: Record<string, string>;
+}
+
+export interface BrowserEvaluationResult {
+  url: string;
+  result: unknown;
+}
+
 export interface BrowserContextActionEvent extends BrowserIdentity {
   action: 'ask-page' | 'ask-selection' | 'ask-link';
   url: string;

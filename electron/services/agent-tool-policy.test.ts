@@ -6,6 +6,8 @@ describe('Agent tool policy', () => {
     expect(isReadOnlyAgentTool('mcp__hexestra__browser_tabs')).toBe(true);
     expect(isReadOnlyAgentTool('mcp__hexestra__browser_read')).toBe(true);
     expect(isReadOnlyAgentTool('mcp__hexestra__browser_screenshot')).toBe(true);
+    expect(isReadOnlyAgentTool('mcp__hexestra__browser_cookies')).toBe(true);
+    expect(isReadOnlyAgentTool('mcp__hexestra__browser_storage')).toBe(true);
     expect(isReadOnlyAgentTool('mcp__hexestra__target_list')).toBe(true);
     expect(isReadOnlyAgentTool('mcp__hexestra__finding_list')).toBe(true);
     expect(isReadOnlyAgentTool('mcp__hexestra__vulnerability_list')).toBe(true);
@@ -22,6 +24,7 @@ describe('Agent tool policy', () => {
     expect(isReadOnlyAgentTool('mcp__hexestra__browser_back')).toBe(false);
     expect(isReadOnlyAgentTool('mcp__hexestra__browser_forward')).toBe(false);
     expect(isReadOnlyAgentTool('mcp__hexestra__browser_reload')).toBe(false);
+    expect(isReadOnlyAgentTool('mcp__hexestra__browser_evaluate')).toBe(false);
     expect(isReadOnlyAgentTool('mcp__hexestra__asset_register')).toBe(false);
     expect(isReadOnlyAgentTool('mcp__hexestra__finding_upsert')).toBe(false);
     expect(isReadOnlyAgentTool('mcp__hexestra__vulnerability_upsert')).toBe(false);

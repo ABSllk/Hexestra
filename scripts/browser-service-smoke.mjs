@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, session } from 'electron';
 
 const require = createRequire(import.meta.url);
 const smokeRoot = mkdtempSync(join(tmpdir(), 'hexestra-browser-service-'));
@@ -108,8 +108,26 @@ async function run() {
   const { TrafficSidecar } = require('../dist-electron/services/traffic-sidecar.js');
   const { DEFAULT_PROXY_PROFILE } = require('../dist-electron/contracts/traffic.js');
   const { BROWSER_IPC } = require('../dist-electron/contracts/browser.js');
+  const { browserProjectPartition } = require('../dist-electron/services/browser-policy.js');
   const projectOne = await sessionService.openProjectPath(projectOnePath, { name: 'Browser smoke one', scope: '127.0.0.1' });
   const projectTwo = await sessionService.openProjectPath(projectTwoPath, { name: 'Browser smoke two', scope: '127.0.0.1' });
+  const inScopeUrl = `http://127.0.0.1:${port}/`;
+  const projectBrowserSession = session.fromPartition(browserProjectPartition(projectOne.id), { cache: true });
+  await projectBrowserSession.cookies.set({
+    url: inScopeUrl,
+    name: 'hexestra-session',
+    value: 'raw-http-only-value',
+    httpOnly: true,
+    sameSite: 'lax',
+  });
+  const cookieSnapshot = await browserService.readCookies(projectOne.id);
+  const httpOnlyCookie = cookieSnapshot.cookies.find((cookie) => cookie.name === 'hexestra-session');
+  if (!httpOnlyCookie?.httpOnly || httpOnlyCookie.value !== 'raw-http-only-value') {
+    throw new Error('Agent cookie read did not return the raw HttpOnly project cookie without an open tab');
+  }
+  if ((await browserService.readCookies(projectTwo.id)).cookies.some((cookie) => cookie.name === 'hexestra-session')) {
+    throw new Error('Agent cookie read leaked cookies between project partitions');
+  }
   trafficSidecar = new TrafficSidecar();
   const proxyStatus = await trafficSidecar.start({
     projectId: projectOne.id,
@@ -151,7 +169,6 @@ async function run() {
   const ownerId = owner.webContents.id;
   const firstIdentity = { projectId: projectOne.id, tabId: 'browser-one' };
   const secondIdentity = { projectId: projectTwo.id, tabId: 'browser-two' };
-  const inScopeUrl = `http://127.0.0.1:${port}/`;
 
   const autoOpened = await browserService.navigateOrOpen(owner.webContents, inScopeUrl, projectOne.id);
   if (autoOpened.url !== inScopeUrl || autoOpened.scopeState !== 'in_scope') {
@@ -169,7 +186,35 @@ async function run() {
   const changed = await browserService.readPage(ownerId, projectOne.id, firstIdentity.tabId);
   if (!changed.text.includes('same visible browser')) throw new Error('Agent action did not update the same visible page');
 
-  const popup = changed.elements.find((element) => element.text === 'Open popup');
+  const evaluation = await browserService.evaluate(
+    ownerId,
+    `(() => {
+      sessionStorage.setItem('session-token', 'raw-session-value');
+      document.querySelector('#result').textContent = 'evaluated-visible-page';
+      return { answer: 42, local: localStorage.getItem('message') };
+    })()`,
+    projectOne.id,
+    firstIdentity.tabId,
+  );
+  if (evaluation.result?.answer !== 42 || evaluation.result?.local !== 'same visible browser') {
+    throw new Error('Agent JavaScript evaluation did not return the serializable page result');
+  }
+  const evaluatedPage = await browserService.readPage(ownerId, projectOne.id, firstIdentity.tabId);
+  if (!evaluatedPage.text.includes('evaluated-visible-page')) throw new Error('Agent JavaScript did not mutate the visible page');
+
+  const storage = await browserService.readStorage(ownerId, projectOne.id);
+  if (storage.localStorage.message !== 'same visible browser' || storage.sessionStorage['session-token'] !== 'raw-session-value') {
+    throw new Error('Agent Web Storage read did not return raw localStorage and sessionStorage values');
+  }
+  let evaluationError = '';
+  try {
+    await browserService.evaluate(ownerId, 'throw new Error("browser-evaluate-smoke")', projectOne.id, firstIdentity.tabId);
+  } catch (error) {
+    evaluationError = error instanceof Error ? error.message : String(error);
+  }
+  if (!evaluationError.includes('browser-evaluate-smoke')) throw new Error('Agent JavaScript exception was not surfaced');
+
+  const popup = evaluatedPage.elements.find((element) => element.text === 'Open popup');
   if (!popup) throw new Error('Popup fixture control is missing');
   await browserService.click(ownerId, popup.ref, projectOne.id, firstIdentity.tabId);
   const popupResult = await browserService.readPage(ownerId, projectOne.id, firstIdentity.tabId);
@@ -255,7 +300,7 @@ async function run() {
   await trafficSidecar.stop();
   trafficSidecar = null;
 
-  process.stdout.write('BROWSER_SERVICE_SMOKE_OK same-page Agent actions, advisory scope, popup, storage, history, screenshot, project CA HTTPS, cleanup\n');
+  process.stdout.write('BROWSER_SERVICE_SMOKE_OK same-page Agent actions, cookies, storage, JavaScript, advisory scope, popup, history, screenshot, project CA HTTPS, cleanup\n');
 }
 
 async function waitForValue(action, timeoutMs = 3_000) {

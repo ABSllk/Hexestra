@@ -18,6 +18,7 @@ import {
   type BrowserOpenTabEvent,
   type BrowserPostBody,
   type BrowserIdentity,
+  type BrowserEvaluationResult,
   type BrowserLayoutRequest,
   type BrowserLocationState,
   type BrowserNavigateRequest,
@@ -26,6 +27,7 @@ import {
   type BrowserState,
   type BrowserStateChangedEvent,
   type BrowserScopeState,
+  type BrowserStorageSnapshot,
   type BrowserTabDescriptor,
 } from '../contracts/browser';
 import { BrowserAutomationSession } from './browser-automation.service';
@@ -251,6 +253,28 @@ class BrowserService {
   async readPage(ownerId: number, projectId?: string, tabId?: string): Promise<BrowserPageSnapshot> {
     const runtime = this.getAgentRuntime(ownerId, projectId, tabId);
     return this.readRuntime(runtime);
+  }
+
+  async readCookies(projectId?: string) {
+    if (!projectId) throw new Error('No active engagement');
+    const normalizedProjectId = parseId(projectId, 'project');
+    const partition = browserProjectPartition(normalizedProjectId);
+    const browserSession = session.fromPartition(partition, { cache: true });
+    this.configureSession(partition, browserSession);
+    return {
+      projectId: normalizedProjectId,
+      cookies: await browserSession.cookies.get({}),
+    };
+  }
+
+  async readStorage(ownerId: number, projectId?: string, tabId?: string): Promise<BrowserStorageSnapshot> {
+    const runtime = this.getAgentRuntime(ownerId, projectId, tabId);
+    return this.automation(runtime).readStorage();
+  }
+
+  async evaluate(ownerId: number, source: string, projectId?: string, tabId?: string): Promise<BrowserEvaluationResult> {
+    const runtime = this.getAgentRuntime(ownerId, projectId, tabId);
+    return this.runAgentAction(runtime, () => this.automation(runtime).evaluate(source));
   }
 
   listTabs(ownerId: number, projectId?: string): BrowserTabDescriptor[] {
