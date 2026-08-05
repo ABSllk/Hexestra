@@ -58,24 +58,69 @@ These screenshots use the fictional Northstar Demo Lab, reserved `example.test` 
 - Node.js 24 and npm
 - Windows x64, Linux x64 (Ubuntu 24.04 baseline), macOS Intel, or macOS Apple Silicon
 - Standard Electron desktop libraries; Ubuntu needs the usual X11/GTK runtime libraries
-- Claude Code installed and authenticated
 - mitmproxy `12.2.3` installed separately for Traffic Capture
 - Optional Burp Suite and JDK 17 for the Bridge
 
 Native Claude Code works on every supported source-run platform. WSL Claude Code and WSL Shell profiles are Windows-only. This release is intended to run from source; signed installers, automatic mitmproxy installation, and bundled mitmproxy binaries are not included.
 
+### Install Claude Code
+
+Run these commands in the Native or WSL environment selected under **Settings > Connection**:
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude --version
+```
+
+To use an Anthropic account:
+
+```bash
+claude auth login
+claude auth status
+```
+
+### Configure a third-party API
+
+Set provider variables in the same terminal that will start Hexestra. DeepSeek example from its [official Claude Code integration guide](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code/):
+
+Linux and macOS:
+
+```bash
+export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+export ANTHROPIC_AUTH_TOKEN="YOUR_DEEPSEEK_API_KEY"
+export ANTHROPIC_MODEL='deepseek-v4-pro[1m]'
+export ANTHROPIC_DEFAULT_OPUS_MODEL='deepseek-v4-pro[1m]'
+export ANTHROPIC_DEFAULT_SONNET_MODEL='deepseek-v4-pro[1m]'
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
+export CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash
+export CLAUDE_CODE_EFFORT_LEVEL=max
+```
+
+Windows PowerShell:
+
+```powershell
+$env:ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+$env:ANTHROPIC_AUTH_TOKEN="YOUR_DEEPSEEK_API_KEY"
+$env:ANTHROPIC_MODEL="deepseek-v4-pro[1m]"
+$env:ANTHROPIC_DEFAULT_OPUS_MODEL="deepseek-v4-pro[1m]"
+$env:ANTHROPIC_DEFAULT_SONNET_MODEL="deepseek-v4-pro[1m]"
+$env:ANTHROPIC_DEFAULT_HAIKU_MODEL="deepseek-v4-flash"
+$env:CLAUDE_CODE_SUBAGENT_MODEL="deepseek-v4-flash"
+$env:CLAUDE_CODE_EFFORT_LEVEL="max"
+```
+
+Replace the endpoint, token, and model names for another Anthropic-compatible provider. Never commit an API key.
+
 ### Run from source
+
+Run these commands in the Hexestra project root. `npm ci` installs the locked Claude Agent SDK and the platform-specific prebuilt `node-pty` package:
 
 ```bash
 npm ci
 npm run electron:dev
 ```
 
-`npm ci` installs and verifies the platform-specific prebuilt `node-pty` package. Hexestra does not fall back to a local `node-gyp` build.
-
-### Configure Claude Code
-
-Install and authenticate Claude Code first, then open **Settings > Connection**. Choose **Native** to use the bundled Agent SDK executable, a command name, or an absolute path. On Windows, choose **WSL** to run inside a selected distribution and provide its exact distribution name and Claude executable path, normally `/usr/bin/claude`. Save the settings and use **Test connection** to verify the runtime, version, authentication, and network. Hexestra reuses your existing Claude Code authentication, model settings, Skills, MCP servers, and provider configuration.
+Hexestra does not fall back to a local `node-gyp` build.
 
 ### Configure Traffic Capture and mitmproxy
 

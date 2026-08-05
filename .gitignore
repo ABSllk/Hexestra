@@ -11,6 +11,7 @@ release/
 coverage/
 artifacts/
 .ui-test/
+*.pyc
 
 # Local AI and project-workflow state
 .agents/

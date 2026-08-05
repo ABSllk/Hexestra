@@ -58,24 +58,69 @@ Hexestra 将分散的渗透测试环节整合进同一个项目。Agent 可以�
 - Node.js 24 和 npm
 - Windows x64、Linux x64（以 Ubuntu 24.04 为基准）、macOS Intel 或 macOS Apple Silicon
 - 当前平台的标准 Electron 桌面运行库；Ubuntu 需要常见的 X11/GTK 运行库
-- 已安装并完成认证的 Claude Code
 - 使用 Traffic Capture 时，单独安装 mitmproxy `12.2.3`
 - 可选的 Burp Suite；构建 Bridge 需要 JDK 17
 
 所有支持的源码运行平台均可使用 Native Claude Code。WSL Claude Code 和 WSL Shell 仅支持 Windows。本次发布以从源码运行为目标，不提供签名安装包，不自动安装 mitmproxy，也不捆绑 mitmproxy 二进制文件。
 
+### 安装 Claude Code
+
+在 **Settings > Connection（设置 > 连接）** 中选择的 Native 或 WSL 环境内执行：
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude --version
+```
+
+使用 Anthropic 账号时执行：
+
+```bash
+claude auth login
+claude auth status
+```
+
+### 配置第三方 API
+
+请在随后用于启动 Hexestra 的同一个终端中设置服务商环境变量。以下命令来自 [DeepSeek 官方 Claude Code 接入指南](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code/)：
+
+Linux 和 macOS：
+
+```bash
+export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+export ANTHROPIC_AUTH_TOKEN="YOUR_DEEPSEEK_API_KEY"
+export ANTHROPIC_MODEL='deepseek-v4-pro[1m]'
+export ANTHROPIC_DEFAULT_OPUS_MODEL='deepseek-v4-pro[1m]'
+export ANTHROPIC_DEFAULT_SONNET_MODEL='deepseek-v4-pro[1m]'
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
+export CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash
+export CLAUDE_CODE_EFFORT_LEVEL=max
+```
+
+Windows PowerShell：
+
+```powershell
+$env:ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+$env:ANTHROPIC_AUTH_TOKEN="YOUR_DEEPSEEK_API_KEY"
+$env:ANTHROPIC_MODEL="deepseek-v4-pro[1m]"
+$env:ANTHROPIC_DEFAULT_OPUS_MODEL="deepseek-v4-pro[1m]"
+$env:ANTHROPIC_DEFAULT_SONNET_MODEL="deepseek-v4-pro[1m]"
+$env:ANTHROPIC_DEFAULT_HAIKU_MODEL="deepseek-v4-flash"
+$env:CLAUDE_CODE_SUBAGENT_MODEL="deepseek-v4-flash"
+$env:CLAUDE_CODE_EFFORT_LEVEL="max"
+```
+
+使用其他兼容 Anthropic 接口的服务商时，按其文档替换接口地址、Token 和模型名称。不要把 API Key 提交到仓库。
+
 ### 从源码运行
+
+在 Hexestra 项目根目录执行。`npm ci` 会安装锁定版本的 Claude Agent SDK 和当前平台的 `node-pty` 预编译包：
 
 ```bash
 npm ci
 npm run electron:dev
 ```
 
-`npm ci` 会安装并验证当前平台对应的 `node-pty` 预编译包；Hexestra 不会回退到本地 `node-gyp` 编译。
-
-### 配置 Claude Code
-
-先单独安装 Claude Code 并完成认证，再打开 **Settings > Connection（设置 > 连接）**。选择 **Native** 时，可以使用 Agent SDK 自带的可执行文件，也可以填写命令名或绝对路径。在 Windows 上选择 **WSL** 时，需要填写准确的发行版名称和 Claude 可执行文件路径，通常为 `/usr/bin/claude`。保存后使用 **Test connection（测试连接）** 验证运行环境、版本、认证和网络。Hexestra 会继续使用你现有的 Claude Code 认证、模型设置、Skills、MCP Server 和服务商配置。
+Hexestra 不会回退到本地 `node-gyp` 编译。
 
 ### 配置流量捕获与 mitmproxy
 
