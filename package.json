@@ -84,6 +84,7 @@
     "wait-on": "^8.0.0"
   },
   "build": {
+    "npmRebuild": false,
     "appId": "com.hexestra.app",
     "productName": "Hexestra",
     "directories": {

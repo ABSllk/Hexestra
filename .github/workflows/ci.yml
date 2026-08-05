@@ -64,7 +64,7 @@ jobs:
 
       - name: Package desktop application
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-        run: npm run electron:build
+        run: npm run electron:build -- --publish never
 
       - name: Upload desktop package
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
