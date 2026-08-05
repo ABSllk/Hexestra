@@ -27,7 +27,7 @@
     "test:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cdp-smoke.ps1",
     "test:browser-smoke": "npm run electron:compile && electron scripts/browser-automation-smoke.mjs",
     "test:browser-service-smoke": "npm run electron:compile && electron scripts/browser-service-smoke.mjs",
-    "test:startup": "npm run electron:compile && npm run build && electron --disable-gpu scripts/electron-startup-smoke.mjs",
+    "test:startup": "npm run electron:compile && npm run build && electron --disable-gpu --no-sandbox scripts/electron-startup-smoke.mjs",
     "test:traffic-proxy-smoke": "npm run electron:compile && node scripts/traffic-proxy-smoke.mjs",
     "build:burp-bridge": "node scripts/build-burp-bridge.mjs",
     "release:hashes": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-release-hashes.ps1",
