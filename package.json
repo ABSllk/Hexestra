@@ -72,7 +72,7 @@
     "autoprefixer": "^10.4.0",
     "clsx": "^2.1.0",
     "concurrently": "^9.0.0",
-    "electron": "^43.1.1",
+    "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "jsdom": "^29.1.1",
     "postcss": "^8.4.0",
