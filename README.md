@@ -22,6 +22,26 @@ Hexestra brings the fragmented parts of a penetration test into one project. The
 - **Keep the tools you know:** continue using Claude Code, Burp Suite, PowerShell, WSL, SSH, and their existing configurations instead of learning a closed replacement.
 - **Durable engagement state:** reopen a project folder to restore Scope, tasks, NetMap, evidence, findings, reports, workspace tabs, permissions, and conversation branches.
 
+## Screenshots
+
+These screenshots use the fictional Northstar Demo Lab, reserved `example.test` domains, documentation-only IP addresses, synthetic identities, and synthetic evidence.
+
+![Hexestra shared workspace with task tree, report, Agent activity, and NetMap](docs/images/hexestra-workspace-netmap.png)
+
+*The shared workspace keeps the task tree, report, Agent activity, active asset, and 17-node NetMap in one controllable surface.*
+
+![Hexestra Evidence record with raw HTTP response and linked records](docs/images/hexestra-evidence.png)
+
+*Evidence preserves raw output and links it to the Finding and validated Vulnerability.*
+
+![Hexestra Vulnerability record with severity, impact, and remediation](docs/images/hexestra-vulnerability.png)
+
+*A validated Vulnerability keeps severity, lifecycle, impact, remediation, and linked context together.*
+
+![Hexestra assessment report with operator decisions](docs/images/hexestra-report.png)
+
+*The report turns the same durable project state into a reviewable assessment without leaving the IDE.*
+
 ## Core capabilities
 
 - Integrated browser, HTTP/HTTPS capture, inspection, interception, Repeater, and evidence capture
