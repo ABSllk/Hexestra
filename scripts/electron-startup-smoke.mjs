@@ -11,7 +11,10 @@ let terminal;
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('in-process-gpu');
+if (process.platform === 'linux') app.commandLine.appendSwitch('no-sandbox');
 app.setPath('userData', path.join(os.tmpdir(), `hexestra-startup-${process.pid}`));
+
+const startupTimeoutMs = Number(process.env.HEXESTRA_STARTUP_TIMEOUT_MS || 45_000);
 
 const withTimeout = (promise, milliseconds, label) => Promise.race([
   promise,
@@ -20,7 +23,7 @@ const withTimeout = (promise, milliseconds, label) => Promise.race([
 
 try {
   console.log(`Starting Electron smoke on ${process.platform}/${process.arch}`);
-  await withTimeout(app.whenReady(), 15_000, 'Electron app ready');
+  await withTimeout(app.whenReady(), startupTimeoutMs, 'Electron app ready');
   console.log('Electron app ready');
   ipcMain.handle('app:getCapabilities', () => ({ platform: process.platform, arch: process.arch, supportsWsl: process.platform === 'win32', defaultShell: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')), usesNativeTitleBar: process.platform === 'darwin' }));
   window = new BrowserWindow({
@@ -29,7 +32,7 @@ try {
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' } : {}),
     webPreferences: { preload: path.join(projectRoot, 'dist-electron', 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   });
-  await withTimeout(window.loadFile(path.join(projectRoot, 'dist', 'index.html')), 15_000, 'Renderer load');
+  await withTimeout(window.loadFile(path.join(projectRoot, 'dist', 'index.html')), startupTimeoutMs, 'Renderer load');
   console.log('Renderer loaded');
   const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'));
   const args = process.platform === 'win32' ? ['-NoLogo', '-NoProfile', '-Command', 'Write-Output HEXESTRA_PTY_OK'] : ['-lc', 'printf HEXESTRA_PTY_OK'];
