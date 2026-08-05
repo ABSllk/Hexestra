@@ -103,9 +103,9 @@
         "from": "resources/mitmproxy",
         "to": "mitmproxy",
         "filter": [
-          "**/*",
-          "!**/__pycache__/**",
-          "!**/*.pyc"
+          "hexestra_addon.py",
+          "LICENSE",
+          "README.md"
         ]
       },
       {
