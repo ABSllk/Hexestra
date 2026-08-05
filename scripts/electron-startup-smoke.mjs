@@ -4,10 +4,10 @@ import path from 'node:path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 
 const require = createRequire(import.meta.url);
-const pty = require('@lydell/node-pty');
 const projectRoot = path.resolve(import.meta.dirname, '..');
 let window;
 let terminal;
+let pty;
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('in-process-gpu');
@@ -21,10 +21,12 @@ const withTimeout = (promise, milliseconds, label) => Promise.race([
   new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${milliseconds}ms`)), milliseconds)),
 ]);
 
-try {
+const run = async () => {
+  try {
   console.log(`Starting Electron smoke on ${process.platform}/${process.arch}`);
   await withTimeout(app.whenReady(), startupTimeoutMs, 'Electron app ready');
   console.log('Electron app ready');
+  pty = require('@lydell/node-pty');
   ipcMain.handle('app:getCapabilities', () => ({ platform: process.platform, arch: process.arch, supportsWsl: process.platform === 'win32', defaultShell: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')), usesNativeTitleBar: process.platform === 'darwin' }));
   window = new BrowserWindow({
     show: false,
@@ -50,13 +52,16 @@ try {
     });
   });
   console.log(`HEXESTRA_STARTUP_SMOKE_OK ${process.platform}/${process.arch} ${String(output).trim()}`);
-} catch (error) {
-  console.error('Electron startup smoke failed');
-  console.error(error);
-  process.exitCode = 1;
-} finally {
-  try { terminal?.kill(); } catch { /* already stopped */ }
-  if (window && !window.isDestroyed()) window.destroy();
-  if (app.isReady()) app.quit();
-  else app.exit(1);
-}
+  } catch (error) {
+    console.error('Electron startup smoke failed');
+    console.error(error);
+    process.exitCode = 1;
+  } finally {
+    try { terminal?.kill(); } catch { /* already stopped */ }
+    if (window && !window.isDestroyed()) window.destroy();
+    if (app.isReady()) app.quit();
+    else app.exit(1);
+  }
+};
+
+void run();
