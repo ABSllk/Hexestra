@@ -22,6 +22,26 @@ Hexestra 将分散的渗透测试环节整合进同一个项目。Agent 可以�
 - **继续使用熟悉的工具：** 保留 Claude Code、Burp Suite、PowerShell、WSL、SSH 及其现有配置，不必重新适应一套封闭替代品。
 - **持久化的项目状态：** 重新打开项目文件夹即可恢复 Scope、任务、NetMap、证据、Finding、报告、工作区、权限偏好和对话分支。
 
+## 界面截图
+
+以下截图均来自完全虚构的 Northstar Demo Lab，仅使用保留的 `example.test` 域名、文档专用 IP、合成身份和合成证据。
+
+![Hexestra 共用工作区中的任务树、报告、Agent 活动和 NetMap](docs/images/hexestra-workspace-netmap.png)
+
+*任务树、报告、Agent 活动、当前资产和包含 17 个节点的 NetMap 位于同一个可控操作面。*
+
+![Hexestra Evidence 原始 HTTP 响应及关联记录](docs/images/hexestra-evidence.png)
+
+*Evidence 保留原始输出，并与 Finding 和已验证的 Vulnerability 建立关联。*
+
+![Hexestra Vulnerability 严重度、影响和修复建议](docs/images/hexestra-vulnerability.png)
+
+*已验证的 Vulnerability 集中保存严重度、生命周期、影响、修复建议和关联上下文。*
+
+![Hexestra 评估报告和操作员决策](docs/images/hexestra-report.png)
+
+*报告直接使用同一份持久化项目状态，在 IDE 内形成可审阅的评估结果。*
+
 ## 核心能力
 
 - 集成浏览器、HTTP/HTTPS 流量捕获、检查、拦截、Repeater 和证据保存
