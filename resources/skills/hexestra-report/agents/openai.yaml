@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hexestra Report"
+  short_description: "Write reproducible security reports"
+  default_prompt: "Use $hexestra-report to create a report from the current Hexestra records."

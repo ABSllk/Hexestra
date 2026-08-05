@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hexestra Records"
+  short_description: "Manage Hexestra security records"
+  default_prompt: "Use $hexestra-records to reconcile the current Hexestra records."
