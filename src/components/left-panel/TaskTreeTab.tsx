@@ -143,10 +143,10 @@ function TaskBranch({
     return (
       <div
         key={task.id}
-        className={cn('relative', depth > 0 && 'ml-5 border-l border-cyan-200/15')}
+        className={cn('relative', depth > 0 && 'ml-5 border-l border-accent-teal/20')}
       >
         {depth > 0 && (
-          <span className="pointer-events-none absolute left-0 top-4 h-px w-3 bg-cyan-200/20" />
+          <span className="pointer-events-none absolute left-0 top-4 h-px w-3 bg-accent-teal/25" />
         )}
         <div
           className={cn(
@@ -169,7 +169,7 @@ function TaskBranch({
             </button>
           ) : (
             <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-              <span className="h-1 w-1 rounded-full bg-cyan-200/25" />
+              <span className="h-1 w-1 rounded-full bg-accent-teal/30" />
             </span>
           )}
           <button

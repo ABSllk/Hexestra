@@ -1,6 +1,10 @@
 <div align="center">
 
-# HEXESTRA
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="src/assets/branding/hexestra-logo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="src/assets/branding/hexestra-logo-light.svg">
+  <img alt="Hexestra" src="src/assets/branding/hexestra-logo-light.svg" width="720">
+</picture>
 
 ## Orchestrate your pentest.
 

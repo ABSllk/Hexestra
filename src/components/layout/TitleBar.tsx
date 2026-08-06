@@ -5,6 +5,8 @@ import { openSettingsTab } from '@/stores/useTabStore';
 import { useI18n } from '@/i18n';
 import type { PlatformCapabilities } from '@electron/contracts/platform';
 
+const hexestraMark = new URL('../../assets/branding/hexestra-mark.svg', import.meta.url).href;
+
 export function TitleBar() {
   const { t } = useI18n();
   const project = useSessionStore((state) => state.currentSession);
@@ -50,7 +52,9 @@ export function TitleBar() {
     onDoubleClick={() => void windowAction('app:window:toggle-maximize')}
   >
     <div ref={menuRef} className="relative flex h-full items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-      <div className="flex h-full w-10 items-center justify-center text-accent-teal"><Icon name="shield" size={15} /></div>
+      <div className="flex h-full w-10 items-center justify-center">
+        <img src={hexestraMark} alt="Hexestra" className="h-[18px] w-[18px] object-contain" />
+      </div>
       <button aria-expanded={fileMenuOpen} onClick={() => setFileMenuOpen((open) => !open)} className={`h-7 rounded-md px-2 text-[11px] ${fileMenuOpen ? 'bg-surface/70 text-text-primary' : 'hover:bg-surface/45 hover:text-text-secondary'}`}>{t('menu.file')}</button>
       <button onClick={() => openSettingsTab()} className="h-7 rounded-md px-2 text-[11px] hover:bg-surface/45 hover:text-text-secondary">{t('common.settings')}</button>
       {fileMenuOpen && <div role="menu" className="ui-popover absolute left-10 top-8 w-52 p-1.5">

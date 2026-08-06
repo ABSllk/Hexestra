@@ -5,43 +5,44 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Hexestra dark theme palette
+        // Semantic colors are CSS channels so opacity utilities work in both themes.
         bg: {
-          primary: '#1e1e2e',
-          secondary: '#181825',
-          tertiary: '#11111b',
+          primary: 'rgb(var(--color-bg-primary) / <alpha-value>)',
+          secondary: 'rgb(var(--color-bg-secondary) / <alpha-value>)',
+          tertiary: 'rgb(var(--color-bg-tertiary) / <alpha-value>)',
         },
         surface: {
-          DEFAULT: '#313244',
-          hover: '#45475a',
-          active: '#585b70',
+          DEFAULT: 'rgb(var(--color-surface) / <alpha-value>)',
+          hover: 'rgb(var(--color-surface-hover) / <alpha-value>)',
+          active: 'rgb(var(--color-surface-active) / <alpha-value>)',
+          light: 'rgb(var(--color-surface-light) / <alpha-value>)',
         },
         text: {
-          primary: '#cdd6f4',
-          secondary: '#a6adc8',
-          muted: '#6c7086',
+          primary: 'rgb(var(--color-text-primary) / <alpha-value>)',
+          secondary: 'rgb(var(--color-text-secondary) / <alpha-value>)',
+          muted: 'rgb(var(--color-text-muted) / <alpha-value>)',
         },
         accent: {
-          blue: '#89b4fa',
-          green: '#a6e3a1',
-          red: '#f38ba8',
-          yellow: '#f9e2af',
-          purple: '#cba6f7',
-          teal: '#94e2d5',
+          blue: 'rgb(var(--color-accent-blue) / <alpha-value>)',
+          green: 'rgb(var(--color-accent-green) / <alpha-value>)',
+          red: 'rgb(var(--color-accent-red) / <alpha-value>)',
+          yellow: 'rgb(var(--color-accent-yellow) / <alpha-value>)',
+          purple: 'rgb(var(--color-accent-purple) / <alpha-value>)',
+          teal: 'rgb(var(--color-accent-teal) / <alpha-value>)',
         },
         severity: {
-          critical: '#f38ba8',
-          high: '#fab387',
-          medium: '#f9e2af',
-          low: '#a6e3a1',
-          info: '#89b4fa',
+          critical: 'rgb(var(--color-severity-critical) / <alpha-value>)',
+          high: 'rgb(var(--color-severity-high) / <alpha-value>)',
+          medium: 'rgb(var(--color-severity-medium) / <alpha-value>)',
+          low: 'rgb(var(--color-severity-low) / <alpha-value>)',
+          info: 'rgb(var(--color-severity-info) / <alpha-value>)',
         },
         node: {
-          untested: '#6c7086',
-          progress: '#89b4fa',
-          scanned: '#f9e2af',
-          vulnerable: '#fab387',
-          compromised: '#a6e3a1',
+          untested: 'rgb(var(--color-node-untested) / <alpha-value>)',
+          progress: 'rgb(var(--color-node-progress) / <alpha-value>)',
+          scanned: 'rgb(var(--color-node-scanned) / <alpha-value>)',
+          vulnerable: 'rgb(var(--color-node-vulnerable) / <alpha-value>)',
+          compromised: 'rgb(var(--color-node-compromised) / <alpha-value>)',
         },
       },
       fontFamily: {
@@ -49,7 +50,7 @@ export default {
         mono: ['var(--font-mono)'],
       },
       fontSize: {
-        '2xs': ['0.625rem', { lineHeight: '0.75rem' }],
+        '2xs': ['0.6875rem', { lineHeight: '1rem' }],
       },
       borderRadius: {
         DEFAULT: '6px',

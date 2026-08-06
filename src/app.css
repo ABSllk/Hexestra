@@ -3,32 +3,143 @@
 @tailwind utilities;
 
 :root {
-  --font-ui: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
-  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "Microsoft YaHei UI", monospace;
+  color-scheme: dark;
+  --font-ui: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI Variable", "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "Noto Sans SC", "Microsoft YaHei UI", monospace;
+  --font-size-ui: 12px;
+  --color-bg-primary: 30 30 46;
+  --color-bg-secondary: 24 24 37;
+  --color-bg-tertiary: 17 17 27;
+  --color-surface: 49 50 68;
+  --color-surface-hover: 69 71 90;
+  --color-surface-active: 88 91 112;
+  --color-surface-light: 166 173 200;
+  --color-text-primary: 205 214 244;
+  --color-text-secondary: 166 173 200;
+  --color-text-muted: 108 112 134;
+  --color-accent-blue: 137 180 250;
+  --color-accent-green: 166 227 161;
+  --color-accent-red: 243 139 168;
+  --color-accent-yellow: 249 226 175;
+  --color-accent-purple: 203 166 247;
+  --color-accent-teal: 148 226 213;
+  --color-severity-critical: 243 139 168;
+  --color-severity-high: 250 179 135;
+  --color-severity-medium: 249 226 175;
+  --color-severity-low: 166 227 161;
+  --color-severity-info: 137 180 250;
+  --color-node-untested: 108 112 134;
+  --color-node-progress: 137 180 250;
+  --color-node-scanned: 249 226 175;
+  --color-node-vulnerable: 250 179 135;
+  --color-node-compromised: 166 227 161;
+  --color-netmap-shell: 5 11 14;
+  --color-netmap-canvas: 5 11 14;
+  --color-netmap-chrome: 7 16 20;
+  --color-netmap-grid: 86 142 149;
+  --color-netmap-edge: 49 91 101;
+  --color-netmap-label: 183 200 203;
+  --color-netmap-focus: 230 255 251;
   font-family: var(--font-ui);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']):not([data-theme='light']) {
+    color-scheme: light;
+    --color-bg-primary: 248 247 244;
+    --color-bg-secondary: 243 242 238;
+    --color-bg-tertiary: 236 234 229;
+    --color-surface: 221 218 211;
+    --color-surface-hover: 209 205 196;
+    --color-surface-active: 191 187 177;
+    --color-surface-light: 76 81 89;
+    --color-text-primary: 36 39 44;
+    --color-text-secondary: 76 81 89;
+    --color-text-muted: 98 106 115;
+    --color-accent-blue: 49 95 158;
+    --color-accent-green: 57 115 78;
+    --color-accent-red: 184 67 87;
+    --color-accent-yellow: 138 100 34;
+    --color-accent-purple: 118 83 166;
+    --color-accent-teal: 46 112 103;
+    --color-severity-critical: 184 67 87;
+    --color-severity-high: 176 76 36;
+    --color-severity-medium: 138 100 34;
+    --color-severity-low: 57 115 78;
+    --color-severity-info: 49 95 158;
+    --color-node-untested: 98 106 115;
+    --color-node-progress: 49 95 158;
+    --color-node-scanned: 138 100 34;
+    --color-node-vulnerable: 176 76 36;
+    --color-node-compromised: 57 115 78;
+    --color-netmap-shell: 241 240 236;
+    --color-netmap-canvas: 250 249 246;
+    --color-netmap-chrome: 237 235 230;
+    --color-netmap-grid: 126 133 138;
+    --color-netmap-edge: 132 135 131;
+    --color-netmap-label: 77 83 90;
+    --color-netmap-focus: 46 112 103;
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-bg-primary: 248 247 244;
+  --color-bg-secondary: 243 242 238;
+  --color-bg-tertiary: 236 234 229;
+  --color-surface: 221 218 211;
+  --color-surface-hover: 209 205 196;
+  --color-surface-active: 191 187 177;
+  --color-surface-light: 76 81 89;
+  --color-text-primary: 36 39 44;
+  --color-text-secondary: 76 81 89;
+  --color-text-muted: 98 106 115;
+  --color-accent-blue: 49 95 158;
+  --color-accent-green: 57 115 78;
+  --color-accent-red: 184 67 87;
+  --color-accent-yellow: 138 100 34;
+  --color-accent-purple: 118 83 166;
+  --color-accent-teal: 46 112 103;
+  --color-severity-critical: 184 67 87;
+  --color-severity-high: 176 76 36;
+  --color-severity-medium: 138 100 34;
+  --color-severity-low: 57 115 78;
+  --color-severity-info: 49 95 158;
+  --color-node-untested: 98 106 115;
+  --color-node-progress: 49 95 158;
+  --color-node-scanned: 138 100 34;
+  --color-node-vulnerable: 176 76 36;
+  --color-node-compromised: 57 115 78;
+  --color-netmap-shell: 241 240 236;
+  --color-netmap-canvas: 250 249 246;
+  --color-netmap-chrome: 237 235 230;
+  --color-netmap-grid: 126 133 138;
+  --color-netmap-edge: 132 135 131;
+  --color-netmap-label: 77 83 90;
+  --color-netmap-focus: 46 112 103;
 }
 
 /* ============================================================
    Hexestra — Global Styles
    ============================================================ */
 
-/* Smooth scrollbar for dark theme */
+/* Theme-aware scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #11111b;
+  background: rgb(var(--color-bg-tertiary));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #45475a;
+  background: rgb(var(--color-surface-hover));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #585b70;
+  background: rgb(var(--color-surface-active));
 }
 
 /* Base overrides */
@@ -40,9 +151,10 @@ html, body, #root {
 }
 
 body {
-  background: #11111b;
-  color: #cdd6f4;
+  background: rgb(var(--color-bg-tertiary));
+  color: rgb(var(--color-text-primary));
   font-family: var(--font-ui);
+  font-size: var(--font-size-ui);
 }
 
 html.dialog-overlay-root,
@@ -65,9 +177,18 @@ samp {
   font-family: var(--font-mono);
 }
 
+/* Preserve hierarchy while keeping dense supporting copy readable. */
+.text-\[7px\],
+.text-\[8px\],
+.text-\[9px\],
+.text-\[10px\] {
+  font-size: 11px;
+  line-height: 1rem;
+}
+
 ::selection {
-  background: rgba(137, 180, 250, 0.28);
-  color: #eef2ff;
+  background: rgb(var(--color-accent-blue) / 0.28);
+  color: rgb(var(--color-text-primary));
 }
 
 button:not(:disabled),
@@ -89,7 +210,7 @@ summary:focus-visible,
 select:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 1px solid rgba(137, 180, 250, 0.72);
+  outline: 1px solid rgb(var(--color-accent-blue) / 0.72);
   outline-offset: 1px;
 }
 
@@ -128,7 +249,7 @@ textarea:focus-visible {
 
   .ui-control:focus-within,
   .ui-control:focus {
-    @apply border-accent-blue/45 shadow-[0_0_0_1px_rgba(137,180,250,0.08)];
+    @apply border-accent-blue/45 shadow-[0_0_0_1px_rgb(var(--color-accent-blue)_/_0.08)];
   }
 
   .ui-hover-row {
@@ -164,7 +285,7 @@ textarea:focus-visible {
 
 .xterm-container .xterm-viewport {
   overflow-y: scroll !important;
-  scrollbar-color: #45475a #11111b;
+  scrollbar-color: rgb(var(--color-surface-hover)) rgb(var(--color-bg-tertiary));
   scrollbar-width: auto;
 }
 
@@ -173,40 +294,40 @@ textarea:focus-visible {
 }
 
 .xterm-container .xterm-viewport::-webkit-scrollbar-track {
-  background: #11111b;
+  background: rgb(var(--color-bg-tertiary));
 }
 
 .xterm-container .xterm-viewport::-webkit-scrollbar-thumb {
   min-height: 24px;
-  border: 2px solid #11111b;
+  border: 2px solid rgb(var(--color-bg-tertiary));
   border-radius: 6px;
-  background: #585b70;
+  background: rgb(var(--color-surface-active));
 }
 
 .xterm-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: #6c7086;
+  background: rgb(var(--color-text-muted));
 }
 
 /* Hacknet-inspired NetMap */
 .netmap-shell {
   background:
-    radial-gradient(circle at 50% 45%, rgba(26, 80, 86, 0.14), transparent 42%),
-    #050b0e;
+    radial-gradient(circle at 50% 45%, rgb(var(--color-accent-teal) / 0.14), transparent 42%),
+    rgb(var(--color-netmap-shell));
 }
 
 .netmap-canvas {
   background:
-    linear-gradient(180deg, rgba(148, 226, 213, 0.018), transparent 35%),
-    #050b0e;
+    linear-gradient(180deg, rgb(var(--color-accent-teal) / 0.04), transparent 35%),
+    rgb(var(--color-netmap-canvas));
 }
 
 .netmap-grid {
   opacity: 0.28;
   background-image:
-    linear-gradient(rgba(86, 142, 149, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(86, 142, 149, 0.12) 1px, transparent 1px),
-    linear-gradient(rgba(86, 142, 149, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(86, 142, 149, 0.05) 1px, transparent 1px);
+    linear-gradient(rgb(var(--color-netmap-grid) / 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--color-netmap-grid) / 0.14) 1px, transparent 1px),
+    linear-gradient(rgb(var(--color-netmap-grid) / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--color-netmap-grid) / 0.06) 1px, transparent 1px);
   background-size: 72px 72px, 72px 72px, 18px 18px, 18px 18px;
   mask-image: radial-gradient(circle at center, black 25%, transparent 88%);
 }
@@ -215,8 +336,8 @@ textarea:focus-visible {
   z-index: 2;
   opacity: 0;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(148, 226, 213, 0.32), transparent);
-  box-shadow: 0 0 8px rgba(148, 226, 213, 0.08);
+  background: linear-gradient(90deg, transparent, rgb(var(--color-accent-teal) / 0.32), transparent);
+  box-shadow: 0 0 8px rgb(var(--color-accent-teal) / 0.08);
   animation: netmap-scan 14s linear infinite;
 }
 
@@ -225,7 +346,7 @@ textarea:focus-visible {
 }
 
 .netmap-node:focus-visible rect {
-  stroke: #e6fffb;
+  stroke: rgb(var(--color-netmap-focus));
   stroke-width: 2;
 }
 
@@ -269,19 +390,19 @@ textarea:focus-visible {
 }
 
 [data-panel-resize-handle-id]:hover {
-  background-color: #89b4fa !important;
+  background-color: rgb(var(--color-accent-blue)) !important;
 }
 
 [data-panel-resize-handle-id][data-resize-handle-active] {
-  background-color: #89b4fa !important;
+  background-color: rgb(var(--color-accent-blue)) !important;
 }
 
 /* Tab bar styles */
 .tab-bar {
   display: flex;
   align-items: center;
-  background: #181825;
-  border-bottom: 1px solid #313244;
+  background: rgb(var(--color-bg-secondary));
+  border-bottom: 1px solid rgb(var(--color-surface));
   min-height: 36px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -294,22 +415,22 @@ textarea:focus-visible {
 .settings-input {
   width: 100%;
   height: 34px;
-  border: 1px solid #313244;
+  border: 1px solid rgb(var(--color-surface));
   border-radius: 6px;
-  background: #11111b;
+  background: rgb(var(--color-bg-tertiary));
   padding: 0 10px;
-  color: #cdd6f4;
+  color: rgb(var(--color-text-primary));
   font-size: 12px;
   outline: none;
 }
 
 .settings-input:focus {
-  border-color: rgba(137, 180, 250, 0.7);
-  box-shadow: 0 0 0 1px rgba(137, 180, 250, 0.12);
+  border-color: rgb(var(--color-accent-blue) / 0.7);
+  box-shadow: 0 0 0 1px rgb(var(--color-accent-blue) / 0.12);
 }
 
 .settings-input:hover:not(:focus) {
-  border-color: rgba(88, 91, 112, 0.85);
+  border-color: rgb(var(--color-surface-active) / 0.85);
 }
 
 /* Animation for streaming messages */

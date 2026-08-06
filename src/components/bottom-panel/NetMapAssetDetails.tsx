@@ -33,9 +33,9 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
   return (
     <aside
       aria-label={`Asset details for ${node.label}`}
-      className="pointer-events-auto flex max-h-full w-[min(320px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg border border-accent-teal/25 bg-[#071014]/95 shadow-2xl shadow-black/50 backdrop-blur-md"
+      className="pointer-events-auto flex max-h-full w-[min(320px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg border border-accent-teal/25 bg-[rgb(var(--color-netmap-chrome)/0.95)] shadow-2xl shadow-black/50 backdrop-blur-md"
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-cyan-300/10 px-3 py-2 select-none">
+      <div className="flex shrink-0 items-center justify-between border-b border-accent-teal/10 px-3 py-2 select-none">
         <div className="min-w-0">
           <div className="font-mono text-[8px] uppercase tracking-[0.18em] text-accent-teal/70">Selected asset</div>
           <div className="truncate font-mono text-xs font-semibold text-text-primary">{node.label}</div>
@@ -75,7 +75,7 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
                   <div key={port.id} className="ui-card p-2 transition-colors hover:border-accent-teal/20 hover:bg-bg-primary/60">
                     <div className="flex items-center justify-between">
                       <span className="font-mono font-semibold text-accent-teal">{port.endpoint}</span>
-                      <span className="font-mono text-[9px] uppercase tracking-wider text-status-success">{port.state}</span>
+                      <span className="font-mono text-[9px] uppercase tracking-wider text-accent-green">{port.state}</span>
                     </div>
                     <div className="mt-1 grid grid-cols-[48px_1fr] gap-x-2 leading-relaxed">
                       <span className="text-text-muted">Service</span>

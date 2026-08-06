@@ -4,7 +4,9 @@ import * as monaco from 'monaco-editor';
 import { Icon } from '@/components/shared';
 import { MarkdownContent } from '@/components/right-panel/AgentTimelineMessage';
 import { detectEditorLanguage, isMarkdownPath } from '@/lib/editorLanguage';
-import { getMonoFontFamily } from '@/lib/typography';
+import { APP_CODE_FONT_SIZE_PX, getMonoFontFamily } from '@/lib/typography';
+import { MONACO_THEME_NAMES } from '@/lib/theme';
+import { useAppPreferences } from '@/i18n';
 import { useSessionStore, useTabStore } from '@/stores';
 import type { SessionFileContent } from '@/types';
 
@@ -14,6 +16,7 @@ import type { SessionFileContent } from '@/types';
 loader.config({ monaco });
 
 export function EditorTab({ tabId }: { tabId: string }) {
+  const { resolvedTheme } = useAppPreferences();
   const tab = useTabStore((state) => state.tabs.find((candidate) => candidate.id === tabId));
   const updateTabTitle = useTabStore((state) => state.updateTabTitle);
   const updateTabData = useTabStore((state) => state.updateTabData);
@@ -79,7 +82,12 @@ export function EditorTab({ tabId }: { tabId: string }) {
       rules: [{ token: 'comment', foreground: '6c7086', fontStyle: 'italic' }],
       colors: { 'editor.background': '#1e1e2e', 'editorCursor.foreground': '#89b4fa' },
     });
-    editorApi.editor.setTheme('hexestra-dark');
+    editorApi.editor.defineTheme('hexestra-light', {
+      base: 'vs', inherit: true,
+      rules: [{ token: 'comment', foreground: '626a73', fontStyle: 'italic' }],
+      colors: { 'editor.background': '#faf9f6', 'editor.foreground': '#24272c', 'editorCursor.foreground': '#315f9e' },
+    });
+    editorApi.editor.setTheme(MONACO_THEME_NAMES[resolvedTheme]);
     editor.focus();
   };
 
@@ -125,7 +133,7 @@ export function EditorTab({ tabId }: { tabId: string }) {
             height="100%"
             language={detectEditorLanguage(filePath)}
             value={content}
-            theme="hexestra-dark"
+            theme={MONACO_THEME_NAMES[resolvedTheme]}
             onMount={handleMount}
             onChange={(value = '') => {
               setContent(value);
@@ -134,7 +142,7 @@ export function EditorTab({ tabId }: { tabId: string }) {
               updateTabData(tabId, { contentPreview: value });
               if (filePath) updateTabTitle(tabId, `${filePath.split('/').pop()} •`);
             }}
-            options={{ fontFamily: getMonoFontFamily(), fontSize: 13, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, padding: { top: 8 } }}
+            options={{ fontFamily: getMonoFontFamily(), fontSize: APP_CODE_FONT_SIZE_PX, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false, padding: { top: 8 } }}
           />
         )}
       </div>

@@ -22,6 +22,7 @@ describe('TitleBar', () => {
 
   it('shows the project identity, compact File menu, and native window actions', () => {
     render(<TitleBar />);
+    expect(screen.getByRole('img', { name: 'Hexestra' }).getAttribute('src')).toMatch(/^(data:image\/svg\+xml|.*hexestra-mark)/);
     expect(screen.getByText('HEXESTRA')).toBeInTheDocument();
     expect(screen.getByText('Example Project')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));

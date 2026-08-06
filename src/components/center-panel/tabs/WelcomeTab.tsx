@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { DismissibleNotice, Icon, type IconName } from '@/components/shared';
 import { useAppStore, useSessionStore, useTabStore } from '@/stores';
-import { openSettingsTab } from '@/stores/useTabStore';
-import { useI18n } from '@/i18n';
+import { useAppPreferences, useI18n } from '@/i18n';
+
+const hexestraLightLogo = new URL('../../../assets/branding/hexestra-logo-light.svg', import.meta.url).href;
+const hexestraDarkLogo = new URL('../../../assets/branding/hexestra-logo-dark.svg', import.meta.url).href;
 
 export function WelcomeTab() {
   const { t } = useI18n();
+  const { resolvedTheme } = useAppPreferences();
   const openTab = useTabStore((state) => state.openTab);
   const setLeftPanelView = useAppStore((state) => state.setLeftPanelView);
   const openProjectFolder = useSessionStore((state) => state.openProjectFolder);
@@ -45,13 +48,11 @@ export function WelcomeTab() {
 
   return (
     <div className="flex h-full select-none flex-col items-center justify-start overflow-y-auto py-8">
-      <div className="mb-8 text-center">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl border border-accent-blue/25 bg-accent-blue/10 shadow-[0_0_35px_rgba(137,180,250,0.12)] transition-colors hover:border-accent-blue/45 hover:bg-accent-blue/15">
-          <Icon name="shield" size={34} className="text-accent-blue" />
-        </div>
-        <h1 className="mb-1 text-2xl font-bold text-text-primary">Hexestra</h1>
-        <p className="text-sm text-text-muted">{t('welcome.tagline')}</p>
-      </div>
+      <img
+        src={resolvedTheme === 'dark' ? hexestraDarkLogo : hexestraLightLogo}
+        alt="Hexestra"
+        className="mb-8 h-auto w-[22rem] max-w-[calc(100%-2rem)]"
+      />
 
       <div className="flex w-72 flex-col gap-3">
         <QuickAction
@@ -83,12 +84,6 @@ export function WelcomeTab() {
           icon="activity"
           title={t('welcome.openTraffic')}
           description={t('welcome.openTrafficDetail')}
-        />
-        <QuickAction
-          onClick={openSettingsTab}
-          icon="settings"
-          title={t('welcome.agentSettings')}
-          description={t('welcome.agentSettingsDetail')}
         />
       </div>
 

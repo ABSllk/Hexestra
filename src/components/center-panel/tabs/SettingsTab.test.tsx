@@ -15,12 +15,20 @@ const settings = {
 
 describe('SettingsTab', () => {
   const invoke = vi.fn();
+  let appSettings: { version: number; language: string; theme: 'system' | 'dark' | 'light'; mitmdumpPath: string | null } = { version: 3, language: 'en', theme: 'system', mitmdumpPath: null };
+  let rejectThemeUpdate = false;
 
   beforeEach(() => {
     invoke.mockReset();
-    invoke.mockImplementation((channel: string, patch?: { language?: string }) => {
-      if (channel === APP_SETTINGS_IPC.GET) return Promise.resolve({ version: 2, language: 'en', mitmdumpPath: null });
-      if (channel === APP_SETTINGS_IPC.UPDATE) return Promise.resolve({ version: 2, language: patch?.language, mitmdumpPath: null });
+    appSettings = { version: 3, language: 'en', theme: 'system', mitmdumpPath: null };
+    rejectThemeUpdate = false;
+    invoke.mockImplementation((channel: string, patch?: { language?: string; theme?: 'system' | 'dark' | 'light' }) => {
+      if (channel === APP_SETTINGS_IPC.GET) return Promise.resolve({ ...appSettings });
+      if (channel === APP_SETTINGS_IPC.UPDATE) {
+        if (patch?.theme && rejectThemeUpdate) return Promise.reject(new Error('Unable to save theme'));
+        appSettings = { ...appSettings, ...patch };
+        return Promise.resolve({ ...appSettings });
+      }
       if (channel === 'app:getCapabilities') return Promise.resolve({ platform: 'win32', arch: 'x64', supportsWsl: true, defaultShell: 'powershell.exe', usesNativeTitleBar: false });
       if (channel === 'agent:settings:get') return Promise.resolve(settings);
       if (channel === 'agent:settings:test') return Promise.resolve({
@@ -42,6 +50,10 @@ describe('SettingsTab', () => {
     Object.defineProperty(window, 'hexestra', {
       configurable: true,
       value: { invoke, on: vi.fn(() => () => undefined), once: vi.fn(), send: vi.fn() },
+    });
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn(() => ({ matches: false, media: '(prefers-color-scheme: dark)', addEventListener: vi.fn(), removeEventListener: vi.fn() })),
     });
   });
 
@@ -76,5 +88,30 @@ describe('SettingsTab', () => {
     expect(await screen.findByRole('combobox', { name: '语言' })).toHaveValue('zh-CN');
     expect(screen.getByRole('button', { name: '通用' })).toBeInTheDocument();
     expect(invoke).toHaveBeenCalledWith(APP_SETTINGS_IPC.UPDATE, { language: 'zh-CN' });
+  });
+
+  it('switches the global theme from General settings and persists the choice', async () => {
+    render(<I18nProvider><SettingsTab /></I18nProvider>);
+
+    const group = await screen.findByRole('group', { name: 'Theme' });
+    const light = screen.getByRole('button', { name: 'Light' });
+    expect(screen.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(light);
+
+    await waitFor(() => expect(light).toHaveAttribute('aria-pressed', 'true'));
+    expect(group).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith(APP_SETTINGS_IPC.UPDATE, { theme: 'light' });
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('rolls the theme choice back and shows a dismissible error when persistence fails', async () => {
+    rejectThemeUpdate = true;
+    render(<I18nProvider><SettingsTab /></I18nProvider>);
+
+    await screen.findByRole('group', { name: 'Theme' });
+    fireEvent.click(screen.getByRole('button', { name: 'Light' }));
+
+    expect(await screen.findByText(/Unable to save theme/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

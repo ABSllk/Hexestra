@@ -1,0 +1,333 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1425"
+   height="240"
+   viewBox="0 0 1425 240"
+   role="img"
+   aria-labelledby="title desc"
+   version="1.1"
+   id="svg21"
+   sodipodi:docname="hex.svg"
+   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   fill="#f2efe8"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <sodipodi:namedview
+     id="namedview21"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showguides="true"
+     inkscape:zoom="1.8915727"
+     inkscape:cx="613.24633"
+     inkscape:cy="208.82095"
+     inkscape:window-width="2048"
+     inkscape:window-height="1152"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g46" />
+  <title
+     id="title">Hexestra logo</title>
+  <desc
+     id="desc">A dark geometric hexestra wordmark with a red and silver stylized x.</desc>
+  <defs
+     id="defs17">
+    <linearGradient
+       id="linearGradient16"
+       inkscape:collect="always">
+      <stop
+         style="stop-color:#920000;stop-opacity:1;"
+         offset="0"
+         id="stop16" />
+      <stop
+         style="stop-color:#a10000;stop-opacity:0.70980394;"
+         offset="1"
+         id="stop17" />
+    </linearGradient>
+    <linearGradient
+       id="linearGradient13"
+       inkscape:collect="always">
+      <stop
+         style="stop-color:#a10000;stop-opacity:1;"
+         offset="0"
+         id="stop14" />
+      <stop
+         style="stop-color:#a10000;stop-opacity:0.69999999;"
+         offset="1"
+         id="stop15" />
+    </linearGradient>
+    <linearGradient
+       id="dark-gradient"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="598.05936"
+       gradientTransform="scale(2.3827066,0.41969078)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0"
+         stop-color="#2b2f36"
+         id="stop1" />
+      <stop
+         offset="0.52"
+         stop-color="#15181d"
+         id="stop2" />
+      <stop
+         offset="1"
+         stop-color="#262a31"
+         id="stop3" />
+    </linearGradient>
+    <linearGradient
+       id="red-gradient"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#b90000"
+         id="stop4" />
+      <stop
+         offset="0.5"
+         stop-color="#e00000"
+         id="stop5" />
+      <stop
+         offset="1"
+         stop-color="#9f0000"
+         id="stop6" />
+    </linearGradient>
+    <linearGradient
+       id="silver-gradient"
+       x1="0"
+       y1="0"
+       x2="1"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#53575c"
+         id="stop7" />
+      <stop
+         offset="0.5"
+         stop-color="#a4a6a8"
+         id="stop8" />
+      <stop
+         offset="1"
+         stop-color="#686b70"
+         id="stop9" />
+    </linearGradient>
+    <pattern
+       id="fine-hatch"
+       width="3"
+       height="3"
+       patternUnits="userSpaceOnUse"
+       patternTransform="rotate(23)">
+      <path
+         d="M0 0V3"
+         stroke="#ffffff"
+         stroke-opacity=".14"
+         stroke-width=".55"
+         id="path9" />
+    </pattern>
+    <path
+       id="glyph-h"
+       d="       M0 238V13C0 5 5 0 13 0H27V79       C36 71 47 68 61 68H107       C135 68 153 86 153 113V238H126V116       C126 101 116 92 100 92H53       C37 92 27 102 27 117V238Z" />
+    <path
+       id="glyph-e"
+       fill-rule="evenodd"
+       d="       M49 68H111C139 68 158 86 158 112V148L145 159H27V186       C27 201 37 211 53 211H158V238H49       C20 238 0 219 0 190V117C0 88 20 68 49 68Z        M27 111V136H132V111       C132 99 122 92 109 92H50       C36 92 27 100 27 111Z" />
+    <path
+       id="glyph-s"
+       d="       M155 68H51       C20 68 4 88 4 114       C4 142 22 157 51 160L112 167       C126 169 132 177 132 188       C132 202 122 211 107 211H15L0 232V238H108       C140 238 157 218 157 187       C157 160 139 144 112 141L52 134       C38 132 31 126 31 114       C31 101 40 92 54 92H144L155 80Z" />
+    <path
+       id="glyph-t"
+       d="       M38 13       C38 5 43 0 51 0H65V68H138V80L126 92H65V188       C65 203 75 211 91 211H136V238H88       C57 238 38 219 38 190V92H0V80L12 68H38Z" />
+    <path
+       id="glyph-r"
+       d="       M0 238V116       C0 87 20 68 49 68H107L87 92H53       C36 92 27 102 27 117V238Z" />
+    <path
+       id="glyph-a"
+       fill-rule="evenodd"
+       d="       M37 68H104       C132 68 150 87 150 114V190       C150 219 130 238 101 238H49       C19 238 0 219 0 190V155L27 126H123V114       C123 100 113 92 99 92H16Z        M48 147H102L123 168V191       L102 213H50L27 190V169Z" />
+    <g
+       id="dark-wordmark">
+      <use
+         xlink:href="#glyph-h"
+         x="0"
+         y="0"
+         id="use9" />
+      <use
+         xlink:href="#glyph-e"
+         x="197"
+         y="0"
+         id="use10" />
+      <use
+         xlink:href="#glyph-e"
+         x="628"
+         y="0"
+         id="use11" />
+      <use
+         xlink:href="#glyph-s"
+         x="824"
+         y="0"
+         id="use12" />
+      <use
+         xlink:href="#glyph-t"
+         x="1005"
+         y="13"
+         id="use13" />
+      <use
+         xlink:href="#glyph-r"
+         x="1175"
+         y="0"
+         id="use14" />
+      <use
+         xlink:href="#glyph-a"
+         x="1275"
+         y="0"
+         id="use15" />
+    </g>
+    <g
+       id="red-mark">
+      <path
+         d="M400 68H438L496 127L480 146Z"
+         id="path15" />
+      <path
+         d="M395 238L447 221L498 169L480 150Z"
+         id="path16" />
+      <path
+         d="M490 142H504V157H490Z"
+         id="path17" />
+    </g>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient13"
+       id="linearGradient15"
+       x1="703.4082"
+       y1="-40.080563"
+       x2="330.78369"
+       y2="-40.080563"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient16"
+       id="linearGradient17"
+       x1="635.72009"
+       y1="134.9462"
+       x2="392.11679"
+       y2="425.26132"
+       gradientUnits="userSpaceOnUse" />
+  </defs>
+  <!-- Dark wordmark -->
+  <path
+     d="m 678,92 c -14,0 -23,8 -23,19 v 25 H 760 V 111 C 760,99 750,92 737,92 Z"
+     style="opacity:0.52;fill:url(#fine-hatch)"
+     id="path31" />
+  <path
+     d="m 247,92 c -14,0 -23,8 -23,19 v 25 H 329 V 111 C 329,99 319,92 306,92 Z"
+     style="opacity:0.52;fill:url(#fine-hatch)"
+     id="path30" />
+  <path
+     d="m 1312,68 -21,24 h 83 c 14,0 24,8 24,22 v 12 h -96 l -27,29 v 35 c 0,29 19,48 49,48 h 52 c 29,0 49,-19 49,-48 v -76 c 0,-27 -18,-46 -46,-46 z m 5,79 h 66 l 15,17 v 34 l -15,15 h -66 l -15,-14.9 V 164 Z"
+     style="fill-rule:evenodd"
+     id="path29"
+     sodipodi:nodetypes="ccsscccsssssscccccccccc" />
+  <path
+     d="m 1224,68 c -29,0 -49,19 -49,48 v 122 h 27 V 117 c 0,-15 9,-25 26,-25 h 34 l 20,-24 z"
+     style=""
+     id="path28" />
+  <path
+     d="m 875,68 c -31,0 -47,20 -47,46 0,28 18,43 47,46 l 61,7 c 14,2 20,10 20,21 0,14 -10,23 -25,23 h -92 l -15,21 v 6 h 108 c 32,0 49,-20 49,-51 0,-27 -18,-43 -45,-46 l -60,-7 c -14,-2 -21,-8 -21,-20 0,-13 9,-22 23,-22 h 90 L 979,80 V 68 Z"
+     style=""
+     id="path27" />
+  <path
+     d="m 677,68 c -29,0 -49,20 -49,49 v 73 c 0,29 20,48 49,48 H 786 V 211 H 681 c -16,0 -26,-10 -26,-25 v -27 h 118 l 13,-11 V 112 C 786,86 767,68 739,68 Z m 1,24 h 59 c 13,0 23,7 23,19 v 25 H 655 v -25 c 0,-11 9,-19 23,-19 z"
+     style="fill-rule:evenodd"
+     id="path24" />
+  <path
+     d="m 246,68 c -29,0 -49,20 -49,49 v 73 c 0,29 20,48 49,48 H 355 V 211 H 250 c -16,0 -26,-10 -26,-25 v -27 h 118 l 13,-11 V 112 C 355,86 336,68 308,68 Z m 1,24 h 59 c 13,0 23,7 23,19 v 25 H 224 v -25 c 0,-11 9,-19 23,-19 z"
+     style="fill-rule:evenodd"
+     id="path23" />
+  <path
+     d="m 1056,-0.08368312 c -8,0 -13,5.00831632 -13,13.02162012 v 55.091474 h -26 l -12,12.019957 v 12.019957 h 38 v 98.162995 c 0,29.04822 19,48.07983 50,48.07983 h 48 v -27.04491 h -45 c -16,0 -26,-8.0133 -26,-23.03826 V 92.069325 h 61 l 12,-12.019957 V 68.029411 h -73 V -0.08368312 Z"
+     style="stroke-width:1.00083"
+     id="path22" />
+  <path
+     d="M 13,0 C 5,0 0,5 0,13 V 238 H 27 V 117 C 27,102 37,92 53,92 h 47 c 16,0 26,9 26,24 v 122 h 27 V 113 C 153,86 135,68 107,68 H 61 C 47,68 36,71 27,79 V 0 Z"
+     style=""
+     id="path21" />
+  <!-- Red half of the X -->
+  <!-- Silver half of the X -->
+  <g
+     id="svg21-5"
+     transform="matrix(0.26552342,0,0,0.26552342,327.08288,120.30993)">
+    <g
+       id="g46"
+       transform="matrix(0.85147556,0,0,0.99858637,48.185594,-0.27849384)">
+      <path
+         d="m 686.12048,93.396934 v 47.499996 h 47.5 V 93.396934 Z"
+         style="fill:#920000;fill-opacity:1;stroke-width:31.0208"
+         id="path26" />
+      <path
+         d="M 507.33154,374.84863 572.69043,309.48974 703.4082,178.77197 644.63623,120 324.42871,440.20752 Z"
+         style="fill:url(#linearGradient17);fill-opacity:1;stroke-width:31.0208"
+         id="path25"
+         sodipodi:nodetypes="cccccc" />
+      <path
+         d="M 934.71558,384.19556 720.896,170.37598 712.5,178.77197 908.57666,374.84863 Z"
+         style="fill:#676f75;fill-opacity:1;stroke-width:31.0208"
+         id="path46" />
+      <path
+         d="m 986.97021,402.86621 -249.28222,-249.28223 -8.396,8.396 231.53931,231.53931 z"
+         style="fill:#676f75;fill-opacity:1;stroke-width:31.0208"
+         id="path43" />
+      <path
+         d="m 1039.2249,421.53687 -284.74492,-284.74488 -8.396,8.396 267.00192,267.00195 z"
+         style="fill:#676f75;fill-opacity:1;stroke-width:31.0208"
+         id="path40" />
+      <path
+         d="m 771.27197,120 -8.39599,8.396 302.46462,302.4646 26.1389,9.34692 z"
+         style="fill:#676f75;fill-opacity:1;stroke-width:31.0208"
+         id="path36" />
+      <path
+         d="m 1068.3325,-197.00684 -305.45652,305.45655 8.39599,8.39599 313.85253,-313.85254 z"
+         style="fill:#676f75;fill-opacity:1;stroke-width:31.0208"
+         id="path12" />
+      <path
+         d="m 1034.7485,-197.00684 -288.66452,288.664555 8.396,8.395995 297.06052,-297.06055 z"
+         style="fill:#676f75;fill-opacity:1;stroke-width:31.0208"
+         id="path10" />
+      <path
+         d="m 1001.1646,-197.00684 -271.87261,271.872563 8.396,8.395996 280.26851,-280.268559 z"
+         style="fill:#676f75;fill-opacity:1;stroke-width:31.0208"
+         id="path7" />
+      <path
+         d="M 967.58057,-197.00684 712.5,58.07373 l 8.396,8.395997 263.47656,-263.476567 z"
+         style="fill:#676f75;fill-opacity:1;stroke-width:31.0208"
+         id="path5" />
+      <path
+         d="M 448.32764,-197.00684 H 330.78369 L 644.63623,116.8457 703.4082,58.07373 Z"
+         style="fill:url(#linearGradient15);stroke-width:31.0208"
+         id="path3" />
+    </g>
+  </g>
+  <metadata
+     id="metadata32">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>Hexestra logo</dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+</svg>

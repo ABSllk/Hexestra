@@ -173,7 +173,15 @@ describe('NetMapView', () => {
     const relationship = container.querySelector('[aria-label="connected to relationship"]');
     expect(relationship).not.toBeNull();
     fireEvent.mouseEnter(relationship!);
-    expect(screen.getByText('CONNECTED TO')).toBeInTheDocument();
+    expect(screen.getByText('CONNECTED TO')).toHaveAttribute('font-size', '7');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(screen.getByTestId('netmap-edge-label').getAttribute('transform')).not.toContain('scale');
+    expect(
+      container
+        .querySelector('svg[aria-label="Interactive domain asset graph"] > g[transform]')
+        ?.getAttribute('transform'),
+    ).toContain('scale(1.16)');
   });
 
   it('focuses the one-hop relationship neighborhood when a node is hovered', () => {

@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSessionStore, useTabStore } from '@/stores';
 import type { Session } from '@/types';
+import { AppPreferencesProvider } from '@/preferences/AppPreferencesProvider';
+import { APP_SETTINGS_IPC } from '@electron/contracts/app-settings';
 import { WelcomeTab } from './WelcomeTab';
 
 const project: Session = {
@@ -20,9 +22,11 @@ const project: Session = {
 
 describe('WelcomeTab folder projects', () => {
   const invoke = vi.fn();
+  let theme: 'dark' | 'light' = 'dark';
 
   beforeEach(() => {
     invoke.mockReset();
+    theme = 'dark';
     window.localStorage.clear();
     useSessionStore.setState({
       sessions: [],
@@ -39,6 +43,7 @@ describe('WelcomeTab folder projects', () => {
     });
     useTabStore.getState().resetProject();
     invoke.mockImplementation((channel: string) => {
+      if (channel === APP_SETTINGS_IPC.GET) return Promise.resolve({ version: 3, language: 'en', theme, mitmdumpPath: null });
       if (channel === 'project:list-recent') return Promise.resolve([project]);
       if (channel === 'project:open-folder') return Promise.resolve(project);
       if (channel === 'project:remove-recent') return Promise.resolve();
@@ -48,6 +53,23 @@ describe('WelcomeTab folder projects', () => {
       configurable: true,
       value: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn() },
     });
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn(() => ({ matches: false, media: '(prefers-color-scheme: dark)', addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    });
+  });
+
+  it('uses the full Hexestra wordmark as the welcome logo', async () => {
+    const view = render(<AppPreferencesProvider><WelcomeTab /></AppPreferencesProvider>);
+
+    const logo = await screen.findByRole('img', { name: 'Hexestra' });
+    expect(logo).toHaveAttribute('src', expect.stringContaining('hexestra-logo-dark'));
+    expect(screen.queryByText('AI-assisted penetration testing integrated environment')).not.toBeInTheDocument();
+
+    view.unmount();
+    theme = 'light';
+    render(<AppPreferencesProvider><WelcomeTab /></AppPreferencesProvider>);
+    expect(await screen.findByRole('img', { name: 'Hexestra' })).toHaveAttribute('src', expect.stringContaining('hexestra-logo-light'));
   });
 
   it('opens a selected folder and makes it the active project', async () => {

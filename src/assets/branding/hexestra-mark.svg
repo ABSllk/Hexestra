@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="409 64 182 182" role="img" aria-labelledby="title desc">
+  <title id="title">Hexestra X mark</title>
+  <desc id="desc">The red and silver geometric X extracted from the Hexestra wordmark.</desc>
+  <defs>
+    <linearGradient id="red-lower-source">
+      <stop offset="0" stop-color="#920000"/>
+      <stop offset="1" stop-color="#a10000" stop-opacity=".7098"/>
+    </linearGradient>
+    <linearGradient id="red-upper-source">
+      <stop offset="0" stop-color="#a10000"/>
+      <stop offset="1" stop-color="#a10000" stop-opacity=".7"/>
+    </linearGradient>
+    <linearGradient xlink:href="#red-lower-source" id="red-lower" x1="635.72009" y1="134.9462" x2="392.11679" y2="425.26132" gradientUnits="userSpaceOnUse"/>
+    <linearGradient xlink:href="#red-upper-source" id="red-upper" x1="703.4082" y1="-40.080563" x2="330.78369" y2="-40.080563" gradientUnits="userSpaceOnUse"/>
+  </defs>
+  <g transform="matrix(.26552342 0 0 .26552342 327.08288 120.30993)">
+    <g transform="matrix(.85147556 0 0 .99858637 48.185594 -.27849384)">
+      <path d="m686.12048 93.396934v47.499996h47.5V93.396934Z" fill="#920000"/>
+      <path d="m507.33154 374.84863 65.35889-65.35889L703.4082 178.77197 644.63623 120 324.42871 440.20752Z" fill="url(#red-lower)"/>
+      <path d="M934.71558 384.19556 720.896 170.37598l-8.396 8.39599 196.07666 196.07666Z" fill="#676f75"/>
+      <path d="M986.97021 402.86621 737.68799 153.58398l-8.396 8.396L960.8313 393.51929Z" fill="#676f75"/>
+      <path d="M1039.2249 421.53687 754.47998 136.79199l-8.396 8.396 267.00192 267.00195Z" fill="#676f75"/>
+      <path d="m771.27197 120-8.39599 8.396 302.46462 302.4646 26.1389 9.34692Z" fill="#676f75"/>
+      <path d="M1068.3325-197.00684 762.87598 108.44971l8.39599 8.39599 313.85253-313.85254Z" fill="#676f75"/>
+      <path d="M1034.7485-197.00684 746.08398 91.657715l8.396 8.395995 297.06052-297.06055Z" fill="#676f75"/>
+      <path d="M1001.1646-197.00684 729.29199 74.865723l8.396 8.395996 280.26851-280.268559Z" fill="#676f75"/>
+      <path d="M967.58057-197.00684 712.5 58.07373l8.396 8.395997 263.47656-263.476567Z" fill="#676f75"/>
+      <path d="M448.32764-197.00684H330.78369L644.63623 116.8457 703.4082 58.07373Z" fill="url(#red-upper)"/>
+    </g>
+  </g>
+</svg>

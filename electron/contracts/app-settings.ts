@@ -5,14 +5,17 @@ export const APP_SETTINGS_IPC = {
 } as const;
 
 export type AppLanguage = 'en' | 'zh-CN';
+export type AppThemePreference = 'system' | 'dark' | 'light';
 
 export interface AppSettings {
-  version: 2;
+  version: 3;
   language: AppLanguage;
+  theme: AppThemePreference;
   mitmdumpPath: string | null;
 }
 
 export interface AppSettingsPatch {
   language?: AppLanguage;
+  theme?: AppThemePreference;
   mitmdumpPath?: string | null;
 }

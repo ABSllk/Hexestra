@@ -9,8 +9,10 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react';
 import { Icon } from '@/components/shared';
-import { NODE_COLORS } from '@/lib/constants';
 import { buildDomainProjection } from '@/lib/networkGraph';
+import { APP_FONT_SIZE_PX, APP_SUPPORTING_FONT_SIZE_PX } from '@/lib/typography';
+import { getNetMapPalette, type NetMapPalette } from '@/lib/theme';
+import { useAppPreferences } from '@/i18n';
 import {
   layoutDomain,
   netmapLayoutFingerprint,
@@ -23,6 +25,9 @@ import {
 import { useAppStore, useNetMapStore, useSessionStore } from '@/stores';
 import type { GraphEdge, GraphNode, GraphViewTransform } from '@/types';
 import { NetMapAssetDetails } from './NetMapAssetDetails';
+
+const NETMAP_EDGE_LABEL_FONT_SIZE = 7;
+const NETMAP_EDGE_LABEL_HEIGHT = 13;
 
 interface Point {
   x: number;
@@ -80,6 +85,8 @@ export function NetMapView() {
   const resetLayout = useNetMapStore((state) => state.resetLayout);
   const sessionId = useSessionStore((state) => state.currentSession?.id);
   const toggleNetMap = useAppStore((state) => state.toggleNetMap);
+  const { resolvedTheme } = useAppPreferences();
+  const palette = getNetMapPalette(resolvedTheme);
 
   const isPreview = nodes.length === 0;
   const canonicalNodes = isPreview ? NETMAP_PREVIEW.nodes : nodes;
@@ -341,7 +348,7 @@ export function NetMapView() {
 
   return (
     <section className="netmap-shell flex h-full flex-col" aria-label="Domain asset relationship map">
-      <header className="flex shrink-0 items-center justify-between border-b border-cyan-300/10 bg-[#071014]/95 px-3 py-1.5">
+      <header className="flex shrink-0 items-center justify-between border-b border-accent-teal/10 bg-[rgb(var(--color-netmap-chrome)/0.95)] px-3 py-1.5">
         <div className="flex items-center gap-2">
           <Icon name="network" size={14} className="text-accent-teal" />
           <span className="font-mono text-xs font-semibold tracking-[0.16em] text-text-secondary select-none">
@@ -399,9 +406,9 @@ export function NetMapView() {
               </feMerge>
             </filter>
             <linearGradient id="netmap-link-gradient" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#315b65" stopOpacity=".45" />
-              <stop offset=".5" stopColor="#94e2d5" stopOpacity=".9" />
-              <stop offset="1" stopColor="#315b65" stopOpacity=".45" />
+              <stop offset="0" stopColor={palette.edgeBase} stopOpacity=".45" />
+              <stop offset=".5" stopColor={palette.edgeLink} stopOpacity=".9" />
+              <stop offset="1" stopColor={palette.edgeBase} stopOpacity=".45" />
             </linearGradient>
           </defs>
 
@@ -414,6 +421,7 @@ export function NetMapView() {
                   source={positionById.get(edge.source)}
                   target={positionById.get(edge.target)}
                   dense={denseGraph}
+                  palette={palette}
                   focused={Boolean(relationshipFocusId) && (
                     edge.source === relationshipFocusId || edge.target === relationshipFocusId
                   )}
@@ -431,6 +439,7 @@ export function NetMapView() {
                   visualScale={visualNodeScale}
                   selected={node.id === activeNodeId}
                   highlighted={!isPreview && highlightedNodeIds.includes(node.id)}
+                  palette={palette}
                   related={relationshipNodeIds.has(node.id)}
                   dimmed={Boolean(relationshipFocusId) && !relationshipNodeIds.has(node.id)}
                   onDragStart={handleNodeDragStart}
@@ -450,8 +459,8 @@ export function NetMapView() {
 
       </div>
 
-      <footer className="flex shrink-0 items-center gap-3 border-t border-cyan-300/10 bg-[#071014]/95 px-3 py-1 font-mono text-[8px] text-text-muted select-none">
-        {Object.entries(NODE_COLORS).map(([status, color]) => (
+      <footer className="flex shrink-0 items-center gap-3 border-t border-accent-teal/10 bg-[rgb(var(--color-netmap-chrome)/0.95)] px-3 py-1 font-mono text-[8px] text-text-muted select-none">
+        {Object.entries(palette.nodeColors).map(([status, color]) => (
           <div key={status} className="flex items-center gap-1.5">
             <span
               className="h-1.5 w-1.5 rotate-45 border"
@@ -470,6 +479,7 @@ const AssetEdge = memo(function AssetEdge({
   source,
   target,
   dense,
+  palette,
   focused,
   dimmed,
 }: {
@@ -477,6 +487,7 @@ const AssetEdge = memo(function AssetEdge({
   source?: Point;
   target?: Point;
   dense: boolean;
+  palette: NetMapPalette;
   focused: boolean;
   dimmed: boolean;
 }) {
@@ -487,7 +498,9 @@ const AssetEdge = memo(function AssetEdge({
   const midY = (source.y + target.y) / 2 - Math.min(28, Math.abs(target.x - source.x) * 0.08);
   const path = `M ${source.x} ${source.y} Q ${midX} ${midY} ${target.x} ${target.y}`;
   const attack = edge.type === 'attack_path';
-  const color = attack ? '#f38ba8' : edge.type === 'resolves_to' ? '#89b4fa' : '#94e2d5';
+  const color = attack ? palette.edgeAttack : edge.type === 'resolves_to' ? palette.edgeResolve : palette.edgeLink;
+  const label = (edge.label ?? edge.type).replace('_', ' ').toUpperCase();
+  const labelWidth = Math.max(48, label.length * NETMAP_EDGE_LABEL_FONT_SIZE * 0.62 + 12);
 
   return (
     <g
@@ -500,7 +513,7 @@ const AssetEdge = memo(function AssetEdge({
       data-relationship-state={focused ? 'focused' : dimmed ? 'dimmed' : 'visible'}
       opacity={hovered || focused ? 1 : dimmed ? 0.035 : dense ? 0.34 : 0.78}
     >
-      <path d={path} fill="none" stroke="#16343a" strokeWidth={attack ? 5 : 3} opacity=".38" />
+      <path d={path} fill="none" stroke={palette.edgeBase} strokeWidth={attack ? 5 : 3} opacity=".38" />
       <path
         d={path}
         className={attack ? 'netmap-link-active' : undefined}
@@ -514,16 +527,30 @@ const AssetEdge = memo(function AssetEdge({
       />
       <path d={path} fill="none" stroke="transparent" strokeWidth="12" />
       {hovered && (
-        <g transform={`translate(${midX} ${midY - 5})`} className="pointer-events-none">
-          <rect x="-34" y="-8" width="68" height="14" rx="2" fill="#061014" stroke="#315b65" strokeWidth=".6" />
+        <g
+          data-testid="netmap-edge-label"
+          transform={`translate(${midX} ${midY - 5})`}
+          className="pointer-events-none"
+        >
+          <rect
+            x={-labelWidth / 2}
+            y={-NETMAP_EDGE_LABEL_HEIGHT / 2}
+            width={labelWidth}
+            height={NETMAP_EDGE_LABEL_HEIGHT}
+            rx="2"
+            fill={palette.edgeLabelFill}
+            stroke={palette.edgeLabelStroke}
+            strokeWidth=".6"
+          />
           <text
             className="font-mono"
             fill={color}
-            fontSize="6.5"
+            fontSize={NETMAP_EDGE_LABEL_FONT_SIZE}
+            y="-0.5"
             textAnchor="middle"
             dominantBaseline="central"
           >
-            {(edge.label ?? edge.type).replace('_', ' ').toUpperCase()}
+            {label}
           </text>
         </g>
       )}
@@ -540,6 +567,7 @@ const AssetNode = memo(function AssetNode({
   highlighted,
   related,
   dimmed,
+  palette,
   onDragStart,
   onHover,
   onSelect,
@@ -552,12 +580,13 @@ const AssetNode = memo(function AssetNode({
   highlighted: boolean;
   related: boolean;
   dimmed: boolean;
+  palette: NetMapPalette;
   onDragStart: (node: GraphNode & Point, event: ReactMouseEvent<SVGGElement>) => void;
   onHover: (nodeId: string | null) => void;
   onSelect: (nodeId: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
-  const color = NODE_COLORS[node.status];
+  const color = palette.nodeColors[node.status] ?? palette.nodeColors.untested;
   const riskSize = netmapNodeCoreSize(node, dense);
   const url = typeof node.properties?.url === 'string' ? node.properties.url : undefined;
   const secondaryLabel = node.ip ?? url ?? node.hostname ?? node.type.toUpperCase();
@@ -600,7 +629,7 @@ const AssetNode = memo(function AssetNode({
           data-testid="netmap-node-emphasis"
           r={riskSize + 7}
           fill="none"
-          stroke={selected ? '#94e2d5' : color}
+          stroke={selected ? palette.nodeFocus : color}
           strokeWidth=".65"
           opacity=".3"
         />
@@ -623,8 +652,8 @@ const AssetNode = memo(function AssetNode({
         height={riskSize * 1.414}
         rx="2"
         transform="rotate(45)"
-        fill="#071216"
-        stroke={selected ? '#e6fffb' : color}
+        fill={palette.nodeFill}
+        stroke={selected ? palette.nodeFocus : color}
         strokeWidth={selected ? 1.8 : 1.15}
         filter={showGlow ? 'url(#netmap-soft-glow)' : undefined}
       />
@@ -632,13 +661,13 @@ const AssetNode = memo(function AssetNode({
         <NodeGlyph type={node.type} color={color} />
       </g>
       {node.vulnCount > 0 && (
-        <g transform={`translate(${riskSize - 1} ${-riskSize + 1})`}>
-          <circle r="5.5" fill="#170b0f" stroke="#f38ba8" strokeWidth=".8" />
+        <g transform={`translate(${riskSize + 2} ${-riskSize - 2})`}>
+          <circle r="8" fill={palette.badgeFill} stroke={palette.badgeText} strokeWidth=".8" />
           <text
             className="font-mono"
             dominantBaseline="central"
-            fill="#f38ba8"
-            fontSize="6"
+            fill={palette.badgeText}
+            fontSize={APP_SUPPORTING_FONT_SIZE_PX}
             textAnchor="middle"
           >
             {node.vulnCount}
@@ -647,9 +676,9 @@ const AssetNode = memo(function AssetNode({
       )}
       {showLabels && <text
         className="font-mono select-none"
-        y={riskSize + 15}
-        fill={selected ? '#e6fffb' : '#b7c8cb'}
-        fontSize="8"
+        y={riskSize + 19}
+        fill={selected ? palette.nodeFocus : palette.nodeLabel}
+        fontSize={APP_FONT_SIZE_PX}
         fontWeight="600"
         letterSpacing=".9"
         textAnchor="middle"
@@ -659,9 +688,9 @@ const AssetNode = memo(function AssetNode({
       {showLabels && showSecondaryLabel && (
         <text
           className="font-mono select-none"
-          y={riskSize + 24}
-          fill="#58767c"
-          fontSize="6"
+          y={riskSize + 35}
+          fill={palette.nodeSecondaryLabel}
+          fontSize={APP_SUPPORTING_FONT_SIZE_PX}
           textAnchor="middle"
         >
           {secondaryLabel}
@@ -754,7 +783,7 @@ function MapControl({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="ui-icon-button h-6 w-6 hover:border-cyan-200/15 hover:bg-accent-teal/10 hover:text-accent-teal select-none"
+      className="ui-icon-button h-6 w-6 hover:border-accent-teal/30 hover:bg-accent-teal/10 hover:text-accent-teal select-none"
     >
       <Icon name={icon} size={13} />
     </button>

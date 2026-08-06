@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeTheme } from 'electron';
 import path from 'path';
 import { createApplicationMenuTemplate, PROJECT_MENU_EVENTS } from './app-menu';
 
@@ -32,6 +32,12 @@ if (!gotTheLock) {
 
 let mainWindow: BrowserWindow | null = null;
 
+function getAppIconPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'hexestra-mark.png')
+    : path.join(app.getAppPath(), 'src', 'assets', 'branding', 'hexestra-mark.png');
+}
+
 function sendProjectMenuEvent(channel: typeof PROJECT_MENU_EVENTS[keyof typeof PROJECT_MENU_EVENTS]) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -57,7 +63,8 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 600,
     title: 'Hexestra — AI-Assisted Pentest IDE',
-    backgroundColor: '#1e1e2e',
+    icon: getAppIconPath(),
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e2e' : '#f8f7f4',
     frame: process.platform === 'darwin',
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
     webPreferences: {
@@ -103,6 +110,9 @@ function createWindow() {
 
 app.whenReady().then(() => {
   console.log('[Hexestra] App ready. Services initialized.');
+  if (process.platform === 'win32') app.setAppUserModelId('com.hexestra.app');
+  appSettingsService.applyNativeTheme();
+  nativeTheme.on('updated', () => appSettingsService.syncNativeTheme());
   void agentService.initSDK();
   installApplicationMenu();
   createWindow();

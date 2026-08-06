@@ -108,7 +108,7 @@ function NodeDetailPanel({ nodeId }: { nodeId: string }) {
                 <div key={port.id} className="rounded border border-surface bg-bg-primary/40 p-2">
                   <div className="flex items-center justify-between">
                     <span className="font-mono font-semibold text-accent-teal">{port.endpoint}</span>
-                    <span className="font-mono text-[9px] uppercase tracking-wider text-status-success">
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-accent-green">
                       {port.state}
                     </span>
                   </div>

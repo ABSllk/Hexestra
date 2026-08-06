@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, webContents } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeTheme, webContents } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -6,9 +6,10 @@ import {
   type AppLanguage,
   type AppSettings,
   type AppSettingsPatch,
+  type AppThemePreference,
 } from '../contracts/app-settings';
 
-const DEFAULT_SETTINGS: AppSettings = { version: 2, language: 'en', mitmdumpPath: null };
+const DEFAULT_SETTINGS: AppSettings = { version: 3, language: 'en', theme: 'system', mitmdumpPath: null };
 
 export class AppSettingsService {
   private cached: AppSettings | null = null;
@@ -23,27 +24,59 @@ export class AppSettingsService {
     try {
       const parsed = JSON.parse(fs.readFileSync(this.settingsPath(), 'utf8')) as unknown;
       this.cached = normalizeAppSettings(parsed);
+      if (JSON.stringify(parsed) !== JSON.stringify(this.cached)) {
+        try {
+          this.persist(this.cached);
+        } catch {
+          // A read-only profile can still use the migrated values in memory.
+        }
+      }
     } catch {
       this.cached = { ...DEFAULT_SETTINGS };
+      try {
+        this.persist(this.cached);
+      } catch {
+        // A read-only profile should still be usable for this session.
+      }
     }
     return { ...this.cached };
   }
 
+  applyNativeTheme(): AppSettings {
+    const settings = this.get();
+    nativeTheme.themeSource = settings.theme;
+    this.updateWindowBackgrounds();
+    return settings;
+  }
+
+  syncNativeTheme(): AppSettings {
+    const settings = this.get();
+    this.updateWindowBackgrounds();
+    this.broadcast(settings);
+    return settings;
+  }
+
   update(value: unknown): AppSettings {
     const patch = parsePatch(value);
-    const next: AppSettings = { ...this.get(), ...patch, version: 2 };
-    const destination = this.settingsPath();
-    fs.mkdirSync(path.dirname(destination), { recursive: true });
-    const temporary = `${destination}.${process.pid}.tmp`;
-    fs.writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
-    fs.renameSync(temporary, destination);
+    const next: AppSettings = { ...this.get(), ...patch, version: 3 };
+    this.persist(next);
     this.cached = next;
+    nativeTheme.themeSource = next.theme;
+    this.updateWindowBackgrounds();
     this.broadcast(next);
     return { ...next };
   }
 
   private settingsPath() {
     return path.join(app.getPath('userData'), 'app-settings.json');
+  }
+
+  private persist(settings: AppSettings) {
+    const destination = this.settingsPath();
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    const temporary = `${destination}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+    fs.renameSync(temporary, destination);
   }
 
   private broadcast(settings: AppSettings) {
@@ -60,24 +93,40 @@ export class AppSettingsService {
       }
     }
   }
+
+  private updateWindowBackgrounds() {
+    const background = nativeTheme.shouldUseDarkColors ? '#1e1e2e' : '#f8f7f4';
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.setBackgroundColor(background);
+    }
+  }
 }
 
 export function normalizeAppSettings(value: unknown): AppSettings {
   if (!value || typeof value !== 'object') return { ...DEFAULT_SETTINGS };
-  const record = value as { language?: unknown; mitmdumpPath?: unknown };
+  const record = value as { language?: unknown; theme?: unknown; mitmdumpPath?: unknown };
   const mitmdumpPath = typeof record.mitmdumpPath === 'string' && record.mitmdumpPath.trim()
     ? record.mitmdumpPath.trim().slice(0, 2_000)
     : null;
-  return { version: 2, language: isAppLanguage(record.language) ? record.language : 'en', mitmdumpPath };
+  return {
+    version: 3,
+    language: isAppLanguage(record.language) ? record.language : 'en',
+    theme: isAppThemePreference(record.theme) ? record.theme : 'system',
+    mitmdumpPath,
+  };
 }
 
 function parsePatch(value: unknown): AppSettingsPatch {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid app settings');
-  const record = value as { language?: unknown; mitmdumpPath?: unknown };
+  const record = value as { language?: unknown; theme?: unknown; mitmdumpPath?: unknown };
   const patch: AppSettingsPatch = {};
   if (record.language !== undefined) {
     if (!isAppLanguage(record.language)) throw new Error('Unsupported interface language');
     patch.language = record.language;
+  }
+  if (record.theme !== undefined) {
+    if (!isAppThemePreference(record.theme)) throw new Error('Unsupported interface theme');
+    patch.theme = record.theme;
   }
   if (record.mitmdumpPath !== undefined) {
     if (record.mitmdumpPath !== null && typeof record.mitmdumpPath !== 'string') {
@@ -92,6 +141,10 @@ function parsePatch(value: unknown): AppSettingsPatch {
 
 function isAppLanguage(value: unknown): value is AppLanguage {
   return value === 'en' || value === 'zh-CN';
+}
+
+function isAppThemePreference(value: unknown): value is AppThemePreference {
+  return value === 'system' || value === 'dark' || value === 'light';
 }
 
 export const appSettingsService = new AppSettingsService();

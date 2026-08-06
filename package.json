@@ -112,16 +112,23 @@
       {
         "from": "resources/burp-bridge",
         "to": "burp-bridge"
+      },
+      {
+        "from": "src/assets/branding/hexestra-mark.png",
+        "to": "hexestra-mark.png"
       }
     ],
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "src/assets/branding/hexestra-mark.png"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "src/assets/branding/hexestra-mark.png"
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "icon": "src/assets/branding/hexestra-mark.png"
     }
   },
   "allowScripts": {

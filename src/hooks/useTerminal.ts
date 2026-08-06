@@ -3,7 +3,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
 import { terminalClipboardAction } from '@/lib/terminalClipboard';
-import { getMonoFontFamily } from '@/lib/typography';
+import { APP_CODE_FONT_SIZE_PX, getMonoFontFamily } from '@/lib/typography';
+import { useAppPreferences } from '@/i18n';
+import { getTerminalTheme } from '@/lib/theme';
 import { SHELL_IPC, type ShellSession } from '@electron/contracts/shell';
 
 interface UseTerminalOptions {
@@ -34,6 +36,9 @@ export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   options?: UseTerminalOptions,
 ) {
+  const { resolvedTheme } = useAppPreferences();
+  const resolvedThemeRef = useRef(resolvedTheme);
+  resolvedThemeRef.current = resolvedTheme;
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -153,30 +158,9 @@ export function useTerminal(
       cursorBlink: true,
       cursorStyle: 'bar',
       fontFamily: getMonoFontFamily(),
-      fontSize: 13,
+      fontSize: APP_CODE_FONT_SIZE_PX,
       lineHeight: 1.4,
-      theme: {
-        background: '#1e1e2e',
-        foreground: '#cdd6f4',
-        cursor: '#89b4fa',
-        selectionBackground: '#45475a',
-        black: '#45475a',
-        red: '#f38ba8',
-        green: '#a6e3a1',
-        yellow: '#f9e2af',
-        blue: '#89b4fa',
-        magenta: '#cba6f7',
-        cyan: '#94e2d5',
-        white: '#bac2de',
-        brightBlack: '#585b70',
-        brightRed: '#f38ba8',
-        brightGreen: '#a6e3a1',
-        brightYellow: '#f9e2af',
-        brightBlue: '#89b4fa',
-        brightMagenta: '#cba6f7',
-        brightCyan: '#94e2d5',
-        brightWhite: '#cdd6f4',
-      },
+      theme: getTerminalTheme(resolvedThemeRef.current),
       allowProposedApi: true,
       scrollOnUserInput: true,
       scrollback: 10000,
@@ -209,7 +193,7 @@ export function useTerminal(
       const canScroll = direction < 0 ? buffer.viewportY > 0 : buffer.viewportY < buffer.baseY;
       if (!canScroll) return;
 
-      const lineHeight = (terminal.options.fontSize ?? 13) * (terminal.options.lineHeight ?? 1);
+      const lineHeight = (terminal.options.fontSize ?? APP_CODE_FONT_SIZE_PX) * (terminal.options.lineHeight ?? 1);
       const rawLines =
         event.deltaMode === WheelEvent.DOM_DELTA_PAGE
           ? Math.abs(event.deltaY) * terminal.rows
@@ -401,6 +385,10 @@ export function useTerminal(
       terminal.dispose();
     };
   }, [closeSession, containerRef, copySelection, createSession, options?.disabled, pasteFromClipboard, resize, write]);
+
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = getTerminalTheme(resolvedTheme);
+  }, [resolvedTheme]);
 
   useEffect(() => {
     const sessionId = sessionIdRef.current;

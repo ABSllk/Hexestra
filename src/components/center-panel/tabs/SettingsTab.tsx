@@ -15,7 +15,7 @@ import { useTabStore, type SettingsPage } from '@/stores/useTabStore';
 import { BurpSettings } from './BurpSettings';
 import { SkillsSettings } from './SkillsSettings';
 import { McpSettings } from './McpSettings';
-import { useI18n } from '@/i18n';
+import { useAppPreferences, useI18n } from '@/i18n';
 
 const SOURCES: Array<{ id: ClaudeSettingSource; label: string; detail: string }> = [
   { id: 'user', label: 'User', detail: '~/.claude/settings.json' },
@@ -249,7 +249,7 @@ function ConnectionSettings() {
                           : [...settings.settingSources, source.id];
                         if (next.length) setSettings({ ...settings, settingSources: next });
                       }}
-                      className="mt-0.5 accent-[#89b4fa]"
+                      className="mt-0.5 accent-[rgb(var(--color-accent-blue))]"
                     />
                     <span className="min-w-0">
                       <span className="block text-xs text-text-secondary">{source.label}</span>
@@ -357,6 +357,7 @@ function TrafficRuntimeSettings() {
 
 function GeneralSettings() {
   const { language, setLanguage, t } = useI18n();
+  const { themePreference, setTheme } = useAppPreferences();
   const [error, setError] = useState<string | null>(null);
   return (
     <div className="h-full overflow-y-auto bg-bg-primary">
@@ -384,6 +385,28 @@ function GeneralSettings() {
             <option value="en">{t('settings.languageEnglish')}</option>
             <option value="zh-CN">{t('settings.languageChinese')}</option>
           </select>
+        </SettingsSection>
+        <SettingsSection title={t('settings.theme')} description={t('settings.themeHint')}>
+          <div className="ui-segmented grid grid-cols-3" role="group" aria-label={t('settings.theme')}>
+            {([
+              ['system', t('settings.themeSystem')],
+              ['dark', t('settings.themeDark')],
+              ['light', t('settings.themeLight')],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={themePreference === value}
+                className={cn('ui-segmented-item px-3 py-1.5 text-xs', themePreference === value && 'ui-segmented-item-active')}
+                onClick={() => {
+                  setError(null);
+                  void setTheme(value).catch((reason) => setError(String(reason)));
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </SettingsSection>
         {error && <DismissibleNotice tone="error" onDismiss={() => setError(null)}>{error}</DismissibleNotice>}
       </div>

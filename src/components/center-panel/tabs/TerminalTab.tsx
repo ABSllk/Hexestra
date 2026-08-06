@@ -191,7 +191,7 @@ export function TerminalTab({ tabId }: TerminalTabProps) {
   return (
     <div
       ref={shellRef}
-      className="terminal-shell relative flex h-full min-h-0 flex-col bg-[#1e1e2e]"
+      className="terminal-shell relative flex h-full min-h-0 flex-col bg-bg-tertiary"
       onContextMenu={handleContextMenu}
     >
       {managedShell && (

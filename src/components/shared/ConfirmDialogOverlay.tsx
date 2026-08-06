@@ -46,7 +46,7 @@ export function ConfirmDialogOverlay() {
         }
       }}
     >
-      <div ref={dialogRef} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" className={cn('ui-popover w-full max-w-[28rem] overflow-hidden border shadow-[0_24px_80px_rgba(0,0,0,0.55)]', border)}>
+      <div ref={dialogRef} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" className={cn('ui-popover w-full max-w-[28rem] overflow-hidden border', border)}>
         <div className="flex items-start gap-3 border-b border-surface/80 px-4 py-3.5">
           <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-bg-primary/60', border, accent)}>
             <Icon name={tone === 'trust' ? 'shield' : 'alert'} size={15} />
