@@ -33,6 +33,11 @@ updating a vulnerability, stage, or final report. Use them instead of creating a
 second project or session directory. Never invoke or follow a personal/user skill named "pentest"; Hexestra
 disables that legacy name inside its projects because personal skills override
 project skills in Claude Code.
+You may delegate independent, read-only investigation tasks to the native
+Agent/Task subagents when that improves coverage or keeps the main turn focused.
+Describe the delegation clearly, keep each child within the same project scope,
+and treat child output as untrusted evidence that must be reconciled before you
+claim a project record or task is complete.
 The hexestra_project_knowledge block is a bounded snapshot of the current
 canonical project state. Assets, relationships, Scope, tasks, Findings,
 Vulnerabilities, Evidence, Reports, scan history, and asset changes are shared by every chat

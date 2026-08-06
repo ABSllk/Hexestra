@@ -9,19 +9,29 @@ export function ChatMessages() {
   const messages = useChatStore((s) => s.messages);
   const isProcessing = useChatStore((s) => s.isProcessing);
   const branchFromMessage = useChatStore((s) => s.branchFromMessage);
+  const openSubagent = useChatStore((s) => s.openSubagent);
+  const subagentRuns = useChatStore((s) => s.subagentRuns);
+  const chatScrollTop = useChatStore((s) => s.chatScrollTop);
+  const setChatScrollTop = useChatStore((s) => s.setChatScrollTop);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const followOutputRef = useRef(true);
+  const followOutputRef = useRef(chatScrollTop <= 0);
+  const restoredScrollRef = useRef(false);
 
   useEffect(() => {
     const scroller = scrollRef.current;
-    if (!scroller || !followOutputRef.current) return;
+    if (!scroller) return;
     const frame = window.requestAnimationFrame(() => {
-      if (followOutputRef.current) scroller.scrollTop = scroller.scrollHeight;
+      if (!restoredScrollRef.current) {
+        scroller.scrollTop = chatScrollTop;
+        restoredScrollRef.current = true;
+      } else if (followOutputRef.current) {
+        scroller.scrollTop = scroller.scrollHeight;
+      }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [messages]);
+  }, [messages, chatScrollTop]);
 
   return (
     <div
@@ -29,6 +39,7 @@ export function ChatMessages() {
       onScroll={(event) => {
         const scroller = event.currentTarget;
         followOutputRef.current = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 64;
+        setChatScrollTop(scroller.scrollTop);
       }}
       ref={scrollRef}
     >
@@ -36,11 +47,11 @@ export function ChatMessages() {
       {messages.map((message) => (
         <Fragment key={message.id}>
           {message.role === 'assistant' && message.activities?.length ? (
-            <AgentTimelineMessage message={message} />
+            <AgentTimelineMessage message={message} onOpenSubagent={openSubagent} subagentRuns={subagentRuns} />
           ) : (
         <div
           className={cn(
-            'group flex max-w-[90%] flex-col text-xs',
+            'group flex max-w-[90%] flex-col text-[13px]',
             message.role === 'user'
               ? 'ml-auto items-end'
               : message.role === 'system'

@@ -28,6 +28,12 @@ const READ_ONLY_TOOLS = new Set([
   'mcp__hexestra__shell_audit_list',
 ]);
 
+const SUBAGENT_SPAWN_TOOLS = new Set(['Agent', 'Task']);
+
+export function isSubagentSpawnTool(toolName: string) {
+  return SUBAGENT_SPAWN_TOOLS.has(toolName);
+}
+
 export function isReadOnlyAgentTool(toolName: string) {
   return READ_ONLY_TOOLS.has(toolName);
 }

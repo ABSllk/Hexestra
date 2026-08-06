@@ -185,9 +185,45 @@ describe('project state', () => {
       },
     });
 
-    expect(migrated.version).toBe(4);
+    expect(migrated.version).toBe(5);
     expect(migrated.shells).toEqual({ profiles: [], listeners: [] });
     expect(migrated.workspace.tabs[0].data).toEqual({ managedShell: true, shellProfileId: 'profile-1' });
+  });
+
+  it('migrates persisted subagent runs and marks in-flight children interrupted after restart', () => {
+    const migrated = normalizeProjectState({
+      version: 4,
+      agent: {
+        activeBranchId: 'main',
+        branches: [{
+          id: 'main',
+          title: 'Main',
+          claudeSessionId: null,
+          connectionFingerprint: null,
+          createdAt: '2026-07-18T00:00:00.000Z',
+          messages: [],
+          subagentRuns: [{
+            id: 'run-1',
+            taskId: 'task-1',
+            agentType: 'Explore',
+            description: 'Inspect headers',
+            status: 'running',
+            startedAt: '2026-07-18T00:00:00.000Z',
+            updatedAt: '2026-07-18T00:01:00.000Z',
+            activities: [{ id: 'activity-1', kind: 'text', status: 'streaming', content: 'partial' }],
+          }],
+        }],
+      },
+      workspace: { tabs: [] },
+    });
+
+    expect(migrated.version).toBe(5);
+    expect(migrated.agent.branches[0].subagentRuns[0]).toMatchObject({
+      id: 'run-1',
+      status: 'interrupted',
+      agentType: 'Explore',
+    });
+    expect(migrated.agent.branches[0].subagentRuns[0].activities[0].status).toBe('streaming');
   });
 
   it('persists replay tabs and bounded explicit Agent context in version 4 state', () => {

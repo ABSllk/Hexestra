@@ -7,6 +7,7 @@ import { DEFAULT_PROXY_PROFILE, type ProxyProfile } from '../contracts/traffic';
 import type { ShellProjectState } from '../contracts/shell';
 import { normalizeShellProjectState } from './shell-contract';
 import { isManagedRecordKind } from '../contracts/records';
+import type { SubagentRun } from '../agent-subagent-contract';
 
 export type ProjectPermissionMode = 'default' | 'auto' | 'bypassPermissions';
 export type ProjectAutonomyLevel = 'low' | 'medium' | 'high';
@@ -25,6 +26,9 @@ export interface PersistedAgentActivity {
   output?: string;
   outputSummary?: string;
   elapsedSeconds?: number;
+  subagentRunId?: string;
+  agentType?: string;
+  subagentDescription?: string;
 }
 
 export interface PersistedChatMessage {
@@ -47,6 +51,7 @@ export interface PersistedConversationBranch {
   claudeSessionId: string | null;
   connectionFingerprint: string | null;
   messages: PersistedChatMessage[];
+  subagentRuns: SubagentRun[];
   createdAt: string;
 }
 
@@ -65,7 +70,7 @@ export interface ProjectWorkspaceState {
 }
 
 export interface ProjectState {
-  version: 4;
+  version: 5;
   agent: {
     model: string | null;
     lastError: string | null;
@@ -97,7 +102,7 @@ export function createDefaultProjectState(): ProjectState {
     createdAt: new Date(0).toISOString(),
   });
   return {
-    version: 4,
+    version: 5,
     agent: {
       model: null,
       lastError: null,
@@ -125,6 +130,7 @@ export function createConversationBranch(
     claudeSessionId: null,
     connectionFingerprint: null,
     messages: [],
+    subagentRuns: [],
     createdAt: new Date().toISOString(),
     ...input,
   };
@@ -143,7 +149,7 @@ export function createDefaultWorkspace(): ProjectWorkspaceState {
 
 export function normalizeProjectState(value: unknown): ProjectState {
   const defaults = createDefaultProjectState();
-  if (!isRecord(value) || (value.version !== 2 && value.version !== 3 && value.version !== 4)) return defaults;
+  if (!isRecord(value) || (value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5)) return defaults;
   const agent = isRecord(value.agent) ? value.agent : {};
   const preferences = isRecord(value.preferences) ? value.preferences : {};
   const traffic = isRecord(value.traffic) ? value.traffic : {};
@@ -161,7 +167,7 @@ export function normalizeProjectState(value: unknown): ProjectState {
     : safeBranches[0].id;
 
   return {
-    version: 4,
+    version: 5,
     agent: {
       model: nullableString(agent.model),
       lastError: nullableString(agent.lastError),
@@ -214,6 +220,9 @@ function normalizeBranch(value: unknown): PersistedConversationBranch[] {
   const messages = Array.isArray(value.messages)
     ? value.messages.flatMap(normalizeMessage)
     : [];
+  const subagentRuns = Array.isArray(value.subagentRuns)
+    ? value.subagentRuns.flatMap(normalizeSubagentRun)
+    : [];
   return [{
     id: value.id,
     title: typeof value.title === 'string' && value.title.trim()
@@ -226,9 +235,78 @@ function normalizeBranch(value: unknown): PersistedConversationBranch[] {
     claudeSessionId: nullableString(value.claudeSessionId),
     connectionFingerprint: nullableString(value.connectionFingerprint),
     messages,
+    subagentRuns,
     createdAt: typeof value.createdAt === 'string'
       ? value.createdAt
       : new Date(0).toISOString(),
+  }];
+}
+
+function normalizeSubagentRun(value: unknown): SubagentRun[] {
+  if (!isRecord(value) || !isIdentifier(value.id) || !isIdentifier(value.taskId)) return [];
+  const persistedStatus = isSubagentRunStatus(value.status) ? value.status : 'interrupted';
+  // A process restart cannot prove that a pending/running child is still alive.
+  // Keep its transcript, but surface it as interrupted until a new run starts.
+  const status = persistedStatus === 'pending' || persistedStatus === 'running'
+    ? 'interrupted'
+    : persistedStatus;
+  const activities = Array.isArray(value.activities)
+    ? value.activities.flatMap(normalizeSubagentActivity)
+    : [];
+  const usage = isRecord(value.usage)
+    ? {
+      totalTokens: boundedNumber(value.usage.totalTokens),
+      toolUses: boundedNumber(value.usage.toolUses),
+      durationMs: boundedNumber(value.usage.durationMs),
+    }
+    : undefined;
+  return [{
+    id: value.id,
+    taskId: value.taskId,
+    messageId: optionalIdentifier(value.messageId),
+    toolUseId: optionalIdentifier(value.toolUseId),
+    agentId: optionalIdentifier(value.agentId),
+    agentType: optionalString(value.agentType),
+    description: boundedString(value.description).slice(0, 2_000),
+    prompt: optionalString(value.prompt)?.slice(0, 20_000),
+    parentRunId: optionalIdentifier(value.parentRunId),
+    parentToolUseId: optionalIdentifier(value.parentToolUseId),
+    status,
+    startedAt: typeof value.startedAt === 'string' ? value.startedAt : new Date(0).toISOString(),
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date(0).toISOString(),
+    endedAt: optionalString(value.endedAt),
+    isBackgrounded: value.isBackgrounded === true,
+    lastToolName: optionalString(value.lastToolName),
+    summary: optionalString(value.summary)?.slice(0, 4_000),
+    output: optionalString(value.output)?.slice(0, 50_000),
+    error: optionalString(value.error)?.slice(0, 4_000),
+    usage,
+    activities,
+  }];
+}
+
+function normalizeSubagentActivity(value: unknown) {
+  if (!isRecord(value) || typeof value.id !== 'string') return [];
+  if (value.kind !== 'text' && value.kind !== 'thinking' && value.kind !== 'tool') return [];
+  const status = value.status === 'streaming' || value.status === 'running'
+    || value.status === 'complete' || value.status === 'error'
+    ? value.status
+    : 'complete';
+  const kind = value.kind as 'text' | 'thinking' | 'tool';
+  const normalizedStatus = status as 'streaming' | 'running' | 'complete' | 'error';
+  return [{
+    id: value.id,
+    kind,
+    status: normalizedStatus,
+    content: optionalString(value.content)?.slice(0, 50_000),
+    toolUseId: optionalIdentifier(value.toolUseId),
+    toolName: optionalString(value.toolName),
+    label: optionalString(value.label),
+    summary: optionalString(value.summary),
+    input: isRecord(value.input) ? value.input : undefined,
+    output: optionalString(value.output)?.slice(0, 12_000),
+    outputSummary: optionalString(value.outputSummary),
+    elapsedSeconds: boundedNumber(value.elapsedSeconds),
   }];
 }
 
@@ -295,6 +373,9 @@ function normalizeActivity(value: unknown): PersistedAgentActivity[] {
     elapsedSeconds: typeof value.elapsedSeconds === 'number' && Number.isFinite(value.elapsedSeconds)
       ? Math.max(0, Math.round(value.elapsedSeconds))
       : undefined,
+    subagentRunId: optionalIdentifier(value.subagentRunId),
+    agentType: optionalString(value.agentType),
+    subagentDescription: optionalString(value.subagentDescription),
   }];
 }
 
@@ -347,6 +428,12 @@ function inferNextTabNumber(tabs: PersistedProjectTab[]) {
 
 function boundedString(value: unknown) {
   return typeof value === 'string' ? value : '';
+}
+
+function boundedNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.round(value))
+    : undefined;
 }
 
 function optionalString(value: unknown) {
@@ -436,6 +523,12 @@ function isActivityKind(value: unknown): value is PersistedAgentActivity['kind']
 
 function isActivityStatus(value: unknown): value is PersistedAgentActivity['status'] {
   return value === 'streaming' || value === 'running' || value === 'complete' || value === 'error';
+}
+
+function isSubagentRunStatus(value: unknown): value is SubagentRun['status'] {
+  return value === 'pending' || value === 'running' || value === 'completed'
+    || value === 'failed' || value === 'stopped' || value === 'killed'
+    || value === 'interrupted';
 }
 
 function isAttachmentKind(value: unknown): value is AgentAttachmentMetadata['kind'] {

@@ -7,6 +7,7 @@ import { ChatMessages } from './ChatMessages';
 import { ConversationSelector } from './ConversationSelector';
 import { ContextIndicator } from './ContextIndicator';
 import { AgentInteractionCard } from './AgentInteractionCard';
+import { SubagentDetailView } from './SubagentDetailView';
 import { useI18n } from '@/i18n';
 
 export function AIChatSidebar() {
@@ -17,6 +18,10 @@ export function AIChatSidebar() {
   const syncContextTabs = useChatStore((s) => s.syncContextTabs);
   const pendingToolRequest = useChatStore((s) => s.pendingToolRequest);
   const agentStatus = useChatStore((s) => s.agentStatus);
+  const subagentView = useChatStore((s) => s.subagentView);
+  const selectedSubagentRunId = useChatStore((s) => s.selectedSubagentRunId);
+  const subagentRuns = useChatStore((s) => s.subagentRuns);
+  const closeSubagent = useChatStore((s) => s.closeSubagent);
   const tabs = useTabStore((s) => s.tabs);
   const contextTabs = useMemo(
     () =>
@@ -38,6 +43,34 @@ export function AIChatSidebar() {
 
   useEffect(() => subscribeToAgent(), [subscribeToAgent]);
   useEffect(() => syncContextTabs(contextTabs), [contextTabs, syncContextTabs]);
+
+  const selectedSubagent = subagentRuns.find((run) => run.id === selectedSubagentRunId);
+
+  if (subagentView === 'subagent-detail' && selectedSubagent) {
+    return <SubagentDetailView run={selectedSubagent} onBack={closeSubagent} />;
+  }
+
+  if (subagentView === 'subagent-detail') {
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-bg-secondary">
+        <div className="flex shrink-0 items-center gap-2 border-b border-surface bg-bg-tertiary px-3 py-2">
+          <button
+            type="button"
+            className="ui-icon-button p-1"
+            aria-label={t('agent.subagentBack')}
+            title={t('agent.subagentBack')}
+            onClick={closeSubagent}
+          >
+            <Icon name="chevron-right" size={15} className="rotate-180" />
+          </button>
+          <span className="text-xs font-semibold text-text-secondary">{t('agent.subagent')}</span>
+        </div>
+        <div className="flex flex-1 items-center justify-center px-6 text-center text-2xs text-text-muted">
+          {t('agent.subagentUnavailable')}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">

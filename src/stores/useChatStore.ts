@@ -8,6 +8,7 @@ import {
   type AskUserQuestionAnswers,
   type AgentMessageEvent,
   type AgentStatusEvent,
+  type AgentSubagentUpdateEvent,
   type AgentToolRequestEvent,
   type ChatMessage,
   type ContextTab,
@@ -17,6 +18,7 @@ import {
   type ConversationBranchSummary,
   type ProjectActivation,
   type ProjectWorkspaceState,
+  type SubagentRun,
 } from '@/types';
 import { buildAgentTargetContext } from '@/lib/networkGraph';
 import { reconcileAgentActivities } from '@/lib/agentActivity';
@@ -39,6 +41,10 @@ interface ChatStore {
   isProcessing: boolean;
   error: string | null;
   agentStatus: AgentStatus;
+  subagentRuns: SubagentRun[];
+  subagentView: 'conversation' | 'subagent-detail';
+  selectedSubagentRunId: string | null;
+  chatScrollTop: number;
 
   activateProject: (sessionId: string) => Promise<ProjectWorkspaceState>;
   deactivateProject: () => void;
@@ -61,6 +67,9 @@ interface ChatStore {
   answerUserQuestion: (requestId: string, answers: AskUserQuestionAnswers) => Promise<void>;
   cancelRequest: () => Promise<void>;
   refreshStatus: () => Promise<void>;
+  openSubagent: (runId: string) => void;
+  closeSubagent: () => void;
+  setChatScrollTop: (value: number) => void;
 
   /** Subscribe to agent events from main process */
   subscribeToAgent: () => () => void;
@@ -93,6 +102,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     executionMode: 'wsl',
     runtimeLabel: 'WSL · Ubuntu-24.04',
   },
+  subagentRuns: [],
+  subagentView: 'conversation',
+  selectedSubagentRunId: null,
+  chatScrollTop: 0,
 
   activateProject: async (sessionId) => {
     set({
@@ -106,6 +119,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       pendingToolRequest: null,
       isProcessing: false,
       error: null,
+      subagentRuns: [],
+      subagentView: 'conversation',
+      selectedSubagentRunId: null,
+      chatScrollTop: 0,
     });
     if (!window.hexestra) {
       return { tabs: [], activeTabId: null, nextTabNumber: 1 };
@@ -120,6 +137,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           autonomyLevel: activation.preferences.autonomyLevel,
           permissionMode: activation.preferences.permissionMode,
           agentStatus: activation.status,
+          subagentRuns: activation.subagentRuns ?? [],
+          subagentView: 'conversation',
+          selectedSubagentRunId: null,
+          chatScrollTop: 0,
           isProcessing:
             activation.status.state === 'running'
             || activation.status.state === 'awaiting_approval'
@@ -144,6 +165,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     pendingToolRequest: null,
     isProcessing: false,
     error: null,
+    subagentRuns: [],
+    subagentView: 'conversation',
+    selectedSubagentRunId: null,
+    chatScrollTop: 0,
   }),
 
   sendMessage: async (content, attachments = []) => {
@@ -208,6 +233,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: state.messages,
       branches: state.branches,
       activeBranchId: state.activeBranchId,
+      subagentRuns: state.subagentRuns,
+      subagentView: state.subagentView,
+      selectedSubagentRunId: state.selectedSubagentRunId,
       pendingToolRequest: state.pendingToolRequest,
     };
     const optimisticConversation: ConversationBranchSummary = {
@@ -223,13 +251,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       composerText: '',
       composerContextRefs: [],
       pendingToolRequest: null,
+      subagentRuns: [],
+      subagentView: 'conversation',
+      selectedSubagentRunId: null,
+      chatScrollTop: 0,
       error: null,
     });
 
     try {
       const activation = await window.hexestra.invoke<Pick<
         ProjectActivation,
-        'messages' | 'branches' | 'activeBranchId' | 'status'
+        'messages' | 'branches' | 'activeBranchId' | 'status' | 'subagentRuns'
       >>('agent:conversation:new', state.activeProjectId, conversationId);
       if (get().activeProjectId === state.activeProjectId) {
         set({
@@ -237,6 +269,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           branches: activation.branches,
           activeBranchId: activation.activeBranchId,
           agentStatus: activation.status,
+          subagentRuns: activation.subagentRuns ?? [],
+          subagentView: 'conversation',
+          selectedSubagentRunId: null,
+          chatScrollTop: 0,
         });
       }
     } catch (error) {
@@ -276,6 +312,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: state.messages,
       branches: state.branches,
       activeBranchId: state.activeBranchId,
+      subagentRuns: state.subagentRuns,
+      subagentView: state.subagentView,
+      selectedSubagentRunId: state.selectedSubagentRunId,
     };
     const optimisticBranch: ConversationBranchSummary = {
       id: newBranchId,
@@ -291,6 +330,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       activeBranchId: newBranchId,
       isProcessing: true,
       pendingToolRequest: null,
+      subagentRuns: [],
+      subagentView: 'conversation',
+      selectedSubagentRunId: null,
+      chatScrollTop: 0,
       error: null,
     });
 
@@ -298,7 +341,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (!window.hexestra) return;
       const activation = await window.hexestra.invoke<Pick<
         ProjectActivation,
-        'messages' | 'branches' | 'activeBranchId' | 'status'
+        'messages' | 'branches' | 'activeBranchId' | 'status' | 'subagentRuns'
       >>('agent:branch', {
         sourceMessageId: messageId,
         newBranchId,
@@ -310,6 +353,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           branches: activation.branches,
           activeBranchId: activation.activeBranchId,
           agentStatus: activation.status,
+          subagentRuns: activation.subagentRuns ?? [],
+          subagentView: 'conversation',
+          selectedSubagentRunId: null,
+          chatScrollTop: 0,
           isProcessing: false,
         });
       }
@@ -330,6 +377,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       activeBranchId: state.activeBranchId,
       messages: state.messages,
       pendingToolRequest: state.pendingToolRequest,
+      subagentRuns: state.subagentRuns,
+      subagentView: state.subagentView,
+      selectedSubagentRunId: state.selectedSubagentRunId,
     };
     set({
       activeBranchId: branchId,
@@ -337,12 +387,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       composerText: '',
       composerContextRefs: [],
       pendingToolRequest: null,
+      subagentRuns: [],
+      subagentView: 'conversation',
+      selectedSubagentRunId: null,
+      chatScrollTop: 0,
       error: null,
     });
     try {
       const activation = await window.hexestra.invoke<Pick<
         ProjectActivation,
-        'messages' | 'branches' | 'activeBranchId' | 'status'
+        'messages' | 'branches' | 'activeBranchId' | 'status' | 'subagentRuns'
       >>('agent:branch:activate', state.activeProjectId, branchId);
       if (get().activeProjectId === state.activeProjectId) {
         set({
@@ -350,6 +404,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           branches: activation.branches,
           activeBranchId: activation.activeBranchId,
           agentStatus: activation.status,
+          subagentRuns: activation.subagentRuns ?? [],
+          subagentView: 'conversation',
+          selectedSubagentRunId: null,
+          chatScrollTop: 0,
         });
       }
     } catch (error) {
@@ -393,6 +451,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       composerContextRefs: [],
       pendingToolRequest: null,
       error: null,
+      subagentRuns: [],
+      subagentView: 'conversation',
+      selectedSubagentRunId: null,
+      chatScrollTop: 0,
     });
   },
 
@@ -476,6 +538,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ isProcessing: false, pendingToolRequest: null });
   },
 
+  openSubagent: (runId) => {
+    if (!get().subagentRuns.some((run) => run.id === runId)) return;
+    set({ selectedSubagentRunId: runId, subagentView: 'subagent-detail' });
+  },
+
+  closeSubagent: () => set({ selectedSubagentRunId: null, subagentView: 'conversation' }),
+  setChatScrollTop: (chatScrollTop) => set({ chatScrollTop }),
+
   refreshStatus: async () => {
     const sessionId = get().activeProjectId;
     if (!window.hexestra || !sessionId) return;
@@ -515,12 +585,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       });
     });
 
+    const unsubSubagent = window.hexestra.on('agent:subagent-update', (data: unknown) => {
+      const event = data as AgentSubagentUpdateEvent;
+      if (event.sessionId !== get().activeProjectId || event.branchId !== get().activeBranchId) return;
+      set((state) => {
+        const index = state.subagentRuns.findIndex((run) => run.id === event.run.id);
+        if (index < 0) return { subagentRuns: [...state.subagentRuns, event.run] };
+        const next = [...state.subagentRuns];
+        next[index] = event.run;
+        return { subagentRuns: next };
+      });
+    });
+
     void get().refreshStatus();
 
     return () => {
       unsub();
       unsubTool();
       unsubStatus();
+      unsubSubagent();
     };
   },
 }));

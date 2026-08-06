@@ -3,15 +3,24 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Icon } from '@/components/shared';
 import { cn } from '@/lib/cn';
-import type { AgentActivity, ChatMessage } from '@/types';
+import type { AgentActivity, ChatMessage, SubagentRun } from '@/types';
+import { useI18n } from '@/i18n';
 
-export const AgentTimelineMessage = memo(function AgentTimelineMessage({ message }: { message: ChatMessage }) {
+export const AgentTimelineMessage = memo(function AgentTimelineMessage({
+  message,
+  onOpenSubagent,
+  subagentRuns,
+}: {
+  message: ChatMessage;
+  onOpenSubagent?: (runId: string) => void;
+  subagentRuns?: SubagentRun[];
+}) {
   return (
-    <article className="w-full text-xs" aria-label="AI activity timeline">
+    <article className="w-full text-[13px]" aria-label="AI activity timeline">
       <span className="mb-1 block px-1 text-2xs text-text-muted">AI</span>
       <div className="relative ml-1.5 border-l border-surface/80 pl-4">
         {message.activities?.map((activity) => (
-          <ActivityItem key={activity.id} activity={activity} />
+          <ActivityItem key={activity.id} activity={activity} onOpenSubagent={onOpenSubagent} subagentRuns={subagentRuns} />
         ))}
       </div>
       {message.status === 'error' && (
@@ -21,7 +30,37 @@ export const AgentTimelineMessage = memo(function AgentTimelineMessage({ message
   );
 });
 
-const ActivityItem = memo(function ActivityItem({ activity }: { activity: AgentActivity }) {
+export function AgentActivityList({
+  activities,
+  onOpenSubagent,
+  subagentRuns,
+  compact = false,
+}: {
+  activities: AgentActivity[];
+  onOpenSubagent?: (runId: string) => void;
+  subagentRuns?: SubagentRun[];
+  compact?: boolean;
+}) {
+  return (
+    <div className="relative ml-1.5 border-l border-surface/80 pl-4">
+      {activities.map((activity) => (
+        <ActivityItem key={activity.id} activity={activity} onOpenSubagent={onOpenSubagent} subagentRuns={subagentRuns} compact={compact} />
+      ))}
+    </div>
+  );
+}
+
+const ActivityItem = memo(function ActivityItem({
+  activity,
+  onOpenSubagent,
+  subagentRuns,
+  compact = false,
+}: {
+  activity: AgentActivity;
+  onOpenSubagent?: (runId: string) => void;
+  subagentRuns?: SubagentRun[];
+  compact?: boolean;
+}) {
   const dotClass = activity.status === 'error'
     ? 'bg-severity-critical'
     : activity.kind === 'tool' && activity.status === 'complete'
@@ -39,32 +78,35 @@ const ActivityItem = memo(function ActivityItem({ activity }: { activity: AgentA
         )}
       />
       {activity.kind === 'thinking' ? (
-        <ThinkingActivity activity={activity} />
+        <ThinkingActivity activity={activity} compact={compact} />
       ) : activity.kind === 'tool' ? (
-        <ToolActivity activity={activity} />
+        <ToolActivity activity={activity} onOpenSubagent={onOpenSubagent} subagentRuns={subagentRuns} compact={compact} />
       ) : (
-        <TextActivity activity={activity} />
+        <TextActivity activity={activity} compact={compact} />
       )}
     </div>
   );
 });
 
-function TextActivity({ activity }: { activity: AgentActivity }) {
+function TextActivity({ activity, compact = false }: { activity: AgentActivity; compact?: boolean }) {
   return (
-    <div className="min-h-5 whitespace-pre-wrap break-words pr-1 leading-5 text-text-primary">
+    <div className={cn(
+      'min-h-5 whitespace-pre-wrap break-words pr-1 text-text-primary',
+      compact ? 'text-[11px] leading-[1.1rem]' : 'leading-5',
+    )}>
       {activity.content
         ? activity.status === 'streaming'
           ? activity.content
-          : <MarkdownContent content={activity.content} />
+          : <MarkdownContent content={activity.content} compact={compact} />
         : null}
       {activity.status === 'streaming' && <StreamingCursor />}
     </div>
   );
 }
 
-function ThinkingActivity({ activity }: { activity: AgentActivity }) {
+function ThinkingActivity({ activity, compact = false }: { activity: AgentActivity; compact?: boolean }) {
   return (
-    <details className="group text-text-muted">
+    <details className={cn('group text-text-muted', compact && 'text-[11px]')}>
       <summary className="flex cursor-pointer list-none items-center gap-1.5 py-0.5 outline-none hover:text-text-secondary">
         <Icon name="sparkles" size={13} />
         <span>Thinking</span>
@@ -77,14 +119,69 @@ function ThinkingActivity({ activity }: { activity: AgentActivity }) {
         {activity.content
           ? activity.status === 'streaming'
             ? activity.content
-            : <MarkdownContent content={activity.content} />
+            : <MarkdownContent content={activity.content} compact={compact} />
           : <span>Internal reasoning in progress</span>}
       </div>
     </details>
   );
 }
 
-function ToolActivity({ activity }: { activity: AgentActivity }) {
+function ToolActivity({
+  activity,
+  onOpenSubagent,
+  subagentRuns,
+  compact = false,
+}: {
+  activity: AgentActivity;
+  onOpenSubagent?: (runId: string) => void;
+  subagentRuns?: SubagentRun[];
+  compact?: boolean;
+}) {
+  const { t } = useI18n();
+  if (activity.subagentRunId && onOpenSubagent) {
+    const run = subagentRuns?.find((candidate) => candidate.id === activity.subagentRunId);
+    const status = run?.status ?? (activity.status === 'running' ? 'running' : activity.status === 'error' ? 'failed' : 'completed');
+    const toolCount = run?.usage?.toolUses ?? run?.activities.filter((candidate) => candidate.kind === 'tool').length;
+    const tokens = run?.usage?.totalTokens;
+    return (
+      <button
+        type="button"
+        className={cn(
+          'ui-card w-full cursor-pointer text-left transition-colors hover:border-accent-blue/50 hover:bg-accent-blue/5',
+          compact && 'text-[11px]',
+        )}
+        onClick={() => onOpenSubagent(activity.subagentRunId!)}
+        aria-label={`Open ${activity.agentType || 'subagent'} output`}
+      >
+        <div className="flex items-start gap-2">
+          <Icon name="bot" size={14} className="mt-0.5 text-accent-blue" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-text-primary">
+                {activity.agentType || t('agent.subagent')}
+              </span>
+              <span className="text-[9px] uppercase tracking-[0.12em] text-accent-blue">{t('agent.subagentDelegated')}</span>
+            </div>
+            <p className="mt-1 truncate text-[10px] text-text-secondary">
+              {activity.subagentDescription || activity.summary || t('agent.subagentWaiting')}
+            </p>
+            <p className="mt-1 text-[9px] text-text-muted">
+              {formatSubagentStatus(status, t)}
+              {run && ` · ${formatDuration(run)}`}
+              {toolCount !== undefined && ` · ${toolCount} tools`}
+              {tokens !== undefined && ` · ${tokens.toLocaleString()} tokens`}
+            </p>
+            {(run?.summary || run?.lastToolName) && (
+              <p className="mt-1 truncate text-[9px] text-accent-blue">
+                {run.summary || run.lastToolName}
+              </p>
+            )}
+          </div>
+          <Icon name="chevron-right" size={12} className="mt-1 text-text-muted" />
+        </div>
+      </button>
+    );
+  }
   const hasDetails = Boolean(activity.output || (activity.input && Object.keys(activity.input).length > 0));
   const statusText = activity.status === 'running'
     ? activity.elapsedSeconds
@@ -95,7 +192,7 @@ function ToolActivity({ activity }: { activity: AgentActivity }) {
       : activity.outputSummary || 'Completed';
 
   const summary = (
-    <div className="min-w-0 flex-1">
+    <div className={cn('min-w-0 flex-1', compact && 'text-[11px]')}>
       <div className="flex min-w-0 items-start gap-1.5 leading-5">
         <Icon
           name={toolIcon(activity.toolName)}
@@ -155,12 +252,15 @@ function ActivityDetails({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function MarkdownContent({ content }: { content: string }) {
-  return (
+export function MarkdownContent({ content, compact = false }: { content: string; compact?: boolean }) {
+  const markdown = (
     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
       {content}
     </ReactMarkdown>
   );
+  return compact
+    ? <div className="text-[11px] [&_h1]:text-[13px] [&_h2]:text-[12px] [&_h3]:text-[11px] [&_pre]:text-[9px] [&_table]:text-[9px]">{markdown}</div>
+    : markdown;
 }
 
 const markdownComponents: Components = {
@@ -237,4 +337,21 @@ function toolIcon(toolName?: string) {
   if (/grep|glob|search/i.test(toolName ?? '')) return 'search' as const;
   if (/browser|web/i.test(toolName ?? '')) return 'browser' as const;
   return 'tool' as const;
+}
+
+function formatSubagentStatus(status: SubagentRun['status'], t: ReturnType<typeof useI18n>['t']) {
+  if (status === 'pending') return t('agent.subagentQueued');
+  if (status === 'running') return t('agent.subagentRunning');
+  if (status === 'failed') return t('agent.subagentFailed');
+  if (status === 'interrupted') return t('agent.subagentInterrupted');
+  if (status === 'stopped' || status === 'killed') return t('agent.subagentStopped');
+  return t('agent.subagentCompleted');
+}
+
+function formatDuration(run: SubagentRun) {
+  const end = run.endedAt ? Date.parse(run.endedAt) : Date.now();
+  const start = Date.parse(run.startedAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return '—';
+  const seconds = Math.max(0, Math.round((end - start) / 1_000));
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }

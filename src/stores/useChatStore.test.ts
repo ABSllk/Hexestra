@@ -165,6 +165,46 @@ describe('useChatStore project isolation', () => {
     unsubscribe();
   });
 
+  it('projects only the active branch subagent updates and keeps detail navigation local', async () => {
+    const unsubscribe = useChatStore.getState().subscribeToAgent();
+    await useChatStore.getState().activateProject('project-a');
+    const run = {
+      id: 'run-a',
+      taskId: 'task-a',
+      description: 'Read-only review',
+      status: 'running' as const,
+      startedAt: '2026-08-06T00:00:00.000Z',
+      updatedAt: '2026-08-06T00:00:01.000Z',
+      activities: [],
+    };
+
+    listeners.get('agent:subagent-update')?.({
+      sessionId: 'project-b', branchId: 'main', run,
+    });
+    expect(useChatStore.getState().subagentRuns).toEqual([]);
+
+    listeners.get('agent:subagent-update')?.({
+      sessionId: 'project-a', branchId: 'other-branch', run,
+    });
+    expect(useChatStore.getState().subagentRuns).toEqual([]);
+
+    listeners.get('agent:subagent-update')?.({
+      sessionId: 'project-a', branchId: 'main', run,
+    });
+    useChatStore.getState().openSubagent('run-a');
+    expect(useChatStore.getState()).toMatchObject({
+      subagentRuns: [run],
+      subagentView: 'subagent-detail',
+      selectedSubagentRunId: 'run-a',
+    });
+    useChatStore.getState().closeSubagent();
+    expect(useChatStore.getState()).toMatchObject({
+      subagentView: 'conversation',
+      selectedSubagentRunId: null,
+    });
+    unsubscribe();
+  });
+
   it('persists permission changes to the active project only', async () => {
     await useChatStore.getState().activateProject('project-b');
     useChatStore.getState().setPermissionMode('bypassPermissions');

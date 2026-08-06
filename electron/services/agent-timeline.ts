@@ -16,6 +16,9 @@ export interface AgentActivity {
   output?: string;
   outputSummary?: string;
   elapsedSeconds?: number;
+  subagentRunId?: string;
+  agentType?: string;
+  subagentDescription?: string;
 }
 
 interface StreamEvent {
@@ -363,6 +366,13 @@ export class AgentTimelineBuilder {
     return this.activities.find(
       (activity) => activity.kind === 'tool' && activity.toolUseId === toolUseId,
     );
+  }
+
+  annotateTool(toolUseId: string, metadata: Pick<AgentActivity, 'subagentRunId' | 'agentType' | 'subagentDescription'>) {
+    const activity = this.findTool(toolUseId);
+    if (!activity) return false;
+    Object.assign(activity, metadata);
+    return true;
   }
 
   private nextId() {

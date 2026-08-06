@@ -54,6 +54,9 @@ interface InteractionRequestBase {
   id: string;
   toolUseId: string;
   createdAt: string;
+  agentId?: string;
+  subagentRunId?: string;
+  agentType?: string;
 }
 
 export interface ToolApprovalRequest extends InteractionRequestBase {

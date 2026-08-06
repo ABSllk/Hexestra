@@ -2,6 +2,12 @@ import type { AutonomyLevel } from './session';
 import type { ToolRequest } from '../../electron/agent-interaction-contract';
 import type { AgentAttachmentMetadata } from '../../electron/agent-attachment-contract';
 import type { AgentContextRef } from '../../electron/agent-context-contract';
+export type {
+  SubagentActivity,
+  SubagentRun,
+  SubagentRunStatus,
+  SubagentUsage,
+} from '../../electron/agent-subagent-contract';
 
 export type {
   AskUserQuestion,
@@ -35,6 +41,9 @@ export interface AgentActivity {
   output?: string;
   outputSummary?: string;
   elapsedSeconds?: number;
+  subagentRunId?: string;
+  agentType?: string;
+  subagentDescription?: string;
 }
 
 export interface ChatMessage {

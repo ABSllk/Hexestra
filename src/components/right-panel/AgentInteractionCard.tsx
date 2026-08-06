@@ -20,7 +20,7 @@ function ToolApprovalCard({ request }: { request: ToolApprovalRequest }) {
   const reject = useChatStore((state) => state.rejectToolRequest);
 
   return (
-    <section className="shrink-0 border-t border-severity-medium/30 bg-[#17130d] p-3" aria-label="Tool approval">
+    <section className="shrink-0 border-t border-severity-medium/30 bg-bg-secondary p-3" aria-label="Tool approval">
       <div className="mb-2 flex items-center gap-2">
         <Icon name="tool" size={14} className="text-severity-medium" />
         <div className="min-w-0 flex-1">
@@ -28,6 +28,11 @@ function ToolApprovalCard({ request }: { request: ToolApprovalRequest }) {
           <p className="text-[9px] uppercase tracking-wider text-severity-medium">
             Human approval required · {request.riskLevel}
           </p>
+          {request.agentType && (
+            <p className="mt-0.5 truncate text-[9px] text-accent-blue">
+              Source agent: {request.agentType}
+            </p>
+          )}
         </div>
       </div>
       <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-bg-primary/70 p-2 font-mono text-[9px] text-text-muted">
@@ -134,7 +139,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
   return (
     <section
       aria-label="Claude question"
-      className="border-t border-accent-blue/25 bg-[#10151e] p-3"
+      className="border-t border-accent-blue/25 bg-bg-secondary p-3"
     >
       <div className="mb-3 flex items-start gap-2">
         <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-accent-blue/20 bg-accent-blue/10">
@@ -145,6 +150,11 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
           <p className="mt-0.5 text-[9px] leading-relaxed text-text-muted">
             The Agent is paused. Your answers will be returned to the active Claude turn.
           </p>
+          {request.agentType && (
+            <p className="mt-0.5 text-[9px] text-accent-blue">
+              Source agent: {request.agentType}
+            </p>
+          )}
         </div>
       </div>
 
@@ -178,7 +188,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
                     >
                       <input
                         checked={selected}
-                        className="mt-0.5 accent-[#89b4fa]"
+                        className="mt-0.5 accent-[rgb(var(--color-accent-blue))]"
                         name={`question-${request.id}-${questionIndex}`}
                         onChange={() => selectOption(question, option.label)}
                         type={question.multiSelect ? 'checkbox' : 'radio'}
@@ -206,7 +216,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
                   <span className="flex cursor-pointer items-center gap-2 text-[10px] font-medium text-text-primary">
                     <input
                       checked={draft.customActive}
-                      className="accent-[#89b4fa]"
+                      className="accent-[rgb(var(--color-accent-blue))]"
                       name={`question-${request.id}-${questionIndex}`}
                       onChange={(event) => setCustomActive(question, event.target.checked)}
                       type={question.multiSelect ? 'checkbox' : 'radio'}
@@ -234,7 +244,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
         </p>
       )}
 
-      <div className="sticky bottom-0 -mx-3 -mb-3 mt-3 flex justify-end gap-2 border-t border-surface/50 bg-[#10151e] px-3 py-2.5">
+      <div className="sticky bottom-0 -mx-3 -mb-3 mt-3 flex justify-end gap-2 border-t border-surface/50 bg-bg-secondary px-3 py-2.5">
         <button
           disabled={submitting}
           onClick={() => reject(request.id)}

@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import type { ChatMessage } from '@/types';
+import { describe, expect, it, vi } from 'vitest';
+import type { ChatMessage, SubagentRun } from '@/types';
 import { AgentTimelineMessage } from './AgentTimelineMessage';
 
 describe('AgentTimelineMessage', () => {
@@ -133,5 +133,46 @@ describe('AgentTimelineMessage', () => {
     const { container } = render(<AgentTimelineMessage message={message} />);
     expect(screen.getByText('**Live answer**')).toBeInTheDocument();
     expect(container.querySelector('strong')).toBeNull();
+  });
+
+  it('renders a live subagent card with metrics and opens its right-panel detail', () => {
+    const message: ChatMessage = {
+      id: 'delegating-turn',
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString(),
+      status: 'streaming',
+      activities: [{
+        id: 'agent-tool',
+        kind: 'tool',
+        status: 'running',
+        toolUseId: 'spawn-1',
+        toolName: 'Agent',
+        subagentRunId: 'run-1',
+        agentType: 'Explore',
+        subagentDescription: 'Inspect response headers',
+      }],
+    };
+    const run: SubagentRun = {
+      id: 'run-1',
+      taskId: 'task-1',
+      agentType: 'Explore',
+      description: 'Inspect response headers',
+      status: 'running',
+      startedAt: new Date(Date.now() - 1_000).toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastToolName: 'Read',
+      usage: { toolUses: 2, totalTokens: 128 },
+      activities: [],
+    };
+    const onOpen = vi.fn();
+
+    render(<AgentTimelineMessage message={message} subagentRuns={[run]} onOpenSubagent={onOpen} />);
+
+    expect(screen.getByText('Explore')).toBeInTheDocument();
+    expect(screen.getByText(/2 tools/)).toBeInTheDocument();
+    expect(screen.getByText(/128 tokens/)).toBeInTheDocument();
+    screen.getByRole('button', { name: /open explore output/i }).click();
+    expect(onOpen).toHaveBeenCalledWith('run-1');
   });
 });

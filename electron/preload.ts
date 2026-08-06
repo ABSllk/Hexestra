@@ -52,7 +52,7 @@ const INVOKE_CHANNELS = new Set([
 const EVENT_CHANNELS = new Set([
   'app:windowId', 'app:window:maximized', 'terminal:output', 'terminal:exit',
   'tools:output', 'tools:complete',
-  'agent:message', 'agent:tool-request', 'agent:status',
+  'agent:message', 'agent:tool-request', 'agent:status', 'agent:subagent-update',
   'session:data-changed',
   'browser:state-changed',
   'browser:context-action', 'browser:open-tab',

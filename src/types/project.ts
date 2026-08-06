@@ -1,6 +1,8 @@
 import type { ChatMessage, ClaudePermissionMode, AgentStatus } from './chat';
 import type { AutonomyLevel } from './session';
 import type { ShellProjectState } from '@electron/contracts/shell';
+import type { SubagentRun } from '../../electron/agent-subagent-contract';
+export type { SubagentRun } from '../../electron/agent-subagent-contract';
 export type { ManagedRecordKind } from '@electron/contracts/records';
 export { isManagedRecordKind } from '@electron/contracts/records';
 
@@ -39,6 +41,7 @@ export interface ProjectActivation {
   messages: ChatMessage[];
   activeBranchId: string;
   branches: ConversationBranchSummary[];
+  subagentRuns?: SubagentRun[];
   status: AgentStatus;
   preferences: ProjectPreferences;
   workspace: ProjectWorkspaceState;
@@ -59,6 +62,12 @@ export interface AgentMessageEvent {
 export interface AgentStatusEvent {
   sessionId: string | null;
   status: AgentStatus;
+}
+
+export interface AgentSubagentUpdateEvent {
+  sessionId: string | null;
+  branchId: string;
+  run: SubagentRun;
 }
 
 export interface AgentToolRequestEvent {

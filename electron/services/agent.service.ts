@@ -38,7 +38,9 @@ import {
 import { buildSystemInstructions } from './agent-system-instructions';
 import { buildAgentProjectKnowledge } from './agent-project-knowledge';
 import { AgentStreamScheduler } from './agent-stream-scheduler';
-import { isManagedRecordFileMutation, isReadOnlyAgentTool } from './agent-tool-policy';
+import { SubagentRegistry } from './subagent-registry';
+import type { SubagentRun } from '../agent-subagent-contract';
+import { isManagedRecordFileMutation, isReadOnlyAgentTool, isSubagentSpawnTool } from './agent-tool-policy';
 import {
   buildAskUserQuestionUpdatedInput,
   parseAskUserQuestionInput,
@@ -153,6 +155,9 @@ interface PendingPermission {
   input: Record<string, unknown>;
   toolUseId: string;
   questions?: AskUserQuestion[];
+  agentId?: string;
+  subagentRunId?: string;
+  agentType?: string;
 }
 
 interface AgentStatus {
@@ -185,6 +190,9 @@ class AgentService {
   private lastError: string | null = null;
   private requestCounter = 0;
   private activeSessionId: string | null = null;
+  private subagentRuns: SubagentRun[] = [];
+  private activeSubagentRegistry: SubagentRegistry | null = null;
+  private subagentPersistTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     agentSettingsService.setRuntimeGuard(() => this.abortController !== null);
@@ -264,6 +272,8 @@ class AgentService {
       const mainBranch = createConversationBranch('main', 'Main');
       this.branches = [mainBranch];
       this.activeBranchId = mainBranch.id;
+      this.subagentRuns = [];
+      this.clearSubagentPersistTimer();
       this.lastError = null;
       this.persistAgentState();
       this.setState(this.sdk ? 'ready' : 'loading');
@@ -295,6 +305,7 @@ class AgentService {
   }
 
   private loadProject(sessionId: string) {
+    this.clearSubagentPersistTimer();
     const project = sessionService.getProjectState(sessionId);
     this.activeSessionId = sessionId;
     this.branches = project.agent.branches.map(cloneBranch);
@@ -310,6 +321,7 @@ class AgentService {
       messages: this.chatHistory,
       activeBranchId: this.activeBranchId,
       branches: this.getBranchSummaries(),
+      subagentRuns: this.subagentRuns.map(cloneSubagentRun),
       status,
       preferences: project.preferences,
       workspace: project.workspace,
@@ -346,6 +358,7 @@ class AgentService {
     const branch = this.branches.find((candidate) => candidate.id === this.activeBranchId);
     if (!branch) return;
     branch.messages = this.chatHistory.map(cloneMessage);
+    branch.subagentRuns = this.subagentRuns.map(cloneSubagentRun);
     branch.claudeSessionId = this.claudeSessionId;
     branch.connectionFingerprint = this.connectionFingerprint;
   }
@@ -359,6 +372,7 @@ class AgentService {
     }
     this.activeBranchId = branch.id;
     this.chatHistory = branch.messages.map(cloneMessage);
+    this.subagentRuns = (branch.subagentRuns ?? []).map(cloneSubagentRun);
     this.claudeSessionId = branch.claudeSessionId;
     this.connectionFingerprint = branch.connectionFingerprint;
   }
@@ -393,6 +407,7 @@ class AgentService {
       messages: this.chatHistory,
       activeBranchId: this.activeBranchId,
       branches: this.getBranchSummaries(),
+      subagentRuns: this.subagentRuns.map(cloneSubagentRun),
       status: this.getStatus(sessionId),
     };
   }
@@ -430,6 +445,7 @@ class AgentService {
       messages: this.chatHistory,
       activeBranchId: this.activeBranchId,
       branches: this.getBranchSummaries(),
+      subagentRuns: this.subagentRuns.map(cloneSubagentRun),
       status: this.getStatus(sessionId),
     };
   }
@@ -474,6 +490,9 @@ class AgentService {
         claudeSessionId: canResume ? sourceBranch.claudeSessionId : null,
         connectionFingerprint: canResume ? currentFingerprint : null,
         messages: this.chatHistory.slice(0, sourceIndex).map(cloneMessage),
+        subagentRuns: sourceBranch.subagentRuns
+          .filter((run) => !run.messageId || this.chatHistory.slice(0, sourceIndex).some((message) => message.id === run.messageId))
+          .map(cloneSubagentRun),
       },
     );
     this.branches.push(branch);
@@ -487,6 +506,7 @@ class AgentService {
       messages: this.chatHistory,
       activeBranchId: this.activeBranchId,
       branches: this.getBranchSummaries(),
+      subagentRuns: this.subagentRuns.map(cloneSubagentRun),
       status: this.getStatus(sessionId),
     };
   }
@@ -571,6 +591,9 @@ class AgentService {
     const messageId = `msg-${Date.now()}`;
     let lastAssistantSdkMessageId: string | undefined;
     const timeline = new AgentTimelineBuilder(messageId);
+    const subagentRegistry = new SubagentRegistry(messageId);
+    this.activeSubagentRegistry = subagentRegistry;
+    const pendingSubagentRunIds = new Set<string>();
     const streamScheduler = new AgentStreamScheduler();
     this.emitMessage(sender, {
       id: messageId,
@@ -632,6 +655,7 @@ class AgentService {
             }],
           },
           includePartialMessages: true,
+          forwardSubagentText: true,
           enableFileCheckpointing: true,
           mcpServers: { hexestra: hexestraTools },
           permissionMode,
@@ -661,9 +685,17 @@ class AgentService {
 
       for await (const message of query) {
         this.captureSessionMetadata(message);
-        if (message.type === 'assistant') lastAssistantSdkMessageId = message.uuid;
+        if (message.type === 'assistant' && message.parent_tool_use_id == null) {
+          lastAssistantSdkMessageId = message.uuid;
+        }
 
-        if (timeline.consume(message)) {
+        const changedSubagentRuns = subagentRegistry.consume(message);
+        for (const runId of changedSubagentRuns) pendingSubagentRunIds.add(runId);
+        if (changedSubagentRuns.length > 0) this.mergeSubagentRuns(subagentRegistry.getRuns());
+
+        const mainTimelineChanged = !subagentRegistry.isChildMessage(message) && timeline.consume(message);
+        subagentRegistry.annotateMainTimeline(timeline);
+        if (mainTimelineChanged || changedSubagentRuns.length > 0) {
           streamScheduler.schedule(() => {
             this.emitStreamingMessage(
               sender,
@@ -671,6 +703,8 @@ class AgentService {
               timeline.getText(),
               timeline.snapshot(),
             );
+            this.emitSubagentUpdates(sender, pendingSubagentRunIds);
+            pendingSubagentRunIds.clear();
           });
         }
 
@@ -684,6 +718,12 @@ class AgentService {
       }
 
       timeline.finish();
+      const completedSubagentRuns = subagentRegistry.finish('completed');
+      this.mergeSubagentRuns(subagentRegistry.getRuns());
+      subagentRegistry.annotateMainTimeline(timeline);
+      for (const runId of completedSubagentRuns) pendingSubagentRunIds.add(runId);
+      this.emitSubagentUpdates(sender, pendingSubagentRunIds);
+      pendingSubagentRunIds.clear();
       streamScheduler.cancel();
       const finalContent = timeline.getText().trim() || '(Claude returned no text response)';
       const finalMessage: PersistedChatMessage = {
@@ -704,11 +744,18 @@ class AgentService {
       streamScheduler.cancel();
       const message = toErrorMessage(error);
       const cancelled = this.abortController?.signal.aborted;
+      const terminalSubagentStatus = cancelled ? 'stopped' : 'failed';
+      const failedSubagentRuns = subagentRegistry.finish(terminalSubagentStatus);
+      this.mergeSubagentRuns(subagentRegistry.getRuns());
+      for (const runId of failedSubagentRuns) pendingSubagentRunIds.add(runId);
+      this.emitSubagentUpdates(sender, pendingSubagentRunIds);
+      pendingSubagentRunIds.clear();
       this.lastError = cancelled ? null : message;
       if (isAgentAuthenticationError(message)) this.authenticated = false;
       const failureContent = cancelled ? 'Request cancelled.' : formatAgentFailure(message);
       timeline.addText(failureContent, cancelled ? 'complete' : 'error');
       timeline.finish();
+      subagentRegistry.annotateMainTimeline(timeline);
       const failureMessage: PersistedChatMessage = {
         id: messageId,
         role: 'assistant',
@@ -724,6 +771,7 @@ class AgentService {
       this.setState(cancelled ? 'ready' : 'error');
     } finally {
       streamScheduler.cancel();
+      if (this.activeSubagentRegistry === subagentRegistry) this.activeSubagentRegistry = null;
       this.abortController = null;
       this.resolvePermissionsForWebContents(sender.id, false);
       this.emitStatus();
@@ -752,6 +800,14 @@ class AgentService {
     selectedTargetOutOfScope: boolean,
   ): CanUseTool {
     return async (toolName, input, options): Promise<PermissionResult> => {
+      const subagentContext = this.getSubagentContext(options.agentID);
+      if (isSubagentSpawnTool(toolName)) {
+        return {
+          behavior: 'allow',
+          updatedInput: input,
+          toolUseID: options.toolUseID,
+        };
+      }
       if (toolName === 'AskUserQuestion') {
         let questions: AskUserQuestion[];
         try {
@@ -776,6 +832,7 @@ class AgentService {
             toolName: 'AskUserQuestion',
             questions,
             createdAt: new Date().toISOString(),
+            ...subagentContext,
           },
         });
 
@@ -787,6 +844,7 @@ class AgentService {
           input,
           toolUseId: options.toolUseID,
           questions,
+          ...subagentContext,
         });
         this.setState(this.abortController ? 'running' : 'ready');
         return result;
@@ -835,6 +893,7 @@ class AgentService {
           description: describeToolUse(toolName, input),
           riskLevel: isReadOnlyAgentTool(toolName) ? 'read' : 'write',
           createdAt: new Date().toISOString(),
+          ...subagentContext,
         },
       });
 
@@ -846,6 +905,7 @@ class AgentService {
         input,
         toolUseId: options.toolUseID,
         timeoutMs: 5 * 60_000,
+        ...subagentContext,
       });
       this.setState(this.abortController ? 'running' : 'ready');
       return result;
@@ -861,6 +921,9 @@ class AgentService {
     toolUseId: string;
     questions?: AskUserQuestion[];
     timeoutMs?: number;
+    agentId?: string;
+    subagentRunId?: string;
+    agentType?: string;
   }) {
     return new Promise<PermissionResult>((resolve) => {
       let settled = false;
@@ -890,9 +953,20 @@ class AgentService {
         input: input.input,
         toolUseId: input.toolUseId,
         questions: input.questions,
+        agentId: input.agentId,
+        subagentRunId: input.subagentRunId,
+        agentType: input.agentType,
       });
       this.emitStatus();
     });
+  }
+
+  private getSubagentContext(agentId?: string) {
+    const run = agentId ? this.activeSubagentRegistry?.getRunForAgent(agentId) : undefined;
+    return {
+      ...(agentId ? { agentId } : {}),
+      ...(run ? { subagentRunId: run.id, agentType: run.agentType } : {}),
+    };
   }
 
   private resolvePermission(requestId: string, approved: boolean, webContentsId?: number) {
@@ -994,6 +1068,48 @@ class AgentService {
         message,
       });
     }
+  }
+
+  private emitSubagentUpdates(sender: WebContents, runIds: Set<string>) {
+    if (sender.isDestroyed()) return;
+    for (const runId of runIds) {
+      const run = this.subagentRuns.find((candidate) => candidate.id === runId);
+      if (!run) continue;
+      sender.send('agent:subagent-update', {
+        sessionId: this.activeSessionId,
+        branchId: this.activeBranchId,
+        run: cloneSubagentRun(run),
+      });
+    }
+  }
+
+  private mergeSubagentRuns(runs: SubagentRun[]) {
+    if (runs.length === 0) return;
+    const byId = new Map(this.subagentRuns.map((run) => [run.id, run]));
+    for (const run of runs) byId.set(run.id, cloneSubagentRun(run));
+    this.subagentRuns = [...byId.values()];
+    this.scheduleSubagentPersistence(runs.some(isTerminalSubagentRun));
+  }
+
+  private scheduleSubagentPersistence(immediate = false) {
+    if (!this.activeSessionId) return;
+    if (immediate) {
+      this.clearSubagentPersistTimer();
+      this.persistAgentState();
+      return;
+    }
+    if (this.subagentPersistTimer) return;
+    this.subagentPersistTimer = setTimeout(() => {
+      this.subagentPersistTimer = null;
+      this.persistAgentState();
+    }, 750);
+    this.subagentPersistTimer.unref?.();
+  }
+
+  private clearSubagentPersistTimer() {
+    if (!this.subagentPersistTimer) return;
+    clearTimeout(this.subagentPersistTimer);
+    this.subagentPersistTimer = null;
   }
 
   private setState(state: AgentState) {
@@ -1110,7 +1226,27 @@ function cloneBranch(branch: PersistedConversationBranch): PersistedConversation
   return {
     ...branch,
     messages: branch.messages.map(cloneMessage),
+    subagentRuns: (branch.subagentRuns ?? []).map(cloneSubagentRun),
   };
+}
+
+function cloneSubagentRun(run: SubagentRun): SubagentRun {
+  return {
+    ...run,
+    usage: run.usage ? { ...run.usage } : undefined,
+    activities: run.activities.map((activity) => ({
+      ...activity,
+      input: activity.input ? { ...activity.input } : undefined,
+    })),
+  };
+}
+
+function isTerminalSubagentRun(run: SubagentRun) {
+  return run.status === 'completed'
+    || run.status === 'failed'
+    || run.status === 'stopped'
+    || run.status === 'killed'
+    || run.status === 'interrupted';
 }
 
 function branchTitle(content: string, index: number) {
