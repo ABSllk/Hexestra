@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { sessionService } from '../session.service';
 import { syncTargetsService } from '../sync-targets.service';
 import type { AgentToolContext } from './context';
+import { createAgentTool } from './contract';
 
 const assetRegistrationSchema = z.discriminatedUnion('type', [
   z.object({
@@ -38,9 +39,9 @@ const assetRegistrationSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
-export function createProjectAgentTools({ sdk, sender, sessionId, selectedTargetId }: AgentToolContext) {
+export function createProjectAgentTools({ sender, sessionId, selectedTargetId }: AgentToolContext) {
   return [
-    sdk.tool(
+    createAgentTool(
       'target_list',
       'Read the persisted host and non-host asset inventory for the active engagement.',
       {},
@@ -52,7 +53,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         }, null, 2) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'scope_update',
       'Define or refine the active engagement scope from operator-provided root targets and verified asset relationships. Subdomains of an authorized root and hosts directly resolved from them may be included. Never add unrelated third-party, CDN, or ambiguous infrastructure without operator confirmation.',
       {
@@ -77,7 +78,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: JSON.stringify({ scope: updated.scope, rationale }, null, 2) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'asset_register',
       'Register discovered Hosts, Domains, and Web Apps in the active engagement. '
         + 'Use this after interpreting tool evidence; it atomically upserts stable identities, '
@@ -107,7 +108,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'target_update_summary',
       'Persist a concise evidence-based AI summary for a target.',
       { targetId: z.string(), summary: z.string().max(4000) },
@@ -118,7 +119,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: `Updated summary for ${targetId}` }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'asset_update_summary',
       'Persist a concise evidence-based AI summary for a non-host asset.',
       { assetId: z.string(), summary: z.string().max(4000) },
@@ -129,7 +130,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: `Updated summary for ${assetId}` }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'evidence_list',
       'Read Hexestra-managed evidence records for the active engagement.',
       {},
@@ -138,7 +139,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: JSON.stringify(sessionService.listEvidence(sessionId), null, 2) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'evidence_upsert',
       'The only supported write path for raw Evidence. Invoke and follow hexestra-records before storing verbatim output from a named tool or command; never store interpretation, leads, or conclusions as Evidence.',
       {
@@ -157,7 +158,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: `Saved evidence ${updated.id}` }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'finding_list',
       'Read reusable project knowledge recorded as Findings for the active engagement.',
       {},
@@ -166,7 +167,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: JSON.stringify(sessionService.listFindings(sessionId), null, 2) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'finding_upsert',
       'The only supported write path for Findings. Invoke and follow hexestra-records to classify, link, and verify distilled project knowledge; do not use this for raw output or a validated Vulnerability.',
       {
@@ -186,7 +187,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: `Saved finding ${updated.id}` }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'vulnerability_list',
       'Read validated vulnerability records for the active engagement.',
       {},
@@ -195,7 +196,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: JSON.stringify(sessionService.listVulnerabilities(sessionId), null, 2) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'vulnerability_upsert',
       'The only supported write path for validated weaknesses. Invoke and follow hexestra-records first; link the real affected asset and supporting records, and include independently executable numbered reproduction steps and observable results.',
       {
@@ -220,7 +221,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: `Saved vulnerability ${updated.id}` }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'report_list',
       'Read Hexestra-managed penetration-test reports for the active engagement.',
       {},
@@ -229,7 +230,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: JSON.stringify(sessionService.listReports(sessionId), null, 2) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'report_upsert',
       'The only supported write path for Markdown reports. Invoke and follow the native project Skill hexestra-report first, then create or update a draft/final report and link the Finding and Vulnerability IDs it summarizes; never write report files under reports/.',
       {
@@ -248,7 +249,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: `Saved report ${updated.id}` }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'task_list',
       'Read the canonical penetration-test task tree parsed from ptt.md.',
       {},
@@ -257,7 +258,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: JSON.stringify(await sessionService.listTasks(sessionId), null, 2) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'task_upsert',
       'Create or update a task in the canonical ptt.md task tree. Use parentId for one nested step level.',
       {
@@ -275,7 +276,7 @@ export function createProjectAgentTools({ sdk, sender, sessionId, selectedTarget
         return { content: [{ type: 'text', text: `Saved task ${updated.id}` }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'task_update_status',
       'Update a penetration-test task after evidence confirms its state.',
       {

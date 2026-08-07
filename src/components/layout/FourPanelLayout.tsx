@@ -24,7 +24,7 @@ export function FourPanelLayout({
         <PanelGroup direction="horizontal" autoSaveId="hexestra-top-columns">
           {/* Left panel */}
           <Panel defaultSize={18} minSize={12} maxSize={35} collapsible>
-            <div className="h-full bg-bg-secondary border-r border-surface overflow-hidden">
+            <div className="h-full min-w-0 overflow-hidden border-r border-surface bg-bg-secondary">
               {leftPanel}
             </div>
           </Panel>
@@ -39,7 +39,7 @@ export function FourPanelLayout({
 
           {/* Center panel */}
           <Panel defaultSize={57} minSize={30}>
-            <div className="h-full bg-bg-primary overflow-hidden">
+            <div className="h-full min-w-0 overflow-hidden bg-bg-primary">
               {centerPanel}
             </div>
           </Panel>
@@ -54,7 +54,7 @@ export function FourPanelLayout({
 
           {/* Right panel */}
           <Panel defaultSize={25} minSize={15} maxSize={40} collapsible>
-            <div className="h-full bg-bg-secondary border-l border-surface overflow-hidden">
+            <div className="h-full min-w-0 overflow-hidden border-l border-surface bg-bg-secondary">
               {rightPanel}
             </div>
           </Panel>

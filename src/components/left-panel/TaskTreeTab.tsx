@@ -73,11 +73,11 @@ export function TaskTreeTab() {
                   className={cn('text-text-muted transition-transform', isExpanded && 'rotate-90')}
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-xs font-semibold text-text-secondary">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-xs font-semibold text-text-secondary">
                       {meta.label}
                     </span>
-                    <span className="font-mono text-2xs text-text-muted">{meta.mitreId}</span>
+                    <span className="shrink-0 font-mono text-2xs text-text-muted">{meta.mitreId}</span>
                   </div>
                 </div>
                 {stageTasks.length > 0 && (

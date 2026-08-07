@@ -7,7 +7,6 @@ import {
   detectMitmproxyRuntime,
   inspectMitmdump,
   listMitmdumpCandidates,
-  MITMPROXY_VERSION,
   parseMitmdumpVersion,
   resolveMitmdumpPath,
 } from './mitmproxy-runtime';
@@ -89,10 +88,11 @@ describe('mitmproxy runtime discovery', () => {
     expect(status).toMatchObject({ status: 'missing', source: 'manual', executablePath: expect.stringContaining('missing-mitmdump') });
   });
 
-  it('reports exact version compatibility', async () => {
+  it('accepts any executable version that responds to version detection', async () => {
     const candidate = { executablePath: '/tmp/mitmdump', source: 'manual' as const };
-    expect(await inspectMitmdump(candidate, async () => `Mitmproxy: ${MITMPROXY_VERSION}`)).toMatchObject({ status: 'ready', version: MITMPROXY_VERSION });
-    expect(await inspectMitmdump(candidate, async () => 'Mitmproxy: 11.0.0')).toMatchObject({ status: 'incompatible', version: '11.0.0' });
+    expect(await inspectMitmdump(candidate, async () => 'Mitmproxy: 12.2.3')).toMatchObject({ status: 'ready', version: '12.2.3' });
+    expect(await inspectMitmdump(candidate, async () => 'Mitmproxy: 11.0.0')).toMatchObject({ status: 'ready', version: '11.0.0' });
+    expect(await inspectMitmdump(candidate, async () => 'mitmdump development build')).toMatchObject({ status: 'ready', version: null });
     expect(parseMitmdumpVersion('mitmdump 12.2.3')).toBe('12.2.3');
   });
 });

@@ -3,14 +3,11 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-export const MITMPROXY_VERSION = '12.2.3';
-
-export type MitmproxyRuntimeStatus = 'ready' | 'missing' | 'incompatible';
+export type MitmproxyRuntimeStatus = 'ready' | 'missing';
 export type MitmproxyRuntimeSource = 'manual' | 'bundled' | 'environment' | 'path' | 'common' | 'none';
 
 export interface MitmproxyRuntimeDiagnostic {
   status: MitmproxyRuntimeStatus;
-  requiredVersion: string;
   executablePath: string | null;
   version: string | null;
   source: MitmproxyRuntimeSource;
@@ -114,27 +111,20 @@ export async function inspectMitmdump(
 ): Promise<MitmproxyRuntimeDiagnostic> {
   if (!candidate) {
     return {
-      status: 'missing', requiredVersion: MITMPROXY_VERSION, executablePath: null,
-      version: null, source: 'none', error: `mitmdump ${MITMPROXY_VERSION} was not found`,
+      status: 'missing', executablePath: null,
+      version: null, source: 'none', error: 'mitmdump was not found',
     };
   }
   try {
     const output = await runVersion(candidate.executablePath);
     const version = parseMitmdumpVersion(output);
-    if (version !== MITMPROXY_VERSION) {
-      return {
-        status: 'incompatible', requiredVersion: MITMPROXY_VERSION,
-        executablePath: candidate.executablePath, version, source: candidate.source,
-        error: `Hexestra requires mitmdump ${MITMPROXY_VERSION}; found ${version ?? 'unknown'}`,
-      };
-    }
     return {
-      status: 'ready', requiredVersion: MITMPROXY_VERSION,
+      status: 'ready',
       executablePath: candidate.executablePath, version, source: candidate.source, error: null,
     };
   } catch (error) {
     return {
-      status: 'missing', requiredVersion: MITMPROXY_VERSION,
+      status: 'missing',
       executablePath: candidate.executablePath, version: null, source: candidate.source,
       error: `Unable to verify mitmdump: ${errorMessage(error)}`,
     };

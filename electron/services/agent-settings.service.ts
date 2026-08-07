@@ -4,6 +4,8 @@ import path from 'path';
 import type {
   AgentConnectionSettings,
   AgentConnectionSettingsInput,
+  AgentSettingsContainer,
+  AgentSettingsContainerInput,
   ClaudeSettingSource,
 } from '../contracts/agent-settings';
 import { diagnoseAgentConnection } from './wsl-agent-runtime';
@@ -18,6 +20,14 @@ export function createDefaultAgentSettings(platform = process.platform): AgentCo
     claudeExecutable: platform === 'win32' ? '/usr/bin/claude' : '',
     model: null,
     settingSources: [...SETTING_SOURCES],
+  };
+}
+
+export function createDefaultAgentSettingsContainer(platform = process.platform): AgentSettingsContainer {
+  return {
+    version: 2,
+    defaultBackendId: 'claude',
+    backends: { claude: createDefaultAgentSettings(platform) },
   };
 }
 
@@ -46,6 +56,24 @@ export function normalizeAgentSettings(
   };
 }
 
+export function normalizeAgentSettingsContainer(
+  value: unknown,
+  platform = process.platform,
+): AgentSettingsContainer {
+  const defaults = createDefaultAgentSettingsContainer(platform);
+  if (!isRecord(value)) return defaults;
+  const rawClaude = isRecord(value.backends) && isRecord(value.backends.claude)
+    ? value.backends.claude
+    : value;
+  return {
+    version: 2,
+    defaultBackendId: 'claude',
+    backends: {
+      claude: normalizeAgentSettings(rawClaude, platform),
+    },
+  };
+}
+
 export function agentConnectionFingerprint(settings: AgentConnectionSettings) {
   return settings.executionMode === 'wsl'
     ? `wsl:${settings.wslDistribution}:${settings.claudeExecutable}`
@@ -53,7 +81,7 @@ export function agentConnectionFingerprint(settings: AgentConnectionSettings) {
 }
 
 export class AgentSettingsService {
-  private settings: AgentConnectionSettings | null = null;
+  private settings: AgentSettingsContainer | null = null;
   private runtimeGuard: () => boolean = () => false;
 
   constructor(private readonly explicitFilePath?: string, registerIpc = true) {
@@ -69,25 +97,29 @@ export class AgentSettingsService {
     try {
       const file = this.filePath();
       this.settings = fs.existsSync(file)
-        ? normalizeAgentSettings(JSON.parse(fs.readFileSync(file, 'utf8')))
-        : createDefaultAgentSettings();
+        ? normalizeAgentSettingsContainer(JSON.parse(fs.readFileSync(file, 'utf8')))
+        : createDefaultAgentSettingsContainer();
     } catch (error) {
       console.warn('[Agent Settings] Falling back to defaults:', error);
-      this.settings = createDefaultAgentSettings();
+      this.settings = createDefaultAgentSettingsContainer();
     }
     return cloneSettings(this.settings);
   }
 
-  updateSettings(input: AgentConnectionSettingsInput | unknown) {
+  getClaudeSettings() {
+    return cloneClaudeSettings(this.getSettings().backends.claude);
+  }
+
+  updateSettings(input: AgentSettingsContainerInput | unknown) {
     if (this.runtimeGuard()) throw new Error('Stop the active Claude request before changing Agent settings');
-    const settings = normalizeAgentSettings(input);
+    const settings = normalizeAgentSettingsContainer(input);
     this.persist(settings);
     this.settings = settings;
     return cloneSettings(settings);
   }
 
   resetSettings() {
-    return this.updateSettings(createDefaultAgentSettings());
+    return this.updateSettings(createDefaultAgentSettingsContainer());
   }
 
   private registerHandlers() {
@@ -95,12 +127,14 @@ export class AgentSettingsService {
     ipcMain.handle('agent:settings:update', (_event, input: unknown) => this.updateSettings(input));
     ipcMain.handle('agent:settings:reset', () => this.resetSettings());
     ipcMain.handle('agent:settings:test', (_event, input?: unknown) => {
-      const settings = input === undefined ? this.getSettings() : normalizeAgentSettings(input);
+      const settings = input === undefined
+        ? this.getClaudeSettings()
+        : normalizeAgentSettingsContainer(input).backends.claude;
       return diagnoseAgentConnection(settings);
     });
   }
 
-  private persist(settings: AgentConnectionSettings) {
+  private persist(settings: AgentSettingsContainer) {
     const file = this.filePath();
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const temporary = `${file}.tmp`;
@@ -114,7 +148,14 @@ export class AgentSettingsService {
   }
 }
 
-function cloneSettings(settings: AgentConnectionSettings): AgentConnectionSettings {
+function cloneSettings(settings: AgentSettingsContainer): AgentSettingsContainer {
+  return {
+    ...settings,
+    backends: { claude: cloneClaudeSettings(settings.backends.claude) },
+  };
+}
+
+function cloneClaudeSettings(settings: AgentConnectionSettings): AgentConnectionSettings {
   return { ...settings, settingSources: [...settings.settingSources] };
 }
 

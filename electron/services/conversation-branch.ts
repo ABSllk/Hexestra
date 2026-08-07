@@ -1,4 +1,5 @@
 import type { PersistedChatMessage } from './project-state';
+import type { AgentBackendRuntimeState } from '../contracts/agent-runtime';
 
 export interface BranchResumeOptions {
   sessionId?: string;
@@ -9,21 +10,20 @@ export interface BranchResumeOptions {
 export function resolveBranchResumeOptions(
   messages: PersistedChatMessage[],
   sourceIndex: number,
-  claudeSessionId: string | null,
-  sourceFingerprint: string | null,
+  runtime: AgentBackendRuntimeState | null,
   currentFingerprint: string,
 ): BranchResumeOptions {
   const precedingAssistant = [...messages.slice(0, sourceIndex)]
     .reverse()
-    .find((message) => message.role === 'assistant' && message.sdkMessageId);
+    .find((message) => message.role === 'assistant' && message.backendMessageId);
   const canResume = Boolean(
-    precedingAssistant?.sdkMessageId
-    && claudeSessionId
-    && sourceFingerprint === currentFingerprint,
+    precedingAssistant?.backendMessageId
+    && runtime?.sessionId
+    && runtime.connectionFingerprint === currentFingerprint,
   );
   return {
-    sessionId: canResume ? claudeSessionId ?? undefined : undefined,
-    resumeAt: canResume ? precedingAssistant?.sdkMessageId : undefined,
+    sessionId: canResume ? runtime?.sessionId ?? undefined : undefined,
+    resumeAt: canResume ? precedingAssistant?.backendMessageId : undefined,
     fork: canResume,
   };
 }

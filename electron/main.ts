@@ -113,7 +113,7 @@ app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.hexestra.app');
   appSettingsService.applyNativeTheme();
   nativeTheme.on('updated', () => appSettingsService.syncNativeTheme());
-  void agentService.initSDK();
+  void agentService.initialize();
   installApplicationMenu();
   createWindow();
 });

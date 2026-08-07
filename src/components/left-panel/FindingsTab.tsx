@@ -41,8 +41,8 @@ export function FindingsTab({ showHeader = true, onRecordContextMenu }: {
         onContextMenu={(event) => onRecordContextMenu?.(event, finding.id)}
         className="ui-hover-row mb-1 w-full px-2.5 py-2 text-left"
       >
-        <div className="mb-1 flex items-start justify-between gap-2"><span className="text-2xs font-medium leading-relaxed text-text-primary">{finding.title}</span><span className="font-mono text-[8px] uppercase text-accent-teal">{finding.kind}</span></div>
-        <div className="flex items-center justify-between font-mono text-[8px] uppercase text-text-muted"><span className="truncate">{finding.assetId ? nodeById.get(finding.assetId)?.label ?? finding.assetId : 'Project'}</span><span>{finding.confidence} / {finding.status}</span></div>
+        <div className="mb-1 flex min-w-0 items-start justify-between gap-2"><span className="min-w-0 flex-1 truncate text-2xs font-medium leading-relaxed text-text-primary">{finding.title}</span><span className="shrink-0 font-mono text-[8px] uppercase text-accent-teal">{finding.kind}</span></div>
+        <div className="flex min-w-0 items-center justify-between gap-2 font-mono text-[8px] uppercase text-text-muted"><span className="min-w-0 truncate">{finding.assetId ? nodeById.get(finding.assetId)?.label ?? finding.assetId : 'Project'}</span><span className="shrink-0">{finding.confidence} / {finding.status}</span></div>
       </button>)}
     </div>
   </div>;

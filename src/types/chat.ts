@@ -2,6 +2,12 @@ import type { AutonomyLevel } from './session';
 import type { ToolRequest } from '../../electron/agent-interaction-contract';
 import type { AgentAttachmentMetadata } from '../../electron/agent-attachment-contract';
 import type { AgentContextRef } from '../../electron/agent-context-contract';
+import type {
+  AgentActivity,
+  AgentPermissionMode,
+  AgentState,
+  AgentStatus,
+} from '../../electron/contracts/agent-runtime';
 export type {
   SubagentActivity,
   SubagentRun,
@@ -21,31 +27,18 @@ export type { AgentAttachment, AgentAttachmentMetadata, AgentAttachmentPicker } 
 export type { AgentContextRef } from '../../electron/agent-context-contract';
 export { agentContextRefKey } from '../../electron/agent-context-contract';
 export { attachmentMetadata } from '../../electron/agent-attachment-contract';
+export type {
+  AgentActivity,
+  AgentBackendCapabilities,
+  AgentBackendId,
+  AgentBackendRuntimeState,
+  AgentPermissionMode,
+  AgentRunEvent,
+  AgentStatus,
+} from '../../electron/contracts/agent-runtime';
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool_request';
 export type MessageStatus = 'sending' | 'streaming' | 'complete' | 'error';
-export type ClaudePermissionMode = 'default' | 'auto' | 'bypassPermissions';
-export type AgentActivityKind = 'text' | 'thinking' | 'tool';
-export type AgentActivityStatus = 'streaming' | 'running' | 'complete' | 'error';
-
-export interface AgentActivity {
-  id: string;
-  kind: AgentActivityKind;
-  status: AgentActivityStatus;
-  content?: string;
-  toolUseId?: string;
-  toolName?: string;
-  label?: string;
-  summary?: string;
-  input?: Record<string, unknown>;
-  output?: string;
-  outputSummary?: string;
-  elapsedSeconds?: number;
-  subagentRunId?: string;
-  agentType?: string;
-  subagentDescription?: string;
-}
-
 export interface ChatMessage {
   id: string;
   role: MessageRole;
@@ -55,7 +48,7 @@ export interface ChatMessage {
   activities?: AgentActivity[];
   hasToolRequest?: boolean;
   toolRequest?: ToolRequest;
-  sdkMessageId?: string;
+  backendMessageId?: string;
   attachments?: AgentAttachmentMetadata[];
   contextRefs?: AgentContextRef[];
 }
@@ -75,26 +68,4 @@ export interface ContextTab {
   type: 'terminal' | 'editor' | 'browser' | 'traffic' | 'report';
   contentPreview: string;
   isShared: boolean;
-}
-
-export type AgentState =
-  | 'loading'
-  | 'ready'
-  | 'running'
-  | 'awaiting_approval'
-  | 'awaiting_input'
-  | 'error';
-
-export interface AgentStatus {
-  state: AgentState;
-  sdkAvailable: boolean;
-  backend: 'claude-agent-sdk';
-  authenticated: boolean | null;
-  model: string | null;
-  claudeSessionId: string | null;
-  pendingRequests: number;
-  historyLength: number;
-  lastError: string | null;
-  executionMode: 'native' | 'wsl';
-  runtimeLabel: string;
 }

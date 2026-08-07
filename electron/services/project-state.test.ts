@@ -24,7 +24,11 @@ describe('project state', () => {
       agent: {
         activeBranchId: 'branch-b',
         branches: [createConversationBranch('branch-b', 'Branch B', {
-          claudeSessionId: 'claude-project-b',
+          runtime: {
+            backendId: 'claude',
+            sessionId: 'claude-project-b',
+            connectionFingerprint: 'native:test',
+          },
           messages: [{
             id: 'message-b',
             role: 'assistant',
@@ -39,7 +43,24 @@ describe('project state', () => {
     expect(projectA.preferences.permissionMode).toBe('default');
     expect(projectA.agent.branches[0].messages).toEqual([]);
     expect(projectB.preferences.permissionMode).toBe('auto');
-    expect(projectB.agent.branches[0].claudeSessionId).toBe('claude-project-b');
+    expect(projectB.agent.branches[0].runtime?.sessionId).toBe('claude-project-b');
+  });
+
+  it('keeps a branch backend identity independent of Claude runtime fields', () => {
+    const branch = createConversationBranch('codex-branch', 'Future backend', { backendId: 'codex' });
+    expect(branch.backendId).toBe('codex');
+    expect(branch.runtime).toBeNull();
+  });
+
+  it('maps the former Claude SDK backend label during migration', () => {
+    const state = normalizeProjectState({
+      version: 5,
+      agent: {
+        activeBranchId: 'main',
+        branches: [{ id: 'main', title: 'Main', backendId: 'claude-agent-sdk', messages: [] }],
+      },
+    });
+    expect(state.agent.branches[0].backendId).toBe('claude');
   });
 
   it('normalizes interrupted timelines and removes transient tab data', () => {
@@ -81,7 +102,7 @@ describe('project state', () => {
 
     expect(state.agent.branches[0].messages[0]).toMatchObject({
       status: 'complete',
-      sdkMessageId: 'sdk-message-1',
+      backendMessageId: 'sdk-message-1',
     });
     expect(state.agent.branches[0].messages[0].activities?.[0])
       .toMatchObject({ status: 'complete' });
@@ -185,7 +206,7 @@ describe('project state', () => {
       },
     });
 
-    expect(migrated.version).toBe(5);
+    expect(migrated.version).toBe(6);
     expect(migrated.shells).toEqual({ profiles: [], listeners: [] });
     expect(migrated.workspace.tabs[0].data).toEqual({ managedShell: true, shellProfileId: 'profile-1' });
   });
@@ -217,7 +238,7 @@ describe('project state', () => {
       workspace: { tabs: [] },
     });
 
-    expect(migrated.version).toBe(5);
+    expect(migrated.version).toBe(6);
     expect(migrated.agent.branches[0].subagentRuns[0]).toMatchObject({
       id: 'run-1',
       status: 'interrupted',

@@ -43,18 +43,18 @@ export function TargetsTab() {
               selectedNodeId === node.id ? 'border-l-2 border-l-accent-blue bg-accent-blue/10' : ''
             }`}
           >
-            <div className="mb-1 flex items-center justify-between">
-              <span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span>
-              <StatusBadge status={node.status} />
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5">
+              <span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span>
+              <StatusBadge status={node.status} className="shrink-0" />
             </div>
-            <div className="flex items-center gap-3 text-2xs text-text-muted">
-              <span className="uppercase text-accent-teal">{node.type}</span>
-              <span className="min-w-0 truncate">
+            <div className="flex min-w-0 items-center gap-2 text-2xs text-text-muted">
+              <span className="shrink-0 uppercase text-accent-teal">{node.type}</span>
+              <span className="min-w-0 flex-1 truncate">
                 {target?.ip ?? assetPrimaryValue(asset) ?? node.key ?? node.label}
               </span>
-              {node.portCount > 0 && <span>{node.portCount} ports</span>}
+              {node.portCount > 0 && <span className="shrink-0">{node.portCount} ports</span>}
               {node.vulnCount > 0 && (
-                <span className="font-medium text-severity-high">{node.vulnCount} vulns</span>
+                <span className="shrink-0 font-medium text-severity-high">{node.vulnCount} vulns</span>
               )}
             </div>
           </button>

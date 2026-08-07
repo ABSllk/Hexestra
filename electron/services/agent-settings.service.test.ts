@@ -12,6 +12,7 @@ import {
   AgentSettingsService,
   agentConnectionFingerprint,
   createDefaultAgentSettings,
+  normalizeAgentSettingsContainer,
   normalizeAgentSettings,
 } from './agent-settings.service';
 
@@ -42,6 +43,31 @@ describe('Agent settings', () => {
     expect(normalizeAgentSettings({ executionMode: 'native' }, 'win32').claudeExecutable).toBe('');
   });
 
+  it('migrates the legacy flat Claude settings file into the backend container', () => {
+    const migrated = normalizeAgentSettingsContainer({
+      version: 1,
+      executionMode: 'native',
+      wslDistribution: 'legacy-distro',
+      claudeExecutable: '/opt/claude',
+      model: 'legacy-model',
+      settingSources: ['project'],
+    }, 'win32');
+    expect(migrated).toEqual({
+      version: 2,
+      defaultBackendId: 'claude',
+      backends: {
+        claude: {
+          version: 1,
+          executionMode: 'native',
+          wslDistribution: 'legacy-distro',
+          claudeExecutable: '/opt/claude',
+          model: 'legacy-model',
+          settingSources: ['project'],
+        },
+      },
+    });
+  });
+
   it('persists settings atomically and returns isolated snapshots', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-agent-settings-'));
     temporaryDirectories.push(directory);
@@ -56,14 +82,14 @@ describe('Agent settings', () => {
       model: 'claude-sonnet-4-5',
       settingSources: ['user', 'project'],
     });
-    updated.settingSources.length = 0;
+    updated.backends.claude.settingSources.length = 0;
 
-    expect(service.getSettings().settingSources).toEqual(['user', 'project']);
+    expect(service.getSettings().backends.claude.settingSources).toEqual(['user', 'project']);
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({
-      wslDistribution: 'Kali-Linux',
-      model: 'claude-sonnet-4-5',
+      version: 2,
+      backends: { claude: { wslDistribution: 'Kali-Linux', model: 'claude-sonnet-4-5' } },
     });
-    expect(agentConnectionFingerprint(service.getSettings()))
+    expect(agentConnectionFingerprint(service.getClaudeSettings()))
       .toBe(executionMode === 'wsl'
         ? 'wsl:Kali-Linux:/usr/local/bin/claude'
         : 'native:/usr/local/bin/claude');
@@ -78,6 +104,6 @@ describe('Agent settings', () => {
     service.updateSettings({ executionMode: 'native', model: 'configured-model' });
 
     expect(JSON.parse(fs.readFileSync(path.join(directory, 'agent-settings.json'), 'utf8')))
-      .toMatchObject({ model: 'configured-model' });
+      .toMatchObject({ version: 2, backends: { claude: { model: 'configured-model' } } });
   });
 });

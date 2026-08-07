@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type {
   AgentConnectionDiagnostic,
   AgentConnectionSettings,
+  AgentSettingsContainer,
   AgentExecutionMode,
   ClaudeSettingSource,
 } from '@electron/contracts/agent-settings';
@@ -64,8 +65,8 @@ export function SettingsTab() {
 
 function ConnectionSettings() {
   const { t } = useI18n();
-  const [settings, setSettings] = useState<AgentConnectionSettings | null>(null);
-  const [saved, setSaved] = useState<AgentConnectionSettings | null>(null);
+  const [settings, setSettings] = useState<AgentSettingsContainer | null>(null);
+  const [saved, setSaved] = useState<AgentSettingsContainer | null>(null);
   const [diagnostic, setDiagnostic] = useState<AgentConnectionDiagnostic | null>(null);
   const [busy, setBusy] = useState<'save' | 'test' | 'reset' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,9 +74,10 @@ function ConnectionSettings() {
 
   useEffect(() => {
     let active = true;
-    void window.hexestra.invoke<AgentConnectionSettings>('agent:settings:get')
-      .then((value) => {
+    void window.hexestra.invoke<AgentSettingsContainer>('agent:settings:get')
+      .then((raw) => {
         if (!active) return;
+        const value = normalizeSettingsPayload(raw);
         setSettings(value);
         setSaved(value);
       })
@@ -87,14 +89,20 @@ function ConnectionSettings() {
     void window.hexestra.invoke<PlatformCapabilities>('app:getCapabilities').then(setCapabilities).catch(() => setCapabilities(null));
   }, []);
 
+  const claude = settings?.backends.claude;
+  const updateClaude = (patch: Partial<NonNullable<typeof claude>>) => setSettings((current) => current ? {
+    ...current,
+    backends: { ...current.backends, claude: { ...current.backends.claude, ...patch } },
+  } : current);
+
   const updateMode = (executionMode: AgentExecutionMode) => {
-    setSettings((current) => current ? {
-      ...current,
+    if (!claude) return;
+    updateClaude({
       executionMode,
       claudeExecutable: executionMode === 'wsl'
-        ? (current.executionMode === 'wsl' ? current.claudeExecutable : '/usr/bin/claude')
-        : (current.executionMode === 'native' ? current.claudeExecutable : ''),
-    } : current);
+        ? (claude.executionMode === 'wsl' ? claude.claudeExecutable : '/usr/bin/claude')
+        : (claude.executionMode === 'native' ? claude.claudeExecutable : ''),
+    });
     setDiagnostic(null);
   };
 
@@ -103,7 +111,7 @@ function ConnectionSettings() {
     setBusy('save');
     setError(null);
     try {
-      const value = await window.hexestra.invoke<AgentConnectionSettings>('agent:settings:update', settings);
+      const value = await window.hexestra.invoke<AgentSettingsContainer>('agent:settings:update', settings);
       setSettings(value);
       setSaved(value);
       await useChatStore.getState().refreshStatus();
@@ -131,7 +139,7 @@ function ConnectionSettings() {
     setBusy('reset');
     setError(null);
     try {
-      const value = await window.hexestra.invoke<AgentConnectionSettings>('agent:settings:reset');
+      const value = await window.hexestra.invoke<AgentSettingsContainer>('agent:settings:reset');
       setSettings(value);
       setSaved(value);
       setDiagnostic(null);
@@ -147,6 +155,7 @@ function ConnectionSettings() {
     return <div className="flex h-full items-center justify-center text-xs text-text-muted">{t('settings.loadingAgent')}</div>;
   }
 
+  const claudeSettings = settings.backends.claude;
   const dirty = JSON.stringify(settings) !== JSON.stringify(saved);
 
   return (
@@ -170,14 +179,14 @@ function ConnectionSettings() {
         <SettingsSection title={t('settings.executionEnvironment')} description={t('settings.executionEnvironmentDescription')}>
           <div className={`grid gap-3 ${capabilities?.supportsWsl ? 'grid-cols-2' : 'grid-cols-1'}`}>
             {capabilities?.supportsWsl && <RuntimeCard
-                active={settings.executionMode === 'wsl'}
+                active={claudeSettings.executionMode === 'wsl'}
                 icon="terminal"
                 title="WSL"
                 detail={t('settings.wslDetail')}
                 onClick={() => updateMode('wsl')}
               />}
             <RuntimeCard
-              active={settings.executionMode === 'native'}
+              active={claudeSettings.executionMode === 'native'}
               icon="code"
               title={t('settings.native')}
               detail={t('settings.nativeDetail')}
@@ -186,13 +195,13 @@ function ConnectionSettings() {
           </div>
         </SettingsSection>
 
-        {capabilities?.supportsWsl && settings.executionMode === 'wsl' && (
+        {capabilities?.supportsWsl && claudeSettings.executionMode === 'wsl' && (
           <SettingsSection title="WSL runtime" description="These values are passed as arguments to wsl.exe without a shell.">
             <Field label="Distribution" hint="The exact name shown by wsl.exe --list --verbose">
               <input
                 aria-label="WSL distribution"
-                value={settings.wslDistribution}
-                onChange={(event) => setSettings({ ...settings, wslDistribution: event.target.value })}
+                value={claudeSettings.wslDistribution}
+                onChange={(event) => updateClaude({ wslDistribution: event.target.value })}
                 className="settings-input"
                 placeholder="Ubuntu-24.04"
               />
@@ -200,8 +209,8 @@ function ConnectionSettings() {
             <Field label="Claude executable" hint="Absolute Linux path inside the selected distribution">
               <input
                 aria-label="Claude executable"
-                value={settings.claudeExecutable}
-                onChange={(event) => setSettings({ ...settings, claudeExecutable: event.target.value })}
+                value={claudeSettings.claudeExecutable}
+                onChange={(event) => updateClaude({ claudeExecutable: event.target.value })}
                 className="settings-input font-mono"
                 placeholder="/usr/bin/claude"
               />
@@ -209,13 +218,13 @@ function ConnectionSettings() {
           </SettingsSection>
         )}
 
-        {settings.executionMode === 'native' && (
+        {claudeSettings.executionMode === 'native' && (
           <SettingsSection title="Native runtime" description="Leave the executable empty to use the Claude Code binary bundled with the Agent SDK.">
             <Field label="Claude executable" hint="Optional executable name or absolute path">
               <input
                 aria-label="Claude executable"
-                value={settings.claudeExecutable}
-                onChange={(event) => setSettings({ ...settings, claudeExecutable: event.target.value })}
+              value={claudeSettings.claudeExecutable}
+              onChange={(event) => updateClaude({ claudeExecutable: event.target.value })}
                 className="settings-input font-mono"
                 placeholder="Bundled Agent SDK executable"
               />
@@ -227,8 +236,8 @@ function ConnectionSettings() {
           <Field label="Model" hint="Leave empty to use the Claude Code default">
             <input
               aria-label="Claude model"
-              value={settings.model ?? ''}
-              onChange={(event) => setSettings({ ...settings, model: event.target.value || null })}
+              value={claudeSettings.model ?? ''}
+              onChange={(event) => updateClaude({ model: event.target.value || null })}
               className="settings-input font-mono"
               placeholder="Default"
             />
@@ -237,7 +246,7 @@ function ConnectionSettings() {
             <p className="mb-2 text-xs font-medium text-text-secondary">Setting sources</p>
             <div className="grid grid-cols-3 gap-2">
               {SOURCES.map((source) => {
-                const checked = settings.settingSources.includes(source.id);
+                const checked = claudeSettings.settingSources.includes(source.id);
                 return (
                   <label key={source.id} className="flex cursor-pointer items-start gap-2 rounded border border-surface bg-bg-tertiary/50 p-2.5 hover:border-surface-active">
                     <input
@@ -245,9 +254,9 @@ function ConnectionSettings() {
                       checked={checked}
                       onChange={() => {
                         const next = checked
-                          ? settings.settingSources.filter((item) => item !== source.id)
-                          : [...settings.settingSources, source.id];
-                        if (next.length) setSettings({ ...settings, settingSources: next });
+                          ? claudeSettings.settingSources.filter((item) => item !== source.id)
+                          : [...claudeSettings.settingSources, source.id];
+                        if (next.length) updateClaude({ settingSources: next });
                       }}
                       className="mt-0.5 accent-[rgb(var(--color-accent-blue))]"
                     />
@@ -327,7 +336,7 @@ function TrafficRuntimeSettings() {
     }
   };
 
-  const tone = status?.status === 'ready' ? 'text-accent-green' : status?.status === 'incompatible' ? 'text-severity-medium' : 'text-severity-critical';
+  const tone = status?.status === 'ready' ? 'text-accent-green' : 'text-severity-critical';
   return (
     <div className="h-full overflow-y-auto bg-bg-primary">
       <div className="mx-auto max-w-3xl px-8 py-7">
@@ -340,8 +349,8 @@ function TrafficRuntimeSettings() {
         </header>
         <SettingsSection title={t('settings.trafficRuntimeStatus')} description={t('settings.trafficRuntimeStatusDescription')}>
           <div className="rounded border border-surface bg-bg-tertiary/50 p-3">
-            <div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${status?.status === 'ready' ? 'bg-accent-green' : status?.status === 'incompatible' ? 'bg-severity-medium' : 'bg-severity-critical'}`} /><span className={`text-xs font-semibold uppercase ${tone}`}>{status?.status ?? t('common.loading')}</span></div>
-            <dl className="mt-3 grid grid-cols-[100px_1fr] gap-x-3 gap-y-1 text-[10px]"><dt className="text-text-muted">{t('settings.trafficRuntimePath')}</dt><dd className="break-all font-mono text-text-secondary">{status?.executablePath ?? '—'}</dd><dt className="text-text-muted">{t('settings.trafficRuntimeVersion')}</dt><dd className="font-mono text-text-secondary">{status?.version ?? `— (${t('settings.trafficRuntimeRequires')} ${status?.requiredVersion ?? '12.2.3'})`}</dd><dt className="text-text-muted">{t('settings.trafficRuntimeSource')}</dt><dd className="text-text-secondary">{status?.source ?? '—'}</dd></dl>
+            <div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${status?.status === 'ready' ? 'bg-accent-green' : 'bg-severity-critical'}`} /><span className={`text-xs font-semibold uppercase ${tone}`}>{status?.status ?? t('common.loading')}</span></div>
+            <dl className="mt-3 grid grid-cols-[100px_1fr] gap-x-3 gap-y-1 text-[10px]"><dt className="text-text-muted">{t('settings.trafficRuntimePath')}</dt><dd className="break-all font-mono text-text-secondary">{status?.executablePath ?? '—'}</dd><dt className="text-text-muted">{t('settings.trafficRuntimeVersion')}</dt><dd className="font-mono text-text-secondary">{status?.version ?? '—'}</dd><dt className="text-text-muted">{t('settings.trafficRuntimeSource')}</dt><dd className="text-text-secondary">{status?.source ?? '—'}</dd></dl>
             {status?.error && <p className="mt-3 text-[10px] leading-4 text-severity-critical">{status.error}</p>}
           </div>
         </SettingsSection>
@@ -429,6 +438,15 @@ function SettingsPageButton({ active, icon, label, onClick }: { active: boolean;
 
 function isSettingsPage(value: unknown): value is SettingsPage {
   return value === 'general' || value === 'connection' || value === 'traffic' || value === 'burp' || value === 'skills' || value === 'mcp';
+}
+
+function normalizeSettingsPayload(value: AgentSettingsContainer | AgentConnectionSettings): AgentSettingsContainer {
+  if ('backends' in value) return value;
+  return {
+    version: 2,
+    defaultBackendId: 'claude',
+    backends: { claude: value },
+  };
 }
 
 function SettingsSection({ title, description, children }: { title: string; description: string; children: ReactNode }) {

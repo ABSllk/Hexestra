@@ -14,7 +14,7 @@ import {
   type ContextTab,
   type ToolRequest,
   type AutonomyLevel,
-  type ClaudePermissionMode,
+  type AgentPermissionMode,
   type ConversationBranchSummary,
   type ProjectActivation,
   type ProjectWorkspaceState,
@@ -37,7 +37,7 @@ interface ChatStore {
   composerFocusNonce: number;
   pendingToolRequest: ToolRequest | null;
   autonomyLevel: AutonomyLevel;
-  permissionMode: ClaudePermissionMode;
+  permissionMode: AgentPermissionMode;
   isProcessing: boolean;
   error: string | null;
   agentStatus: AgentStatus;
@@ -61,7 +61,7 @@ interface ChatStore {
   queueAgentContext: (ref: AgentContextRef, defaultPrompt: string) => void;
   removeComposerContext: (key: string) => void;
   setAutonomyLevel: (level: AutonomyLevel) => void;
-  setPermissionMode: (mode: ClaudePermissionMode) => void;
+  setPermissionMode: (mode: AgentPermissionMode) => void;
   approveToolRequest: (requestId: string) => Promise<void>;
   rejectToolRequest: (requestId: string) => void;
   answerUserQuestion: (requestId: string, answers: AskUserQuestionAnswers) => Promise<void>;
@@ -91,15 +91,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   error: null,
   agentStatus: {
     state: 'loading',
-    sdkAvailable: false,
-    backend: 'claude-agent-sdk',
+    backendId: 'claude',
+    available: false,
     authenticated: null,
     model: null,
-    claudeSessionId: null,
+    backendSessionId: null,
     pendingRequests: 0,
     historyLength: 0,
     lastError: null,
-    executionMode: 'wsl',
+    runtimeMode: 'wsl',
     runtimeLabel: 'WSL · Ubuntu-24.04',
   },
   subagentRuns: [],
@@ -241,6 +241,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const optimisticConversation: ConversationBranchSummary = {
       id: conversationId,
       title: `New conversation ${state.branches.length + 1}`,
+      backendId: state.agentStatus.backendId,
       createdAt: new Date().toISOString(),
       messageCount: 0,
     };
@@ -319,6 +320,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const optimisticBranch: ConversationBranchSummary = {
       id: newBranchId,
       title: compactBranchTitle(content, state.branches.length + 1),
+      backendId: state.agentStatus.backendId,
       parentBranchId: state.activeBranchId,
       forkedFromMessageId: messageId,
       createdAt: new Date().toISOString(),
@@ -661,6 +663,7 @@ function mainBranchSummary(): ConversationBranchSummary {
   return {
     id: 'main',
     title: 'Main',
+    backendId: 'claude',
     createdAt: new Date().toISOString(),
     messageCount: 0,
   };

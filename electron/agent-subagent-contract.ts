@@ -1,4 +1,4 @@
-import type { AgentActivityStatus } from './services/agent-timeline';
+import type { AgentActivityStatus } from './contracts/agent-runtime';
 
 export type SubagentRunStatus =
   | 'pending'

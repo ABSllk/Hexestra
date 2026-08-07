@@ -1,13 +1,5 @@
 import { BrowserWindow, dialog, ipcMain, type WebContents } from 'electron';
 import fs from 'fs';
-import path from 'path';
-import type {
-  CanUseTool,
-  HookCallback,
-  PermissionResult,
-  PreToolUseHookInput,
-  SDKMessage,
-} from '@anthropic-ai/claude-agent-sdk';
 import { sessionService } from './session.service';
 import { shellService } from './shell.service';
 import {
@@ -15,17 +7,9 @@ import {
   resolvePermissionDisposition,
   type SupportedAgentMode,
 } from './agent-mode';
-import { formatAgentFailure, isAgentAuthenticationError } from './agent-error';
-import { AgentTimelineBuilder, type AgentActivity } from './agent-timeline';
-import { installHexestraSkills } from './pentest-skill';
-import {
-  agentConnectionFingerprint,
-  agentSettingsService,
-} from './agent-settings.service';
-import {
-  spawnClaudeCodeInWsl,
-  windowsPathToWsl,
-} from './wsl-agent-runtime';
+import { formatAgentFailure } from './agent-error';
+import type { AgentActivity } from '../contracts/agent-runtime';
+import { agentSettingsService } from './agent-settings.service';
 import {
   createConversationBranch,
   type PersistedConversationBranch,
@@ -37,13 +21,9 @@ import {
 } from './conversation-branch';
 import { buildSystemInstructions } from './agent-system-instructions';
 import { buildAgentProjectKnowledge } from './agent-project-knowledge';
-import { AgentStreamScheduler } from './agent-stream-scheduler';
-import { SubagentRegistry } from './subagent-registry';
 import type { SubagentRun } from '../agent-subagent-contract';
-import { isManagedRecordFileMutation, isReadOnlyAgentTool, isSubagentSpawnTool } from './agent-tool-policy';
 import {
   buildAskUserQuestionUpdatedInput,
-  parseAskUserQuestionInput,
   type AskUserQuestion,
   type AskUserQuestionAnswers,
 } from '../agent-interaction-contract';
@@ -55,21 +35,23 @@ import {
 import {
   ATTACHMENT_DIALOG_FILTERS,
   attachmentPromptContext,
-  buildAgentSdkPrompt,
   readAgentAttachment,
 } from './agent-attachment';
 import { normalizeAgentContextRefs, type AgentContextRef } from '../agent-context-contract';
 import { createHexestraAgentTools } from './agent-tools';
+import { ClaudeAgentAdapter } from './agent-adapters/claude-agent-adapter';
+import { AgentAdapterRegistry } from './agent-adapters/registry';
+import {
+  CLAUDE_BACKEND_ID,
+  type AgentInteractionHandler,
+  type AgentToolPermissionDecision,
+  type AgentToolPermissionRequest,
+  type AgentState,
+  type AgentStatus,
+  type AgentBackendId,
+  AgentBackendError,
+} from '../contracts/agent-runtime';
 
-type AgentSdk = typeof import('@anthropic-ai/claude-agent-sdk');
-const AGENT_CONTEXT_VERSION = 'hexestra-context-v7';
-type AgentState =
-  | 'loading'
-  | 'ready'
-  | 'running'
-  | 'awaiting_approval'
-  | 'awaiting_input'
-  | 'error';
 type AutonomyLevel = 'low' | 'medium' | 'high';
 
 interface SharedTabContext {
@@ -149,7 +131,7 @@ interface AgentBranchRequest {
 }
 
 interface PendingPermission {
-  resolve: (result: PermissionResult) => void;
+  resolve: (result: AgentToolPermissionDecision) => void;
   webContentsId: number;
   kind: 'tool_approval' | 'ask_user_question';
   input: Record<string, unknown>;
@@ -160,29 +142,15 @@ interface PendingPermission {
   agentType?: string;
 }
 
-interface AgentStatus {
-  state: AgentState;
-  sdkAvailable: boolean;
-  backend: 'claude-agent-sdk';
-  authenticated: boolean | null;
-  model: string | null;
-  claudeSessionId: string | null;
-  pendingRequests: number;
-  historyLength: number;
-  lastError: string | null;
-  executionMode: 'native' | 'wsl';
-  runtimeLabel: string;
-}
-
 class AgentService {
-  private sdk: AgentSdk | null = null;
-  private initialization: Promise<boolean> | null = null;
+  private readonly adapterRegistry = new AgentAdapterRegistry();
+  private readonly claudeAdapter = new ClaudeAgentAdapter();
   private chatHistory: PersistedChatMessage[] = [];
   private branches: PersistedConversationBranch[] = [];
   private activeBranchId = 'main';
   private pendingPermissions = new Map<string, PendingPermission>();
   private abortController: AbortController | null = null;
-  private claudeSessionId: string | null = null;
+  private backendSessionId: string | null = null;
   private connectionFingerprint: string | null = null;
   private state: AgentState = 'loading';
   private authenticated: boolean | null = null;
@@ -191,12 +159,19 @@ class AgentService {
   private requestCounter = 0;
   private activeSessionId: string | null = null;
   private subagentRuns: SubagentRun[] = [];
-  private activeSubagentRegistry: SubagentRegistry | null = null;
   private subagentPersistTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
+    this.adapterRegistry.register(this.claudeAdapter);
     agentSettingsService.setRuntimeGuard(() => this.abortController !== null);
     this.registerHandlers();
+  }
+
+  async initialize() {
+    const adapter = this.adapterRegistry.require(CLAUDE_BACKEND_ID);
+    const available = await adapter.initialize();
+    this.setState(available ? 'ready' : 'error');
+    return available;
   }
 
   private registerHandlers() {
@@ -234,8 +209,8 @@ class AgentService {
 
     ipcMain.handle(
       'agent:conversation:new',
-      async (_event, sessionId: string, conversationId: string) =>
-        this.createConversation(sessionId, conversationId),
+      async (_event, sessionId: string, conversationId: string, backendId?: AgentBackendId) =>
+        this.createConversation(sessionId, conversationId, backendId),
     );
 
     ipcMain.handle('agent:approve-tool', (event, requestId: string) => {
@@ -258,7 +233,7 @@ class AgentService {
       this.abortController?.abort();
       this.abortController = null;
       this.resolveAllPermissions(false);
-      this.setState(this.sdk ? 'ready' : 'error');
+      this.setState(this.activeBackendAvailable() ? 'ready' : 'error');
     });
 
     ipcMain.handle('agent:clear', async (_event, sessionId?: string) => {
@@ -267,7 +242,7 @@ class AgentService {
       this.abortController = null;
       this.resolveAllPermissions(false);
       this.chatHistory = [];
-      this.claudeSessionId = null;
+      this.backendSessionId = null;
       this.connectionFingerprint = null;
       const mainBranch = createConversationBranch('main', 'Main');
       this.branches = [mainBranch];
@@ -276,7 +251,7 @@ class AgentService {
       this.clearSubagentPersistTimer();
       this.lastError = null;
       this.persistAgentState();
-      this.setState(this.sdk ? 'ready' : 'loading');
+      this.setState(this.activeBackendAvailable() ? 'ready' : 'loading');
     });
 
     ipcMain.handle('agent:history', (_event, sessionId?: string) => {
@@ -313,7 +288,7 @@ class AgentService {
     this.hydrateActiveBranch();
     this.model = project.agent.model;
     this.lastError = project.agent.lastError;
-    if (!this.abortController) this.state = this.sdk ? 'ready' : 'loading';
+    if (!this.abortController) this.state = this.activeBackendAvailable() ? 'ready' : 'loading';
     const status = this.getStatus(sessionId);
     this.emitStatus();
     return {
@@ -359,8 +334,13 @@ class AgentService {
     if (!branch) return;
     branch.messages = this.chatHistory.map(cloneMessage);
     branch.subagentRuns = this.subagentRuns.map(cloneSubagentRun);
-    branch.claudeSessionId = this.claudeSessionId;
-    branch.connectionFingerprint = this.connectionFingerprint;
+    branch.runtime = this.backendSessionId || this.connectionFingerprint
+      ? {
+          backendId: branch.backendId,
+          sessionId: this.backendSessionId,
+          connectionFingerprint: this.connectionFingerprint,
+        }
+      : null;
   }
 
   private hydrateActiveBranch() {
@@ -373,8 +353,8 @@ class AgentService {
     this.activeBranchId = branch.id;
     this.chatHistory = branch.messages.map(cloneMessage);
     this.subagentRuns = (branch.subagentRuns ?? []).map(cloneSubagentRun);
-    this.claudeSessionId = branch.claudeSessionId;
-    this.connectionFingerprint = branch.connectionFingerprint;
+    this.backendSessionId = branch.runtime?.sessionId ?? null;
+    this.connectionFingerprint = branch.runtime?.connectionFingerprint ?? null;
   }
 
   private getBranchSummaries() {
@@ -383,6 +363,7 @@ class AgentService {
       title: branch.title,
       parentBranchId: branch.parentBranchId,
       forkedFromMessageId: branch.forkedFromMessageId,
+      backendId: branch.backendId,
       createdAt: branch.createdAt,
       messageCount: branch.messages.length,
     }));
@@ -415,6 +396,7 @@ class AgentService {
   private createConversation(
     sessionId: string,
     conversationId: string,
+    backendId: AgentBackendId = CLAUDE_BACKEND_ID,
   ) {
     if (this.abortController) {
       throw new Error('Cannot create a conversation while Claude is running');
@@ -429,11 +411,13 @@ class AgentService {
     if (this.branches.length >= 50) {
       throw new Error('This project already has the maximum of 50 conversations');
     }
+    this.adapterRegistry.require(backendId);
 
     this.saveActiveBranchProjection();
     const conversation = createConversationBranch(
       conversationId,
       `New conversation ${this.branches.length + 1}`,
+      { backendId },
     );
     this.branches.push(conversation);
     this.activeBranchId = conversation.id;
@@ -470,12 +454,11 @@ class AgentService {
     if (sourceIndex < 0) throw new Error(`User message ${input.sourceMessageId} not found`);
     const sourceMessage = this.chatHistory[sourceIndex];
 
-    const currentFingerprint = agentContextFingerprint(agentSettingsService.getSettings());
+    const currentFingerprint = this.adapterRegistry.get(sourceBranch.backendId)?.fingerprint() ?? '';
     const resumeOptions = resolveBranchResumeOptions(
       this.chatHistory,
       sourceIndex,
-      sourceBranch.claudeSessionId,
-      sourceBranch.connectionFingerprint,
+      sourceBranch.runtime,
       currentFingerprint,
     );
     const canResume = resumeOptions.fork;
@@ -487,8 +470,14 @@ class AgentService {
       {
         parentBranchId: sourceBranch.id,
         forkedFromMessageId: sourceMessage.id,
-        claudeSessionId: canResume ? sourceBranch.claudeSessionId : null,
-        connectionFingerprint: canResume ? currentFingerprint : null,
+        backendId: sourceBranch.backendId,
+        runtime: canResume
+          ? {
+              backendId: sourceBranch.backendId,
+              sessionId: sourceBranch.runtime?.sessionId ?? null,
+              connectionFingerprint: currentFingerprint,
+            }
+          : null,
         messages: this.chatHistory.slice(0, sourceIndex).map(cloneMessage),
         subagentRuns: sourceBranch.subagentRuns
           .filter((run) => !run.messageId || this.chatHistory.slice(0, sourceIndex).some((message) => message.id === run.messageId))
@@ -516,29 +505,6 @@ class AgentService {
     if (this.activeSessionId !== sessionId) this.loadProject(sessionId);
   }
 
-  async initSDK() {
-    if (this.initialization) return this.initialization;
-    this.initialization = this.loadSDK();
-    return this.initialization;
-  }
-
-  private async loadSDK() {
-    this.setState('loading');
-    try {
-      this.sdk = await import('@anthropic-ai/claude-agent-sdk');
-      this.lastError = null;
-      this.setState('ready');
-      console.log('[Agent] Claude Agent SDK loaded');
-      return true;
-    } catch (error) {
-      this.sdk = null;
-      this.lastError = toErrorMessage(error);
-      this.setState('error');
-      console.error('[Agent] Failed to load Claude Agent SDK:', this.lastError);
-      return false;
-    }
-  }
-
   private async sendMessage(
     sender: WebContents,
     request: AgentRequest,
@@ -551,15 +517,17 @@ class AgentService {
     this.ensureActiveProject(request.session?.id);
     const contextRefs = normalizeAgentContextRefs(request.contextRefs, request.session?.id);
 
-    const available = await this.initSDK();
-    if (!available || !this.sdk) {
-      throw new Error(this.lastError ?? 'Claude Agent SDK is unavailable');
+    const activeBranch = this.branches.find((branch) => branch.id === this.activeBranchId);
+    if (!activeBranch) throw new Error('Active conversation branch is missing');
+    const adapter = this.adapterRegistry.require(activeBranch.backendId);
+    const available = await adapter.initialize();
+    if (!available) {
+      throw new Error(adapter.status().lastError ?? `Agent backend is unavailable: ${adapter.id}`);
     }
 
-    const connectionSettings = agentSettingsService.getSettings();
-    const currentFingerprint = agentContextFingerprint(connectionSettings);
+    const currentFingerprint = adapter.fingerprint();
     if (this.connectionFingerprint !== currentFingerprint) {
-      this.claudeSessionId = null;
+      this.backendSessionId = null;
       this.connectionFingerprint = currentFingerprint;
     }
 
@@ -589,32 +557,23 @@ class AgentService {
     this.setState('running');
 
     const messageId = `msg-${Date.now()}`;
-    let lastAssistantSdkMessageId: string | undefined;
-    const timeline = new AgentTimelineBuilder(messageId);
-    const subagentRegistry = new SubagentRegistry(messageId);
-    this.activeSubagentRegistry = subagentRegistry;
-    const pendingSubagentRunIds = new Set<string>();
-    const streamScheduler = new AgentStreamScheduler();
+    let latestContent = '';
+    let latestActivities: AgentActivity[] = [];
+    let completedEvent: Extract<import('../contracts/agent-runtime').AgentRunEvent, { type: 'turn_completed' }> | undefined;
     this.emitMessage(sender, {
       id: messageId,
       role: 'assistant',
       content: '',
       timestamp: new Date().toISOString(),
       status: 'streaming',
-      activities: timeline.snapshot(),
+      activities: latestActivities,
     });
 
     const sessionPath = request.session?.id
       ? sessionService.getSessionPath(request.session.id)
       : null;
-    if (sessionPath && fs.existsSync(sessionPath)) {
-      const installedSkills = installHexestraSkills(sessionPath);
-      if (!installedSkills) {
-        throw new Error('Native Hexestra skill resources are incomplete or unavailable');
-      }
-    }
     const permissionMode = normalizeAgentMode(request.permissionMode);
-    const canUseTool = this.createPermissionHandler(
+    const interactions = this.createInteractionHandler(
       sender,
       request.autonomyLevel ?? 'medium',
       permissionMode,
@@ -624,251 +583,142 @@ class AgentService {
       ? await buildAgentProjectKnowledge(request.session.id)
       : undefined;
     const prompt = buildAgentPrompt(request, projectKnowledge);
-    const hexestraTools = this.createHexestraTools(
+    const hexestraTools = this.createHexestraToolDefinitions(
       sender,
       request.session?.id,
       request.selectedTarget?.id,
       permissionMode,
     );
-    const isWsl = connectionSettings.executionMode === 'wsl';
     const queryCwd = sessionPath && fs.existsSync(sessionPath) ? sessionPath : process.cwd();
-    const sdkCwd = isWsl
-      ? windowsPathToWsl(queryCwd, connectionSettings.wslDistribution)
-      : queryCwd;
+    const connectionSettings = agentSettingsService.getClaudeSettings();
+    const runtime = this.backendSessionId || this.connectionFingerprint
+      ? {
+          backendId: activeBranch.backendId,
+          sessionId: resumeOptions.sessionId ?? this.backendSessionId,
+          connectionFingerprint: this.connectionFingerprint,
+        }
+      : null;
 
     try {
-      const query = this.sdk.query({
-        prompt: buildAgentSdkPrompt(prompt, request.attachments),
-        options: {
-          abortController: this.abortController,
-          cwd: sdkCwd,
-          additionalDirectories:
-            !isWsl && sessionPath && fs.existsSync(sessionPath) ? [sessionPath] : undefined,
-          pathToClaudeCodeExecutable: connectionSettings.claudeExecutable || undefined,
-          spawnClaudeCodeProcess: isWsl
-            ? (options) => spawnClaudeCodeInWsl(options, connectionSettings)
-            : undefined,
-          canUseTool,
-          hooks: {
-            PreToolUse: [{
-              hooks: [createManagedRecordGuard()],
-            }],
-          },
-          includePartialMessages: true,
-          forwardSubagentText: true,
-          enableFileCheckpointing: true,
-          mcpServers: { hexestra: hexestraTools },
-          permissionMode,
-          allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions',
-          persistSession: true,
-          resume: resumeOptions.sessionId ?? this.claudeSessionId ?? undefined,
-          resumeSessionAt: resumeOptions.resumeAt,
-          forkSession: resumeOptions.fork || undefined,
-          settingSources: requiredSettingSources(connectionSettings.settingSources),
-          model: connectionSettings.model ?? undefined,
-          systemPrompt: {
-            type: 'preset',
-            preset: 'claude_code',
-            append: buildSystemInstructions(),
-          },
-          tools: { type: 'preset', preset: 'claude_code' },
-          env: {
-            ...process.env,
-            ELECTRON_RUN_AS_NODE: undefined,
-          },
-          stderr: (data) => {
-            const line = data.trim();
-            if (line) console.warn('[Agent] Claude stderr:', line);
-          },
-        },
-      });
-
-      for await (const message of query) {
-        this.captureSessionMetadata(message);
-        if (message.type === 'assistant' && message.parent_tool_use_id == null) {
-          lastAssistantSdkMessageId = message.uuid;
-        }
-
-        const changedSubagentRuns = subagentRegistry.consume(message);
-        for (const runId of changedSubagentRuns) pendingSubagentRunIds.add(runId);
-        if (changedSubagentRuns.length > 0) this.mergeSubagentRuns(subagentRegistry.getRuns());
-
-        const mainTimelineChanged = !subagentRegistry.isChildMessage(message) && timeline.consume(message);
-        subagentRegistry.annotateMainTimeline(timeline);
-        if (mainTimelineChanged || changedSubagentRuns.length > 0) {
-          streamScheduler.schedule(() => {
-            this.emitStreamingMessage(
-              sender,
-              messageId,
-              timeline.getText(),
-              timeline.snapshot(),
-            );
-            this.emitSubagentUpdates(sender, pendingSubagentRunIds);
-            pendingSubagentRunIds.clear();
-          });
-        }
-
-        if (message.type === 'result') {
-          if (message.subtype === 'success' && !timeline.getText().trim()) {
-            timeline.addText(message.result);
-          } else if (message.subtype !== 'success') {
-            throw new Error(message.errors.join('\n') || message.subtype);
-          }
+      const runInput = {
+        prompt,
+        systemInstructions: buildSystemInstructions(),
+        signal: this.abortController.signal,
+        attachments: request.attachments ?? [],
+        cwd: queryCwd,
+        additionalDirectories: sessionPath && fs.existsSync(sessionPath) ? [sessionPath] : undefined,
+        model: connectionSettings.model,
+        permissionMode,
+        runtime,
+        resumeAt: resumeOptions.resumeAt,
+        fork: resumeOptions.fork,
+        settingSources: connectionSettings.settingSources,
+        tools: hexestraTools,
+      };
+      for await (const event of adapter.runTurn(runInput, interactions)) {
+        if (event.type === 'session') {
+          this.backendSessionId = event.sessionId;
+          this.model = event.model;
+          this.authenticated = true;
+          this.persistAgentState();
+          this.emitStatus();
+        } else if (event.type === 'turn_snapshot') {
+          latestContent = event.content;
+          latestActivities = event.activities;
+          this.emitStreamingMessage(sender, messageId, latestContent, latestActivities);
+        } else if (event.type === 'subagent_snapshot') {
+          this.mergeSubagentRuns([event.run]);
+          this.emitSubagentUpdates(sender, new Set([event.run.id]));
+        } else {
+          completedEvent = event;
+          latestContent = event.content;
+          latestActivities = event.activities;
         }
       }
-
-      timeline.finish();
-      const completedSubagentRuns = subagentRegistry.finish('completed');
-      this.mergeSubagentRuns(subagentRegistry.getRuns());
-      subagentRegistry.annotateMainTimeline(timeline);
-      for (const runId of completedSubagentRuns) pendingSubagentRunIds.add(runId);
-      this.emitSubagentUpdates(sender, pendingSubagentRunIds);
-      pendingSubagentRunIds.clear();
-      streamScheduler.cancel();
-      const finalContent = timeline.getText().trim() || '(Claude returned no text response)';
+      if (!completedEvent) throw new Error('Agent backend ended without a completion event');
+      const finalContent = completedEvent.content;
       const finalMessage: PersistedChatMessage = {
         id: messageId,
         role: 'assistant',
         content: finalContent,
         timestamp: new Date().toISOString(),
         status: 'complete',
-        activities: timeline.snapshot(),
-        sdkMessageId: lastAssistantSdkMessageId,
+        activities: latestActivities,
+        backendMessageId: completedEvent.backendMessageId,
       };
       this.chatHistory.push(finalMessage);
       this.persistAgentState();
       this.emitMessage(sender, finalMessage);
-      this.authenticated = true;
       this.setState('ready');
     } catch (error) {
-      streamScheduler.cancel();
       const message = toErrorMessage(error);
-      const cancelled = this.abortController?.signal.aborted;
-      const terminalSubagentStatus = cancelled ? 'stopped' : 'failed';
-      const failedSubagentRuns = subagentRegistry.finish(terminalSubagentStatus);
-      this.mergeSubagentRuns(subagentRegistry.getRuns());
-      for (const runId of failedSubagentRuns) pendingSubagentRunIds.add(runId);
-      this.emitSubagentUpdates(sender, pendingSubagentRunIds);
-      pendingSubagentRunIds.clear();
+      const cancelled = this.abortController?.signal.aborted || /cancelled|canceled/i.test(message);
       this.lastError = cancelled ? null : message;
-      if (isAgentAuthenticationError(message)) this.authenticated = false;
+      if (error instanceof AgentBackendError && error.code === 'authentication') {
+        this.authenticated = false;
+      }
       const failureContent = cancelled ? 'Request cancelled.' : formatAgentFailure(message);
-      timeline.addText(failureContent, cancelled ? 'complete' : 'error');
-      timeline.finish();
-      subagentRegistry.annotateMainTimeline(timeline);
+      const failureActivities: AgentActivity[] = [
+        ...latestActivities,
+        {
+          id: `${messageId}-failure`,
+          kind: 'text',
+          status: cancelled ? 'complete' : 'error',
+          content: failureContent,
+        },
+      ];
       const failureMessage: PersistedChatMessage = {
         id: messageId,
         role: 'assistant',
         content: failureContent,
         timestamp: new Date().toISOString(),
         status: cancelled ? 'complete' : 'error',
-        activities: timeline.snapshot(),
-        sdkMessageId: lastAssistantSdkMessageId,
+        activities: failureActivities,
+        backendMessageId: undefined,
       };
       this.chatHistory.push(failureMessage);
       this.persistAgentState();
       this.emitMessage(sender, failureMessage);
       this.setState(cancelled ? 'ready' : 'error');
     } finally {
-      streamScheduler.cancel();
-      if (this.activeSubagentRegistry === subagentRegistry) this.activeSubagentRegistry = null;
       this.abortController = null;
       this.resolvePermissionsForWebContents(sender.id, false);
       this.emitStatus();
     }
   }
 
-  private createHexestraTools(
+  private createHexestraToolDefinitions(
     sender: WebContents,
     sessionId?: string,
     selectedTargetId?: string,
     permissionMode: SupportedAgentMode = 'default',
   ) {
-    if (!this.sdk) throw new Error('Claude Agent SDK is unavailable');
-    const context = { sdk: this.sdk, sender, sessionId, selectedTargetId, permissionMode };
-    return this.sdk.createSdkMcpServer({
-      name: 'hexestra',
-      version: '0.2.0',
-      tools: createHexestraAgentTools(context),
-    });
+    return createHexestraAgentTools({ sender, sessionId, selectedTargetId, permissionMode });
   }
 
-  private createPermissionHandler(
+  private createInteractionHandler(
     sender: WebContents,
     autonomyLevel: AutonomyLevel,
     permissionMode: SupportedAgentMode,
     selectedTargetOutOfScope: boolean,
-  ): CanUseTool {
-    return async (toolName, input, options): Promise<PermissionResult> => {
-      const subagentContext = this.getSubagentContext(options.agentID);
-      if (isSubagentSpawnTool(toolName)) {
-        return {
-          behavior: 'allow',
-          updatedInput: input,
-          toolUseID: options.toolUseID,
-        };
-      }
-      if (toolName === 'AskUserQuestion') {
-        let questions: AskUserQuestion[];
-        try {
-          questions = parseAskUserQuestionInput(input);
-        } catch (error) {
-          return {
-            behavior: 'deny',
-            message: toErrorMessage(error),
-            interrupt: false,
-            toolUseID: options.toolUseID,
-          };
-        }
+  ): AgentInteractionHandler {
+    void selectedTargetOutOfScope;
+    return {
+      authorizeTool: async (request): Promise<AgentToolPermissionDecision> => {
+      const { toolName, input, signal, toolUseId, agentId } = request;
+      const subagentContext = this.getSubagentContext(agentId);
 
-        const requestId = `question-${++this.requestCounter}`;
-        this.setState('awaiting_input');
-        sender.send('agent:tool-request', {
-          sessionId: this.activeSessionId,
-          request: {
-            kind: 'ask_user_question',
-            id: requestId,
-            toolUseId: options.toolUseID,
-            toolName: 'AskUserQuestion',
-            questions,
-            createdAt: new Date().toISOString(),
-            ...subagentContext,
-          },
-        });
-
-        const result = await this.waitForUserInteraction({
-          requestId,
-          webContentsId: sender.id,
-          signal: options.signal,
-          kind: 'ask_user_question',
-          input,
-          toolUseId: options.toolUseID,
-          questions,
-          ...subagentContext,
-        });
-        this.setState(this.abortController ? 'running' : 'ready');
-        return result;
-      }
-
-      // TODO: re-enable after implementing a per-invocation ask flow for out-of-scope targets
-      // if (selectedTargetOutOfScope && isTargetActionTool(toolName)) {
-      //   return {
-      //     behavior: 'deny',
-      //     message: 'The selected asset is out of scope. Update the engagement scope before acting on it.',
-      //     interrupt: false,
-      //     toolUseID: options.toolUseID,
-      //   };
-      // }
+      // TODO: re-enable after implementing a per-invocation ask flow for out-of-scope targets.
       const disposition = resolvePermissionDisposition(
         permissionMode,
-        isReadOnlyAgentTool(toolName),
+        request.riskLevel === 'read',
         autonomyLevel,
       );
       if (disposition === 'allow') {
         return {
           behavior: 'allow',
           updatedInput: input,
-          toolUseID: options.toolUseID,
+          decisionClassification: 'user_temporary',
         };
       }
       if (disposition === 'deny') {
@@ -876,7 +726,7 @@ class AgentService {
           behavior: 'deny',
           message: 'This tool is not allowed by the active Hexestra permission policy.',
           interrupt: false,
-          toolUseID: options.toolUseID,
+          decisionClassification: 'user_reject',
         };
       }
 
@@ -887,11 +737,11 @@ class AgentService {
         request: {
           kind: 'tool_approval',
           id: requestId,
-          toolUseId: options.toolUseID,
+          toolUseId,
           toolName,
           input,
           description: describeToolUse(toolName, input),
-          riskLevel: isReadOnlyAgentTool(toolName) ? 'read' : 'write',
+          riskLevel: request.riskLevel ?? 'write',
           createdAt: new Date().toISOString(),
           ...subagentContext,
         },
@@ -900,15 +750,48 @@ class AgentService {
       const result = await this.waitForUserInteraction({
         requestId,
         webContentsId: sender.id,
-        signal: options.signal,
+        signal,
         kind: 'tool_approval',
         input,
-        toolUseId: options.toolUseID,
+        toolUseId,
         timeoutMs: 5 * 60_000,
         ...subagentContext,
       });
       this.setState(this.abortController ? 'running' : 'ready');
       return result;
+      },
+      requestAnswers: async (request) => {
+        const questions = request.questions;
+        const requestId = `question-${++this.requestCounter}`;
+        this.setState('awaiting_input');
+        sender.send('agent:tool-request', {
+          sessionId: this.activeSessionId,
+          request: {
+            kind: 'ask_user_question',
+            id: requestId,
+            toolUseId: request.toolUseId,
+            toolName: 'AskUserQuestion',
+            questions,
+            createdAt: new Date().toISOString(),
+            ...this.getSubagentContext(request.agentId),
+          },
+        });
+        const result = await this.waitForUserInteraction({
+          requestId,
+          webContentsId: sender.id,
+          signal: request.signal,
+          kind: 'ask_user_question',
+          input: request.input,
+          toolUseId: request.toolUseId,
+          questions,
+          ...this.getSubagentContext(request.agentId),
+        });
+        this.setState(this.abortController ? 'running' : 'ready');
+        if (result.behavior !== 'allow' || !result.updatedInput?.answers) {
+          throw new Error(result.message ?? 'The clarifying question was not answered.');
+        }
+        return result.updatedInput.answers as AskUserQuestionAnswers;
+      },
     };
   }
 
@@ -925,9 +808,9 @@ class AgentService {
     subagentRunId?: string;
     agentType?: string;
   }) {
-    return new Promise<PermissionResult>((resolve) => {
+    return new Promise<AgentToolPermissionDecision>((resolve) => {
       let settled = false;
-      const finish = (result: PermissionResult) => {
+      const finish = (result: AgentToolPermissionDecision) => {
         if (settled) return;
         settled = true;
         if (timeout) clearTimeout(timeout);
@@ -935,11 +818,10 @@ class AgentService {
         this.pendingPermissions.delete(input.requestId);
         resolve(result);
       };
-      const deny = (message: string): PermissionResult => ({
+      const deny = (message: string): AgentToolPermissionDecision => ({
         behavior: 'deny',
         message,
         interrupt: false,
-        toolUseID: input.toolUseId,
       });
       const onAbort = () => finish(deny('The Agent request was cancelled.'));
       const timeout = input.timeoutMs
@@ -962,7 +844,9 @@ class AgentService {
   }
 
   private getSubagentContext(agentId?: string) {
-    const run = agentId ? this.activeSubagentRegistry?.getRunForAgent(agentId) : undefined;
+    const run = agentId
+      ? this.subagentRuns.find((candidate) => candidate.agentId === agentId)
+      : undefined;
     return {
       ...(agentId ? { agentId } : {}),
       ...(run ? { subagentRunId: run.id, agentType: run.agentType } : {}),
@@ -979,7 +863,6 @@ class AgentService {
       ? {
           behavior: 'allow',
           updatedInput: pending.input,
-          toolUseID: pending.toolUseId,
           decisionClassification: 'user_temporary',
         }
       : {
@@ -988,7 +871,6 @@ class AgentService {
             ? 'The human operator cancelled this question.'
             : 'The human operator rejected this tool action.',
           interrupt: false,
-          toolUseID: pending.toolUseId,
           decisionClassification: 'user_reject',
         });
     this.emitStatus();
@@ -1013,7 +895,6 @@ class AgentService {
         pending.questions,
         input,
       ),
-      toolUseID: pending.toolUseId,
       decisionClassification: 'user_temporary',
     });
     this.emitStatus();
@@ -1031,16 +912,6 @@ class AgentService {
       if (pending.webContentsId === webContentsId) {
         this.resolvePermission(requestId, approved && pending.kind === 'tool_approval');
       }
-    }
-  }
-
-  private captureSessionMetadata(message: SDKMessage) {
-    if (message.type === 'system' && message.subtype === 'init') {
-      this.claudeSessionId = message.session_id;
-      this.model = message.model;
-      this.authenticated = true;
-      this.persistAgentState();
-      this.emitStatus();
     }
   }
 
@@ -1117,35 +988,47 @@ class AgentService {
     this.emitStatus();
   }
 
+  private activeBackendAvailable() {
+    const backendId = this.branches.find((branch) => branch.id === this.activeBranchId)?.backendId
+      ?? CLAUDE_BACKEND_ID;
+    return this.adapterRegistry.get(backendId)?.status().available ?? false;
+  }
+
   private getStatus(sessionId = this.activeSessionId ?? undefined): AgentStatus {
-    const connectionSettings = agentSettingsService.getSettings();
-    const currentFingerprint = agentContextFingerprint(connectionSettings);
+    const connectionSettings = agentSettingsService.getClaudeSettings();
     const stored = sessionId && sessionId !== this.activeSessionId
       ? sessionService.getProjectState(sessionId).agent
       : null;
     const storedBranch = stored?.branches.find(
       (branch) => branch.id === stored.activeBranchId,
     );
-    const storedSessionId = storedBranch?.connectionFingerprint === currentFingerprint
-      ? storedBranch.claudeSessionId
+    const backendId = storedBranch?.backendId
+      ?? this.branches.find((branch) => branch.id === this.activeBranchId)?.backendId
+      ?? CLAUDE_BACKEND_ID;
+    const backend = this.adapterRegistry.get(backendId);
+    const currentFingerprint = backend?.fingerprint() ?? '';
+    const storedSessionId = storedBranch?.runtime?.connectionFingerprint === currentFingerprint
+      ? storedBranch.runtime?.sessionId ?? null
       : null;
-    const activeSessionId = this.connectionFingerprint === currentFingerprint
-      ? this.claudeSessionId
+    const activeBackendSessionId = this.connectionFingerprint === currentFingerprint
+      ? this.backendSessionId
       : null;
+    const backendStatus = backend?.status();
     return {
       state: this.state,
-      sdkAvailable: this.sdk !== null,
-      backend: 'claude-agent-sdk',
-      authenticated: this.authenticated,
-      model: stored?.model ?? this.model,
-      claudeSessionId: stored ? storedSessionId : activeSessionId,
+      backendId,
+      available: backendStatus?.available ?? false,
+      authenticated: stored ? this.authenticated : backendStatus?.authenticated ?? this.authenticated,
+      model: stored?.model ?? this.model ?? backendStatus?.model ?? null,
+      backendSessionId: stored ? storedSessionId : activeBackendSessionId,
       pendingRequests: this.pendingPermissions.size,
       historyLength: storedBranch?.messages.length ?? this.chatHistory.length,
-      lastError: stored?.lastError ?? this.lastError,
-      executionMode: connectionSettings.executionMode,
-      runtimeLabel: connectionSettings.executionMode === 'wsl'
+      lastError: stored?.lastError ?? backendStatus?.lastError ?? this.lastError
+        ?? (backend ? null : `Agent backend "${backendId}" is unavailable`),
+      runtimeMode: backendStatus?.runtimeMode ?? connectionSettings.executionMode,
+      runtimeLabel: backendStatus?.runtimeLabel ?? (connectionSettings.executionMode === 'wsl'
         ? `WSL · ${connectionSettings.wslDistribution}`
-        : 'Native',
+        : 'Native'),
     };
   }
 
@@ -1199,13 +1082,6 @@ function describeToolUse(toolName: string, input: Record<string, unknown>) {
   return `${toolName} requests:\n${summary.length > 1_500 ? `${summary.slice(0, 1_500)}…` : summary}`;
 }
 
-function isTargetActionTool(toolName: string) {
-  return toolName === 'Bash'
-    || /browser_(?:navigate|back|forward|reload|click|type|fill|evaluate)$/i.test(toolName)
-    || /mcp__hexestra__browser_(?:navigate|back|forward|reload|click|type|fill|press|hover|wait|evaluate)$/i.test(toolName)
-    || /mcp__hexestra__shell_(?:profile_create|profile_trust_host|connect|listener_create|listener_start|listener_stop|reverse_bind|execute|send_input|interrupt|disconnect|save_evidence)$/i.test(toolName);
-}
-
 function toErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -1252,31 +1128,6 @@ function isTerminalSubagentRun(run: SubagentRun) {
 function branchTitle(content: string, index: number) {
   const compact = content.trim().replace(/\s+/g, ' ');
   return compact ? compact.slice(0, 48) : `Branch ${index}`;
-}
-
-function agentContextFingerprint(
-  settings: Parameters<typeof agentConnectionFingerprint>[0],
-) {
-  return `${agentConnectionFingerprint(settings)}:${AGENT_CONTEXT_VERSION}`;
-}
-
-function requiredSettingSources(sources: readonly ('user' | 'project' | 'local')[]) {
-  return [...new Set([...sources, 'project' as const, 'local' as const])];
-}
-
-function createManagedRecordGuard(): HookCallback {
-  return async (input) => {
-    const typed = input as PreToolUseHookInput;
-    if (isManagedRecordFileMutation(typed.tool_name, typed.tool_input as Record<string, unknown>)) {
-      return {
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'deny',
-        permissionDecisionReason:
-          'Findings, vulnerabilities, evidence, and reports are Hexestra-managed records. Use their Hexestra tools instead of writing files.',
-      };
-    }
-    return { continue: true };
-  };
 }
 
 export const agentService = new AgentService();

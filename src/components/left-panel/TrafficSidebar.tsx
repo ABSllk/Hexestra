@@ -261,18 +261,18 @@ export function TrafficSidebar() {
           </button>
           <span className={cn('rounded border px-1.5 py-0.5 font-mono text-[8px]', runtime === 'ready' ? 'border-accent-teal/35 text-accent-teal' : runtime === 'blocked' || runtime === 'error' ? 'border-severity-high/35 text-severity-high' : 'border-surface text-text-muted')}>{runtime.toUpperCase()}</span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1.5">
           <button
             type="button"
-            className={cn('ui-control flex flex-1 items-center justify-center gap-1.5 px-2 py-1.5 text-[9px]', proxyEnabled ? 'text-accent-teal' : 'text-text-muted')}
+            className={cn('ui-control flex min-w-0 items-center justify-center gap-1.5 px-2 py-1.5 text-[9px]', proxyEnabled ? 'text-accent-teal' : 'text-text-muted')}
             disabled={busy}
             title={proxyEnabled ? t('traffic.stopCapture') : t('traffic.startCapture')}
             onClick={() => void run(() => window.hexestra.invoke(proxyEnabled ? TRAFFIC_IPC.STOP : TRAFFIC_IPC.START, projectId))}
           >
-            <Icon name={proxyEnabled ? 'activity' : 'pause'} size={11} />{proxyEnabled ? t('traffic.captureOn') : t('traffic.captureOff')}
+            <Icon name={proxyEnabled ? 'activity' : 'pause'} size={11} /><span className="min-w-0 truncate">{proxyEnabled ? t('traffic.captureOn') : t('traffic.captureOff')}</span>
           </button>
-          <button type="button" className={cn('ui-control px-2 py-1.5 text-[9px]', burpEnabled && 'text-accent-blue')} disabled={busy} onClick={() => void run(() => window.hexestra.invoke(burpEnabled ? TRAFFIC_IPC.BURP_DISCONNECT : TRAFFIC_IPC.BURP_CONNECT, projectId))}>
-            {burpEnabled ? t('traffic.burpSync') : t('traffic.burpOff')}
+          <button type="button" className={cn('ui-control flex min-w-0 items-center justify-center px-2 py-1.5 text-[9px]', burpEnabled && 'text-accent-blue')} disabled={busy} onClick={() => void run(() => window.hexestra.invoke(burpEnabled ? TRAFFIC_IPC.BURP_DISCONNECT : TRAFFIC_IPC.BURP_CONNECT, projectId))}>
+            <span className="min-w-0 truncate">{burpEnabled ? t('traffic.burpSync') : t('traffic.burpOff')}</span>
           </button>
           <button type="button" className="ui-icon-button" disabled={busy} aria-label={t('traffic.openBurpSettings')} title={t('traffic.openBurpSettings')} onClick={() => openSettingsTab('burp')}>
             <Icon name="settings" size={12} />
@@ -320,7 +320,7 @@ export function TrafficSidebar() {
 }
 
 function FilterRow({ label, values, active, onChange }: { label: string; values: Array<{ id: string; label: string }>; active: string; onChange: (value: string) => void }) {
-  return <div className="flex items-center gap-1"><span className="mr-0.5 text-[7px] text-text-muted">{label}</span>{values.map((value) => <button key={value.id} className={cn('rounded px-1.5 py-0.5 text-[8px] uppercase', active === value.id ? 'bg-accent-blue/12 text-accent-blue' : 'text-text-muted hover:bg-surface/40')} onClick={() => onChange(value.id)}>{value.label}</button>)}</div>;
+  return <div className="flex min-w-0 flex-wrap items-center gap-0.5"><span className="mr-0.5 shrink-0 text-[7px] text-text-muted">{label}</span>{values.map((value) => <button key={value.id} title={value.label} className={cn('min-w-0 rounded px-1.5 py-0.5 text-[8px] uppercase leading-tight', active === value.id ? 'bg-accent-blue/12 text-accent-blue' : 'text-text-muted hover:bg-surface/40')} onClick={() => onChange(value.id)}><span className="block truncate">{value.label}</span></button>)}</div>;
 }
 
 function InterceptToggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {

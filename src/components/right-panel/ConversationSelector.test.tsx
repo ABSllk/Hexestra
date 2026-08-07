@@ -17,12 +17,14 @@ describe('ConversationSelector', () => {
         {
           id: 'main',
           title: 'Initial reconnaissance',
+          backendId: 'claude',
           createdAt: '2026-07-31T00:00:00.000Z',
           messageCount: 4,
         },
         {
           id: 'conversation-2',
           title: 'Web attack path',
+          backendId: 'claude',
           createdAt: '2026-07-31T00:01:00.000Z',
           messageCount: 2,
         },

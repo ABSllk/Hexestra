@@ -28,7 +28,7 @@ export function ContextIndicator() {
       <div className="flex min-w-0 flex-wrap gap-1">
         {selectedNode && (
           <span
-            className="rounded-md border border-accent-blue/25 bg-accent-blue/10 px-1.5 py-0.5 text-[9px] text-accent-blue"
+            className="max-w-full min-w-0 truncate rounded-md border border-accent-blue/25 bg-accent-blue/10 px-1.5 py-0.5 text-[9px] text-accent-blue"
             title={`${relationshipCount} asset relationship${relationshipCount === 1 ? '' : 's'} shared automatically`}
           >
             {selectedNode.label} · {relationshipCount}
@@ -39,8 +39,8 @@ export function ContextIndicator() {
             key={tab.tabId}
             onClick={() => toggleTabSharing(tab.tabId)}
             className={tab.isShared
-              ? 'rounded-md border border-accent-teal/25 bg-accent-teal/10 px-1.5 py-0.5 text-[9px] text-accent-teal hover:border-accent-teal/45 hover:bg-accent-teal/15'
-              : 'rounded-md border border-surface px-1.5 py-0.5 text-[9px] text-text-muted hover:bg-surface/35 hover:text-text-secondary'}
+              ? 'max-w-full min-w-0 truncate rounded-md border border-accent-teal/25 bg-accent-teal/10 px-1.5 py-0.5 text-[9px] text-accent-teal hover:border-accent-teal/45 hover:bg-accent-teal/15'
+              : 'max-w-full min-w-0 truncate rounded-md border border-surface px-1.5 py-0.5 text-[9px] text-text-muted hover:bg-surface/35 hover:text-text-secondary'}
             title={tab.isShared ? 'Click to hide from AI' : 'Click to share with AI'}
           >
             {tab.title}

@@ -96,10 +96,17 @@ export function AssetWorkspaceTab() {
   return (
     <div className="flex h-full flex-col">
       <div className="shrink-0 border-b border-surface bg-bg-tertiary/50 p-2">
-        <div className="ui-segmented mb-2 grid grid-cols-3 select-none">
+        <div className="ui-segmented mb-2 grid min-w-0 grid-cols-3 select-none">
           {(['inventory', 'changes', 'scope'] as const).map((option) => (
-            <button key={option} onClick={() => setView(option)} className={`ui-segmented-item px-1 py-1 font-mono text-[9px] uppercase tracking-wider ${view === option ? 'ui-segmented-item-active' : ''}`}>
-              {t(option === 'inventory' ? 'assets.inventory' : option === 'changes' ? 'assets.changes' : 'assets.scope')}
+            <button
+              key={option}
+              title={t(option === 'inventory' ? 'assets.inventory' : option === 'changes' ? 'assets.changes' : 'assets.scope')}
+              onClick={() => setView(option)}
+              className={`ui-segmented-item min-w-0 px-1 py-1 text-center font-mono text-[9px] uppercase leading-tight tracking-wider ${view === option ? 'ui-segmented-item-active' : ''}`}
+            >
+              <span className="block min-w-0 truncate">
+                {t(option === 'inventory' ? 'assets.inventory' : option === 'changes' ? 'assets.changes' : 'assets.scope')}
+              </span>
             </button>
           ))}
         </div>
@@ -143,8 +150,8 @@ export function AssetWorkspaceTab() {
               }}
               className={`ui-hover-row mx-1.5 my-0.5 w-[calc(100%-0.75rem)] px-2.5 py-2 text-left ${selectedNodeId === node.id ? '!border-accent-blue/30 !bg-accent-blue/10 shadow-sm shadow-black/10' : ''}`}
             >
-              <div className="mb-1 flex items-center justify-between gap-2 select-none"><span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><StatusBadge status={node.status} /></div>
-              <div className="flex items-center gap-2 text-[9px] text-text-muted select-none"><span className="uppercase text-accent-teal select-none">{node.type}</span><span className="min-w-0 flex-1 truncate">{assetPrimaryValue(node, target, asset)}</span>{node.portCount > 0 && <span>{node.portCount} ports</span>}</div>
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5 select-none"><span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><StatusBadge status={node.status} className="shrink-0" /></div>
+              <div className="flex min-w-0 items-center gap-2 text-[9px] text-text-muted select-none"><span className="shrink-0 uppercase text-accent-teal select-none">{node.type}</span><span className="min-w-0 flex-1 truncate">{assetPrimaryValue(node, target, asset)}</span>{node.portCount > 0 && <span className="shrink-0">{node.portCount} ports</span>}</div>
               {updatedAt && <div className="mt-1 font-mono text-[8px] text-text-muted/70 select-none">Seen {formatTime(updatedAt)}</div>}
             </button>;
           })}
@@ -178,7 +185,7 @@ function ChangesPanel() {
   const runs = useSessionStore((s) => s.scanRuns);
   return <div className="min-h-0 flex-1 overflow-y-auto">
     <div className="border-b border-surface/60 px-3 py-2 text-[9px] uppercase tracking-wider text-text-muted">{runs.length} scan runs · {changes.length} changes</div>
-    {runs.length > 0 && <div className="border-b border-surface/60 bg-bg-primary/20 px-3 py-2"><div className="mb-1 text-[9px] uppercase tracking-wider text-text-muted">Recent scans</div>{runs.slice(0, 6).map((run) => <div key={run.id} className="flex items-center justify-between py-0.5 font-mono text-[9px]"><span className="uppercase text-text-secondary">{run.tool}</span><span className="text-text-muted">{run.changeCount} changes · {formatTime(run.completedAt)}</span></div>)}</div>}
+    {runs.length > 0 && <div className="border-b border-surface/60 bg-bg-primary/20 px-3 py-2"><div className="mb-1 text-[9px] uppercase tracking-wider text-text-muted">Recent scans</div>{runs.slice(0, 6).map((run) => <div key={run.id} className="flex min-w-0 items-center justify-between gap-2 py-0.5 font-mono text-[9px]"><span className="min-w-0 truncate uppercase text-text-secondary">{run.tool}</span><span className="shrink-0 text-text-muted">{run.changeCount} changes · {formatTime(run.completedAt)}</span></div>)}</div>}
     {changes.length === 0 ? <div className="p-4 text-center text-2xs text-text-muted">No material changes observed yet.</div> : changes.map((change) => <div key={change.id} className="border-b border-surface/50 px-3 py-2">
       <div className="mb-1 flex items-center gap-2"><span className={`h-1.5 w-1.5 rounded-full ${change.kind === 'endpoint_changed' ? 'bg-severity-medium' : 'bg-accent-green'}`} /><span className="font-mono text-[9px] uppercase text-accent-teal">{change.kind.replaceAll('_', ' ')}</span></div>
       <div className="text-2xs leading-relaxed text-text-primary">{change.label}</div>

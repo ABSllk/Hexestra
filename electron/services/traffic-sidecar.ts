@@ -4,8 +4,8 @@ import fs from 'fs';
 import net from 'net';
 import path from 'path';
 import type { InterceptDecision, ProxyProfile, TrafficFlow, TrafficRequest } from '../contracts/traffic';
-import { detectMitmproxyRuntime, MITMPROXY_VERSION } from './mitmproxy-runtime';
-export { MITMPROXY_VERSION, parseMitmdumpVersion, resolveMitmdumpPath } from './mitmproxy-runtime';
+import { detectMitmproxyRuntime } from './mitmproxy-runtime';
+export { parseMitmdumpVersion, resolveMitmdumpPath } from './mitmproxy-runtime';
 
 export interface TrafficSidecarOptions {
   projectId: string;
@@ -92,7 +92,7 @@ export class TrafficSidecar {
       proxyPort,
       controlPort,
       caCertificatePath: path.join(caDirectory, 'mitmproxy-ca-cert.cer'),
-      version: MITMPROXY_VERSION,
+      version: runtime.version ?? 'unknown',
     };
   }
 

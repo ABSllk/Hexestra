@@ -12,3 +12,6 @@ export function createHexestraAgentTools(context: AgentToolContext) {
     ...createProjectAgentTools(context),
   ];
 }
+
+export { createAgentTool } from './contract';
+export type { AgentToolDefinition, AgentToolResult, AgentToolContent } from './contract';

@@ -62,10 +62,8 @@ Hexestra 将分散的渗透测试环节整合进同一个项目。Agent 可以�
 - Node.js 24 和 npm
 - Windows x64、Linux x64（以 Ubuntu 24.04 为基准）、macOS Intel 或 macOS Apple Silicon
 - 当前平台的标准 Electron 桌面运行库；Ubuntu 需要常见的 X11/GTK 运行库
-- 打包版已内置 mitmproxy `12.2.3`；从源码运行时可单独提供
+- 打包版已内置 mitmproxy；从源码运行时可单独提供
 - 可选的 Burp Suite；构建 Bridge 需要 JDK 17
-
-所有支持的源码运行平台均可使用 Native Claude Code。WSL Claude Code 和 WSL Shell 仅支持 Windows。打包版已内置官方的平台对应 mitmdump 运行时；本次发布的安装包尚未进行代码签名。
 
 ### 安装 Claude Code
 
@@ -117,37 +115,23 @@ $env:CLAUDE_CODE_EFFORT_LEVEL="max"
 
 ### 从源码运行
 
-在 Hexestra 项目根目录执行。`npm ci` 会安装锁定版本的 Claude Agent SDK 和当前平台的 `node-pty` 预编译包：
+在 Hexestra 项目根目录执行：
 
 ```bash
 npm ci
 npm run electron:dev
 ```
 
-Hexestra 不会回退到本地 `node-gyp` 编译。
-
 ### 配置流量捕获与 mitmproxy
 
-打包版已内置经过校验的 mitmdump `12.2.3` 运行时，因此 Traffic Capture
-无需单独安装 mitmproxy。打包时会从 mitmproxy 官方分发地址下载运行时，
-按照其 Sigstore 来源证明中发布的 SHA-256 摘要进行校验，并将它存放在
-Electron 的 `app.asar` 之外。
-
-从源码运行 Hexestra 时，请安装所需版本并确认 `mitmdump` 可用：
+从源码运行 Hexestra 时，请安装 mitmproxy 并确认 `mitmdump` 可用：
 
 ```bash
-uv tool install mitmproxy==12.2.3
+uv tool install mitmproxy
 mitmdump --version
 ```
 
-打开 **Settings > Traffic Runtime（设置 > 流量运行时）** 可以查看当前选择的
-可执行文件。手动选择的路径优先于内置运行时；从源码运行时还会继续检查
-`HEXESTRA_MITMDUMP_PATH`、`PATH` 和常见安装目录。更改外部安装后使用
-**Re-detect（重新检测）**；如需清除手动路径，使用
-**Use automatic detection（自动检测）**。本版本只接受 `12.2.3`。其他源码运行
-安装方式请参考[官方 mitmproxy 安装指南](https://docs.mitmproxy.org/stable/overview/installation/)。
-
-启动 Capture 后，Hexestra 会自动分配本机回环端口、创建项目级 CA、加载插件、配置内置浏览器，并随项目停止 sidecar。运行时缺失或版本不兼容时，Traffic Runtime 页面会说明原因并阻止 Capture 启动。
+Release 已内置 mitmdump 运行时，因此 Traffic Capture 无需单独安装 mitmproxy。
 
 ### 配置 Burp Suite Bridge
 
@@ -162,7 +146,6 @@ npm run build:burp-bridge
 1. 在 Burp 中打开 **Extensions > Installed > Add**，选择 **Java**，加载 `resources/burp-bridge/hexestra-burp-bridge.jar`。
 2. 打开 **Hexestra Bridge**，记录本机回环端口并复制配对 token。
 3. 在 Hexestra 中打开 **Settings > Burp（设置 > Burp）**，填写端口和 token，保存后点击 **Connect Bridge**。
-4. 如启用 Burp MCP，请填写它的 SSE 地址；默认值为 `http://127.0.0.1:9876/sse`。
 
 镜像的交换会出现在 **Target > Site map**，在支持时也会出现在 **Organizer**。Burp 的公开扩展 API 无法把合成记录写入 **Proxy > HTTP history**。
 
@@ -174,7 +157,7 @@ npm run audit:public
 npm run check
 ```
 
-## 负责任地使用
+## 负责使用
 
 只在获得明确授权并准确设置项目 Scope 后使用 Hexestra。破坏性、干扰性或影响隐私的操作应获得适当批准，导出的证据和报告应作为敏感数据处理。ASK、AUTO 和 BYPASS 只改变审批行为，不会关闭 Scope、Rules of Engagement 或技术安全边界。Hexestra 不能替代专业判断和责任承担。
 
@@ -185,3 +168,13 @@ npm run check
 ## 开源许可证
 
 Hexestra 采用 [Apache License 2.0](LICENSE) 开源。第三方组件仍受其各自许可证和条款约束。
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=ABSllk%2FHexestra&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ABSllk/Hexestra&type=date&theme=dark&legend=top-left&sealed_token=As1qwyGyOE55UWpzJHHMIVahBRilgsQzeBlmLm_0sQmR5EPTI8Doco_U3bBFMtZrATePk2t7EU-3ZbXvhrVt7xmlImm88-SYpF43T3bHSyR73VuwfhNLPh8k4hPq99KfzSgXTMUmcWSqOJLeM1k1n7hR9ZNPt4KG2utW3ZMznkNFU0ZlUOFSiXYpnwP2" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ABSllk/Hexestra&type=date&legend=top-left&sealed_token=As1qwyGyOE55UWpzJHHMIVahBRilgsQzeBlmLm_0sQmR5EPTI8Doco_U3bBFMtZrATePk2t7EU-3ZbXvhrVt7xmlImm88-SYpF43T3bHSyR73VuwfhNLPh8k4hPq99KfzSgXTMUmcWSqOJLeM1k1n7hR9ZNPt4KG2utW3ZMznkNFU0ZlUOFSiXYpnwP2" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ABSllk/Hexestra&type=date&legend=top-left&sealed_token=As1qwyGyOE55UWpzJHHMIVahBRilgsQzeBlmLm_0sQmR5EPTI8Doco_U3bBFMtZrATePk2t7EU-3ZbXvhrVt7xmlImm88-SYpF43T3bHSyR73VuwfhNLPh8k4hPq99KfzSgXTMUmcWSqOJLeM1k1n7hR9ZNPt4KG2utW3ZMznkNFU0ZlUOFSiXYpnwP2" />
+ </picture>
+</a>

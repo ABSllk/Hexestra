@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PersistedChatMessage } from './project-state';
 import { resolveBranchResumeOptions } from './conversation-branch';
+import type { AgentBackendRuntimeState } from '../contracts/agent-runtime';
 
 const messages: PersistedChatMessage[] = [
   {
@@ -16,7 +17,7 @@ const messages: PersistedChatMessage[] = [
     content: 'First response',
     timestamp: '2026-07-31T00:00:01.000Z',
     status: 'complete',
-    sdkMessageId: 'sdk-assistant-1',
+    backendMessageId: 'sdk-assistant-1',
   },
   {
     id: 'user-2',
@@ -32,8 +33,11 @@ describe('conversation branch resume planning', () => {
     expect(resolveBranchResumeOptions(
       messages,
       2,
-      'claude-session-a',
-      'wsl:Ubuntu:/usr/bin/claude',
+      {
+        backendId: 'claude',
+        sessionId: 'claude-session-a',
+        connectionFingerprint: 'wsl:Ubuntu:/usr/bin/claude',
+      } satisfies AgentBackendRuntimeState,
       'wsl:Ubuntu:/usr/bin/claude',
     )).toEqual({
       sessionId: 'claude-session-a',
@@ -46,15 +50,21 @@ describe('conversation branch resume planning', () => {
     expect(resolveBranchResumeOptions(
       messages,
       0,
-      'claude-session-a',
-      'native::claude',
+      {
+        backendId: 'claude',
+        sessionId: 'claude-session-a',
+        connectionFingerprint: 'native::claude',
+      },
       'native::claude',
     )).toEqual({ sessionId: undefined, resumeAt: undefined, fork: false });
     expect(resolveBranchResumeOptions(
       messages,
       2,
-      'claude-session-a',
-      'wsl:Ubuntu:/usr/bin/claude',
+      {
+        backendId: 'claude',
+        sessionId: 'claude-session-a',
+        connectionFingerprint: 'wsl:Ubuntu:/usr/bin/claude',
+      },
       'native::claude',
     )).toEqual({ sessionId: undefined, resumeAt: undefined, fork: false });
   });

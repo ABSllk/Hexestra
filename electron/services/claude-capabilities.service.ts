@@ -50,7 +50,7 @@ export class ClaudeCapabilitiesService {
     registerIpc = true,
   ) {
     this.dependencies = {
-      getSettings: dependencies.getSettings ?? (() => agentSettingsService.getSettings()),
+      getSettings: dependencies.getSettings ?? (() => agentSettingsService.getClaudeSettings()),
       getSessionPath: dependencies.getSessionPath ?? ((sessionId) => sessionService.getSessionPath(sessionId)),
       resolveRuntimeHome: dependencies.resolveRuntimeHome ?? resolveClaudeRuntimeHome,
     };

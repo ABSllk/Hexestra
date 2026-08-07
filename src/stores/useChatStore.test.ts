@@ -5,15 +5,15 @@ import { useSessionStore } from './useSessionStore';
 
 const readyStatus: AgentStatus = {
   state: 'ready',
-  sdkAvailable: true,
-  backend: 'claude-agent-sdk',
+  available: true,
+  backendId: 'claude',
   authenticated: true,
   model: 'test-model',
-  claudeSessionId: null,
+  backendSessionId: null,
   pendingRequests: 0,
   historyLength: 0,
   lastError: null,
-  executionMode: 'wsl',
+  runtimeMode: 'wsl',
   runtimeLabel: 'WSL · Ubuntu-24.04',
 };
 
@@ -31,6 +31,7 @@ function activation(sessionId: string, content: string): ProjectActivation {
     branches: [{
       id: 'main',
       title: 'Main',
+      backendId: 'claude',
       createdAt: '2026-07-18T00:00:00.000Z',
       messageCount: content ? 1 : 0,
     }],
@@ -70,8 +71,8 @@ describe('useChatStore project isolation', () => {
         }],
         activeBranchId: input.newBranchId,
         branches: [
-          { id: 'main', title: 'Main', createdAt: '2026-07-18T00:00:00.000Z', messageCount: 2 },
-          { id: input.newBranchId, title: input.request.content, createdAt: '2026-07-31T00:00:00.000Z', messageCount: 1 },
+          { id: 'main', title: 'Main', backendId: 'claude', createdAt: '2026-07-18T00:00:00.000Z', messageCount: 2 },
+          { id: input.newBranchId, title: input.request.content, backendId: 'claude', createdAt: '2026-07-31T00:00:00.000Z', messageCount: 1 },
         ],
         status: readyStatus,
       };
@@ -82,8 +83,8 @@ describe('useChatStore project isolation', () => {
         messages: [],
         activeBranchId: conversationId,
         branches: [
-          { id: 'main', title: 'Main', createdAt: '2026-07-18T00:00:00.000Z', messageCount: 1 },
-          { id: conversationId, title: 'New conversation 2', createdAt: '2026-07-31T00:02:00.000Z', messageCount: 0 },
+          { id: 'main', title: 'Main', backendId: 'claude', createdAt: '2026-07-18T00:00:00.000Z', messageCount: 1 },
+          { id: conversationId, title: 'New conversation 2', backendId: 'claude', createdAt: '2026-07-31T00:02:00.000Z', messageCount: 0 },
         ],
         status: { ...readyStatus, historyLength: 0 },
         sessionId,
@@ -101,8 +102,8 @@ describe('useChatStore project isolation', () => {
         }],
         activeBranchId: branchId,
         branches: [
-          { id: 'main', title: 'Main', createdAt: '2026-07-18T00:00:00.000Z', messageCount: 1 },
-          { id: branchId, title: 'Web path', createdAt: '2026-07-31T00:02:00.000Z', messageCount: 1 },
+          { id: 'main', title: 'Main', backendId: 'claude', createdAt: '2026-07-18T00:00:00.000Z', messageCount: 1 },
+          { id: branchId, title: 'Web path', backendId: 'claude', createdAt: '2026-07-31T00:02:00.000Z', messageCount: 1 },
         ],
         status: { ...readyStatus, historyLength: 1 },
         sessionId,
@@ -297,7 +298,7 @@ describe('useChatStore project isolation', () => {
           content: 'Original answer',
           timestamp: '2026-07-31T00:00:01.000Z',
           status: 'complete',
-          sdkMessageId: 'sdk-assistant-original',
+          backendMessageId: 'sdk-assistant-original',
         },
       ],
     });
@@ -340,6 +341,7 @@ describe('useChatStore project isolation', () => {
         {
           id: 'conversation-web',
           title: 'Web path',
+          backendId: 'claude',
           createdAt: '2026-07-31T00:02:00.000Z',
           messageCount: 1,
         },

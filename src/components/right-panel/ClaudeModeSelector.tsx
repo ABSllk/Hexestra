@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Icon } from '@/components/shared/Icon';
-import type { ClaudePermissionMode } from '@/types';
+import type { AgentPermissionMode } from '@/types';
 
 export const CLAUDE_MODE_OPTIONS: ReadonlyArray<{
-  value: ClaudePermissionMode;
+  value: AgentPermissionMode;
   label: string;
   description: string;
 }> = [
@@ -29,14 +29,14 @@ export function ClaudeModeSelector({
   onChange,
   isProcessing,
 }: {
-  value: ClaudePermissionMode;
-  onChange: (mode: ClaudePermissionMode) => void;
+  value: AgentPermissionMode;
+  onChange: (mode: AgentPermissionMode) => void;
   isProcessing: boolean;
 }) {
   const [confirmingBypass, setConfirmingBypass] = useState(false);
   const activeMode = CLAUDE_MODE_OPTIONS.find((mode) => mode.value === value)!;
 
-  const selectMode = (mode: ClaudePermissionMode) => {
+  const selectMode = (mode: AgentPermissionMode) => {
     if (mode === 'bypassPermissions' && value !== 'bypassPermissions') {
       setConfirmingBypass(true);
       return;

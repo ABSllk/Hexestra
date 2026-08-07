@@ -1,4 +1,5 @@
-import type { ChatMessage, ClaudePermissionMode, AgentStatus } from './chat';
+import type { AgentPermissionMode, AgentStatus, ChatMessage } from './chat';
+import type { AgentBackendId } from '../../electron/contracts/agent-runtime';
 import type { AutonomyLevel } from './session';
 import type { ShellProjectState } from '@electron/contracts/shell';
 import type { SubagentRun } from '../../electron/agent-subagent-contract';
@@ -23,7 +24,7 @@ export interface ProjectWorkspaceState {
 }
 
 export interface ProjectPreferences {
-  permissionMode: ClaudePermissionMode;
+  permissionMode: AgentPermissionMode;
   autonomyLevel: AutonomyLevel;
 }
 
@@ -32,6 +33,7 @@ export interface ConversationBranchSummary {
   title: string;
   parentBranchId?: string;
   forkedFromMessageId?: string;
+  backendId: AgentBackendId;
   createdAt: string;
   messageCount: number;
 }

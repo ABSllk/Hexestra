@@ -19,6 +19,7 @@ describe('ChatMessages conversation branches', () => {
       branches: [{
         id: 'main',
         title: 'Main',
+        backendId: 'claude',
         createdAt: '2026-07-31T00:00:00.000Z',
         messageCount: 1,
       }],

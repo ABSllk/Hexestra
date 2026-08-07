@@ -195,12 +195,12 @@ export function ShellsTab() {
 
   return (
     <div className="flex min-h-full flex-col gap-3 p-2 text-[11px]">
-      <div className="flex gap-1">
-        <button className="ui-control flex h-7 flex-1 items-center justify-center gap-1" onClick={() => {
+      <div className="flex min-w-0 gap-1">
+        <button className="ui-control flex min-w-0 flex-1 items-center justify-center gap-1 truncate" onClick={() => {
           setProfileDraft(DEFAULT_PROFILE);
           setEditorMode('profile');
         }}><Icon name="plus" size={11} /> {t('shell.connection')}</button>
-        <button className="ui-control flex h-7 flex-1 items-center justify-center gap-1" onClick={() => setEditorMode('listener')}>
+        <button className="ui-control flex min-w-0 flex-1 items-center justify-center gap-1 truncate" onClick={() => setEditorMode('listener')}>
           <Icon name="network" size={11} /> {t('shell.listener')}
         </button>
       </div>
@@ -247,15 +247,15 @@ export function ShellsTab() {
       <ShellSection title={t('shell.profiles')} count={profiles.length}>
         {profiles.length === 0 && <SectionEmpty text={t('shell.noProfiles')} />}
         {profiles.map((profile) => (
-          <div key={profile.id} className="group flex items-center gap-2 rounded px-1.5 py-1.5 hover:bg-surface/35">
+          <div key={profile.id} className="group flex min-w-0 items-center gap-1.5 rounded px-1.5 py-1.5 hover:bg-surface/35">
             <Icon name={profile.kind === 'ssh' ? 'server' : 'terminal'} size={12} className="text-accent-blue" />
             <button className="min-w-0 flex-1 text-left" onClick={() => void run(`connect-${profile.id}`, () => connectProfile(profile))}>
               <span className="block truncate text-text-secondary">{profile.name}</span>
               <span className="block truncate font-mono text-[8px] text-text-muted">{profile.kind === 'ssh' ? `${profile.username}@${profile.host}:${profile.port}` : profile.kind.toUpperCase()}</span>
             </button>
-            <span className="text-[8px] uppercase text-text-muted">{busy === `connect-${profile.id}` ? '…' : profile.assetRole}</span>
-            <button title="Edit profile" className="opacity-0 group-hover:opacity-100" onClick={() => { setProfileDraft(profile); setEditorMode('profile'); }}><Icon name="edit" size={11} /></button>
-            <button title="Delete profile" className="opacity-0 group-hover:opacity-100" onClick={() => void run(`delete-${profile.id}`, () => window.hexestra.invoke(SHELL_IPC.PROFILE_DELETE, projectId, profile.id))}><Icon name="close" size={11} /></button>
+            <span className="max-w-20 shrink-0 truncate text-[8px] uppercase text-text-muted" title={profile.assetRole}>{busy === `connect-${profile.id}` ? '…' : profile.assetRole}</span>
+            <button title="Edit profile" className="ui-icon-button h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100" onClick={() => { setProfileDraft(profile); setEditorMode('profile'); }}><Icon name="edit" size={11} /></button>
+            <button title="Delete profile" className="ui-icon-button h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100" onClick={() => void run(`delete-${profile.id}`, () => window.hexestra.invoke(SHELL_IPC.PROFILE_DELETE, projectId, profile.id))}><Icon name="close" size={11} /></button>
           </div>
         ))}
       </ShellSection>
@@ -263,39 +263,41 @@ export function ShellsTab() {
       <ShellSection title={t('shell.listen')} count={listeners.length}>
         {listeners.length === 0 && <SectionEmpty text={t('shell.noListeners')} />}
         {listeners.map(({ profile, state, sessionCount }) => (
-          <div key={profile.id} className="group flex items-center gap-2 rounded px-1.5 py-1.5 hover:bg-surface/35">
+          <div key={profile.id} className="group flex min-w-0 flex-wrap items-center gap-1.5 rounded px-1.5 py-1.5 hover:bg-surface/35">
             <span className={`h-1.5 w-1.5 rounded-full ${state === 'listening' ? 'bg-accent-green' : state === 'error' ? 'bg-accent-red' : 'bg-text-muted'}`} />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 basis-24">
               <span className="block truncate text-text-secondary">{profile.name}</span>
               <span className="font-mono text-[8px] text-text-muted">{profile.bindAddress}:{profile.port} · {sessionCount}</span>
             </div>
-            <button
-              type="button"
-              className="rounded border border-accent-purple/30 px-1.5 py-0.5 text-[9px] text-accent-purple"
-              title="Generate a connection command"
-              onClick={() => setBuilderListener(profile)}
-            >Generate</button>
-            <button
-              className="rounded border border-surface px-1.5 py-0.5 text-[9px] text-text-muted hover:text-text-primary"
-              onClick={() => void run(`listener-${profile.id}`, () => window.hexestra.invoke(
-                state === 'listening' ? SHELL_IPC.LISTENER_STOP : SHELL_IPC.LISTENER_START,
-                projectId,
-                profile.id,
-              ))}
-            >{busy === `listener-${profile.id}` ? '…' : state === 'listening' ? 'Stop' : 'Start'}</button>
-            <button
-              type="button"
-              aria-label="Delete listener"
-              title={state === 'listening' ? 'Stop listener before deleting' : 'Delete listener'}
-              disabled={state === 'listening' || busy === `delete-listener-${profile.id}`}
-              className="ui-icon-button opacity-0 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-25"
-              onClick={() => void run(
-                `delete-listener-${profile.id}`,
-                () => window.hexestra.invoke(SHELL_IPC.LISTENER_DELETE, projectId, profile.id),
-              )}
-            >
-              <Icon name="close" size={11} />
-            </button>
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                className="shrink-0 rounded border border-accent-purple/30 px-1.5 py-0.5 text-[9px] text-accent-purple"
+                title="Generate a connection command"
+                onClick={() => setBuilderListener(profile)}
+              >Generate</button>
+              <button
+                className="shrink-0 rounded border border-surface px-1.5 py-0.5 text-[9px] text-text-muted hover:text-text-primary"
+                onClick={() => void run(`listener-${profile.id}`, () => window.hexestra.invoke(
+                  state === 'listening' ? SHELL_IPC.LISTENER_STOP : SHELL_IPC.LISTENER_START,
+                  projectId,
+                  profile.id,
+                ))}
+              >{busy === `listener-${profile.id}` ? '…' : state === 'listening' ? 'Stop' : 'Start'}</button>
+              <button
+                type="button"
+                aria-label="Delete listener"
+                title={state === 'listening' ? 'Stop listener before deleting' : 'Delete listener'}
+                disabled={state === 'listening' || busy === `delete-listener-${profile.id}`}
+                className="ui-icon-button h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-25"
+                onClick={() => void run(
+                  `delete-listener-${profile.id}`,
+                  () => window.hexestra.invoke(SHELL_IPC.LISTENER_DELETE, projectId, profile.id),
+                )}
+              >
+                <Icon name="close" size={11} />
+              </button>
+            </div>
           </div>
         ))}
       </ShellSection>
@@ -307,7 +309,7 @@ export function ShellsTab() {
             <div className="flex items-center gap-2">
               <span className={`h-1.5 w-1.5 rounded-full ${session.state === 'ready' ? 'bg-accent-green' : session.state === 'agent_locked' ? 'bg-accent-yellow' : session.state === 'quarantined' ? 'bg-accent-purple' : 'bg-text-muted'}`} />
               <button className="min-w-0 flex-1 truncate text-left text-text-secondary" onClick={() => openSession(session, profiles.find((profile) => profile.id === session.profileId))}>{session.title}</button>
-              <span className="font-mono text-[8px] uppercase text-text-muted">{session.state}</span>
+              <span className="max-w-24 shrink-0 truncate font-mono text-[8px] uppercase text-text-muted" title={session.state}>{session.state}</span>
             </div>
             {session.state === 'quarantined' && (
               <div className="mt-1.5 flex gap-1 pl-3.5">

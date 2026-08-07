@@ -1,12 +1,12 @@
-import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
+import type { AgentPermissionMode } from '../contracts/agent-runtime';
 
 export const SUPPORTED_AGENT_MODES = [
   'default',
   'auto',
   'bypassPermissions',
-] as const satisfies readonly PermissionMode[];
+] as const satisfies readonly AgentPermissionMode[];
 
-export type SupportedAgentMode = (typeof SUPPORTED_AGENT_MODES)[number];
+export type SupportedAgentMode = AgentPermissionMode;
 export type PermissionDisposition = 'allow' | 'ask' | 'deny';
 
 export function normalizeAgentMode(mode: unknown): SupportedAgentMode {

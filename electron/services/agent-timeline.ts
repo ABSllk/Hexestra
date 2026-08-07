@@ -1,25 +1,7 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-
-export type AgentActivityKind = 'text' | 'thinking' | 'tool';
-export type AgentActivityStatus = 'streaming' | 'running' | 'complete' | 'error';
-
-export interface AgentActivity {
-  id: string;
-  kind: AgentActivityKind;
-  status: AgentActivityStatus;
-  content?: string;
-  toolUseId?: string;
-  toolName?: string;
-  label?: string;
-  summary?: string;
-  input?: Record<string, unknown>;
-  output?: string;
-  outputSummary?: string;
-  elapsedSeconds?: number;
-  subagentRunId?: string;
-  agentType?: string;
-  subagentDescription?: string;
-}
+import type { AgentActivity } from '../contracts/agent-runtime';
+export type { AgentActivity } from '../contracts/agent-runtime';
+export type AgentActivityStatus = AgentActivity['status'];
 
 interface StreamEvent {
   type?: string;

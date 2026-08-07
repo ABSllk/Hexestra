@@ -1,12 +1,9 @@
 import type { WebContents } from 'electron';
-import type { SupportedAgentMode } from '../agent-mode';
-
-export type AgentSdk = typeof import('@anthropic-ai/claude-agent-sdk');
+import type { AgentPermissionMode } from '../../contracts/agent-runtime';
 
 export interface AgentToolContext {
-  sdk: AgentSdk;
   sender: WebContents;
   sessionId?: string;
   selectedTargetId?: string;
-  permissionMode: SupportedAgentMode;
+  permissionMode: AgentPermissionMode;
 }

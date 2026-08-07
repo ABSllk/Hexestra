@@ -8,28 +8,19 @@ import type { ShellProjectState } from '../contracts/shell';
 import { normalizeShellProjectState } from './shell-contract';
 import { isManagedRecordKind } from '../contracts/records';
 import type { SubagentRun } from '../agent-subagent-contract';
+import type {
+  AgentActivity,
+  AgentBackendId,
+  AgentBackendRuntimeState,
+  AgentPermissionMode,
+} from '../contracts/agent-runtime';
+import { CLAUDE_BACKEND_ID } from '../contracts/agent-runtime';
 
-export type ProjectPermissionMode = 'default' | 'auto' | 'bypassPermissions';
+export type ProjectPermissionMode = AgentPermissionMode;
 export type ProjectAutonomyLevel = 'low' | 'medium' | 'high';
 export type ProjectTabType = 'terminal' | 'editor' | 'browser' | 'traffic' | 'replay' | 'report' | 'record' | 'settings' | 'welcome';
 
-export interface PersistedAgentActivity {
-  id: string;
-  kind: 'text' | 'thinking' | 'tool';
-  status: 'streaming' | 'running' | 'complete' | 'error';
-  content?: string;
-  toolUseId?: string;
-  toolName?: string;
-  label?: string;
-  summary?: string;
-  input?: Record<string, unknown>;
-  output?: string;
-  outputSummary?: string;
-  elapsedSeconds?: number;
-  subagentRunId?: string;
-  agentType?: string;
-  subagentDescription?: string;
-}
+export type PersistedAgentActivity = AgentActivity;
 
 export interface PersistedChatMessage {
   id: string;
@@ -38,7 +29,7 @@ export interface PersistedChatMessage {
   timestamp: string;
   status: 'sending' | 'streaming' | 'complete' | 'error';
   activities?: PersistedAgentActivity[];
-  sdkMessageId?: string;
+  backendMessageId?: string;
   attachments?: AgentAttachmentMetadata[];
   contextRefs?: AgentContextRef[];
 }
@@ -48,8 +39,8 @@ export interface PersistedConversationBranch {
   title: string;
   parentBranchId?: string;
   forkedFromMessageId?: string;
-  claudeSessionId: string | null;
-  connectionFingerprint: string | null;
+  backendId: AgentBackendId;
+  runtime: AgentBackendRuntimeState | null;
   messages: PersistedChatMessage[];
   subagentRuns: SubagentRun[];
   createdAt: string;
@@ -70,7 +61,7 @@ export interface ProjectWorkspaceState {
 }
 
 export interface ProjectState {
-  version: 5;
+  version: 6;
   agent: {
     model: string | null;
     lastError: string | null;
@@ -102,7 +93,7 @@ export function createDefaultProjectState(): ProjectState {
     createdAt: new Date(0).toISOString(),
   });
   return {
-    version: 5,
+    version: 6,
     agent: {
       model: null,
       lastError: null,
@@ -127,8 +118,8 @@ export function createConversationBranch(
   return {
     id,
     title,
-    claudeSessionId: null,
-    connectionFingerprint: null,
+    backendId: CLAUDE_BACKEND_ID,
+    runtime: null,
     messages: [],
     subagentRuns: [],
     createdAt: new Date().toISOString(),
@@ -149,7 +140,7 @@ export function createDefaultWorkspace(): ProjectWorkspaceState {
 
 export function normalizeProjectState(value: unknown): ProjectState {
   const defaults = createDefaultProjectState();
-  if (!isRecord(value) || (value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5)) return defaults;
+  if (!isRecord(value) || (value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6)) return defaults;
   const agent = isRecord(value.agent) ? value.agent : {};
   const preferences = isRecord(value.preferences) ? value.preferences : {};
   const traffic = isRecord(value.traffic) ? value.traffic : {};
@@ -167,7 +158,7 @@ export function normalizeProjectState(value: unknown): ProjectState {
     : safeBranches[0].id;
 
   return {
-    version: 5,
+    version: 6,
     agent: {
       model: nullableString(agent.model),
       lastError: nullableString(agent.lastError),
@@ -223,6 +214,7 @@ function normalizeBranch(value: unknown): PersistedConversationBranch[] {
   const subagentRuns = Array.isArray(value.subagentRuns)
     ? value.subagentRuns.flatMap(normalizeSubagentRun)
     : [];
+  const backendId = normalizeBackendId(value.backendId ?? value.backend);
   return [{
     id: value.id,
     title: typeof value.title === 'string' && value.title.trim()
@@ -232,8 +224,8 @@ function normalizeBranch(value: unknown): PersistedConversationBranch[] {
     forkedFromMessageId: isIdentifier(value.forkedFromMessageId)
       ? value.forkedFromMessageId
       : undefined,
-    claudeSessionId: nullableString(value.claudeSessionId),
-    connectionFingerprint: nullableString(value.connectionFingerprint),
+    backendId,
+    runtime: normalizeRuntime(value, backendId),
     messages,
     subagentRuns,
     createdAt: typeof value.createdAt === 'string'
@@ -331,7 +323,7 @@ function normalizeMessage(value: unknown): PersistedChatMessage[] {
     content: boundedString(value.content),
     timestamp: typeof value.timestamp === 'string' ? value.timestamp : new Date(0).toISOString(),
     status,
-    sdkMessageId: optionalIdentifier(value.sdkMessageId),
+    backendMessageId: optionalIdentifier(value.backendMessageId ?? value.sdkMessageId),
     ...(activities?.length ? { activities } : {}),
     ...(attachments?.length ? { attachments } : {}),
     ...(contextRefs?.length ? { contextRefs } : {}),
@@ -442,6 +434,23 @@ function optionalString(value: unknown) {
 
 function nullableString(value: unknown) {
   return typeof value === 'string' && value ? value.slice(0, 1_000) : null;
+}
+
+function normalizeBackendId(value: unknown): AgentBackendId {
+  if (value === 'claude-agent-sdk') return CLAUDE_BACKEND_ID;
+  return typeof value === 'string' && /^[a-zA-Z0-9._-]{1,100}$/.test(value)
+    ? value
+    : CLAUDE_BACKEND_ID;
+}
+
+function normalizeRuntime(value: Record<string, unknown>, backendId = normalizeBackendId(value.backendId ?? value.backend)): AgentBackendRuntimeState | null {
+  const runtime = isRecord(value.runtime) ? value.runtime : undefined;
+  const sessionId = nullableString(runtime?.sessionId ?? value.claudeSessionId);
+  const connectionFingerprint = nullableString(
+    runtime?.connectionFingerprint ?? value.connectionFingerprint,
+  );
+  if (!sessionId && !connectionFingerprint) return null;
+  return { backendId, sessionId, connectionFingerprint };
 }
 
 function optionalIdentifier(value: unknown) {

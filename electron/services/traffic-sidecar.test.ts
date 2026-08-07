@@ -3,15 +3,15 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_PROXY_PROFILE } from '../contracts/traffic';
-import { buildMitmdumpArgs, MITMPROXY_VERSION, parseMitmdumpVersion, resolveMitmdumpPath } from './traffic-sidecar';
+import { buildMitmdumpArgs, parseMitmdumpVersion, resolveMitmdumpPath } from './traffic-sidecar';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
 
 describe('traffic sidecar resolver', () => {
-  it('pins the audited mitmproxy version', () => {
-    expect(MITMPROXY_VERSION).toBe('12.2.3');
+  it('parses an available mitmproxy version without enforcing a specific release', () => {
     expect(parseMitmdumpVersion('Mitmproxy: 12.2.3 binary')).toBe('12.2.3');
+    expect(parseMitmdumpVersion('Mitmproxy: 11.0.0 binary')).toBe('11.0.0');
     expect(parseMitmdumpVersion('unexpected')).toBeNull();
   });
 

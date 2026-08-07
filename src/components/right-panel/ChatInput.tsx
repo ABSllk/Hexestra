@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentConnectionSettings } from '@electron/contracts/agent-settings';
+import type { AgentConnectionSettings, AgentSettingsContainer } from '@electron/contracts/agent-settings';
 import { Icon } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useChatStore } from '@/stores';
@@ -13,7 +13,7 @@ export function ChatInput() {
   const { t } = useI18n();
   const [attachments, setAttachments] = useState<AgentAttachment[]>([]);
   const [openMenu, setOpenMenu] = useState<ComposerMenu>(null);
-  const [connectionSettings, setConnectionSettings] = useState<AgentConnectionSettings | null>(null);
+  const [connectionSettings, setConnectionSettings] = useState<AgentSettingsContainer | null>(null);
   const [modelDraft, setModelDraft] = useState('');
   const [composerError, setComposerError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -36,11 +36,12 @@ export function ChatInput() {
   useEffect(() => {
     if (!window.hexestra) return;
     let active = true;
-    void window.hexestra.invoke<AgentConnectionSettings>('agent:settings:get')
-      .then((settings) => {
+    void window.hexestra.invoke<AgentSettingsContainer>('agent:settings:get')
+      .then((raw) => {
         if (!active) return;
+        const settings = normalizeSettingsPayload(raw);
         setConnectionSettings(settings);
-        setModelDraft(settings.model ?? '');
+        setModelDraft(settings.backends.claude.model ?? '');
       })
       .catch((error) => active && setComposerError(String(error)));
     return () => { active = false; };
@@ -98,12 +99,16 @@ export function ChatInput() {
     if (!window.hexestra || !connectionSettings || isProcessing) return;
     setComposerError(null);
     try {
-      const updated = await window.hexestra.invoke<AgentConnectionSettings>('agent:settings:update', {
+      const raw = await window.hexestra.invoke<AgentSettingsContainer | AgentConnectionSettings>('agent:settings:update', {
         ...connectionSettings,
-        model,
+        backends: {
+          ...connectionSettings.backends,
+          claude: { ...connectionSettings.backends.claude, model },
+        },
       });
+      const updated = normalizeSettingsPayload(raw);
       setConnectionSettings(updated);
-      setModelDraft(updated.model ?? '');
+      setModelDraft(updated.backends.claude.model ?? '');
       setOpenMenu(null);
       await refreshStatus();
     } catch (error) {
@@ -126,7 +131,7 @@ export function ChatInput() {
   };
 
   const modeLabel = permissionMode === 'default' ? 'ASK' : permissionMode === 'auto' ? 'AUTO' : 'BYPASS';
-  const modelLabel = connectionSettings?.model ?? agentStatus.model ?? 'Default';
+  const modelLabel = connectionSettings?.backends?.claude?.model ?? agentStatus.model ?? 'Default';
 
   return (
     <div ref={composerRef} className="relative z-30 shrink-0 border-t border-surface bg-bg-secondary/95 p-3">
@@ -234,6 +239,15 @@ export function ChatInput() {
   );
 }
 
+function normalizeSettingsPayload(value: AgentSettingsContainer | AgentConnectionSettings): AgentSettingsContainer {
+  if ('backends' in value) return value;
+  return {
+    version: 2,
+    defaultBackendId: 'claude',
+    backends: { claude: value },
+  };
+}
+
 function agentContextLabel(ref: AgentContextRef) {
   if (ref.kind === 'browser-page') {
     if (ref.selectionText) return `Selection: ${ref.selectionText.slice(0, 42)}`;
@@ -251,9 +265,9 @@ function agentContextTitle(ref: AgentContextRef) {
 }
 
 function ComposerTrigger({ active, ariaLabel, onClick, icon, label, danger = false }: { active: boolean; ariaLabel: string; onClick: () => void; icon: 'plus' | 'shield' | 'bot' | 'sparkles'; label?: string; danger?: boolean }) {
-  return <button aria-label={ariaLabel} aria-expanded={active} onClick={onClick} className={cn('flex h-7 min-w-7 items-center justify-center gap-1 rounded-lg px-1.5 text-[9px] font-medium transition-colors', danger ? 'text-severity-critical hover:bg-severity-critical/10' : active ? 'bg-surface text-text-primary' : 'text-text-muted hover:bg-surface/60 hover:text-text-secondary')}>
+  return <button aria-label={ariaLabel} aria-expanded={active} onClick={onClick} className={cn('flex h-7 min-w-7 max-w-full items-center justify-center gap-1 overflow-hidden rounded-lg px-1.5 text-[9px] font-medium transition-colors', danger ? 'text-severity-critical hover:bg-severity-critical/10' : active ? 'bg-surface text-text-primary' : 'text-text-muted hover:bg-surface/60 hover:text-text-secondary')}>
     <Icon name={icon} size={13} />
-    {label && <span>{label}</span>}
+    {label && <span className="min-w-0 truncate">{label}</span>}
     {label && <Icon name="chevron-right" size={9} className="rotate-90 opacity-60" />}
   </button>;
 }

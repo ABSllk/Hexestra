@@ -5,12 +5,16 @@ import type { AgentAttachment } from '@/types';
 import { ChatInput } from './ChatInput';
 
 const settings = {
-  version: 1 as const,
-  executionMode: 'wsl' as const,
-  wslDistribution: 'Ubuntu-24.04',
-  claudeExecutable: '/usr/bin/claude',
-  model: null,
-  settingSources: ['user', 'project', 'local'] as const,
+  version: 2 as const,
+  defaultBackendId: 'claude' as const,
+  backends: { claude: {
+    version: 1 as const,
+    executionMode: 'wsl' as const,
+    wslDistribution: 'Ubuntu-24.04',
+    claudeExecutable: '/usr/bin/claude',
+    model: null,
+    settingSources: ['user', 'project', 'local'] as const,
+  } },
 };
 
 const imageAttachment: AgentAttachment = {
@@ -31,7 +35,7 @@ describe('ChatInput composer', () => {
   const invoke = vi.fn(async (channel: string) => {
     if (channel === 'agent:settings:get') return settings;
     if (channel === 'agent:attachments:pick') return [imageAttachment];
-    if (channel === 'agent:settings:update') return { ...settings, model: 'custom-model' };
+    if (channel === 'agent:settings:update') return { ...settings, backends: { claude: { ...settings.backends.claude, model: 'custom-model' } } };
     return undefined;
   });
 
@@ -53,9 +57,9 @@ describe('ChatInput composer', () => {
       composerContextRefs: [],
       composerFocusNonce: 0,
       agentStatus: {
-        state: 'ready', sdkAvailable: true, backend: 'claude-agent-sdk', authenticated: true,
-        model: 'runtime-model', claudeSessionId: null, pendingRequests: 0, historyLength: 0,
-        lastError: null, executionMode: 'wsl', runtimeLabel: 'WSL · Ubuntu-24.04',
+        state: 'ready', available: true, backendId: 'claude', authenticated: true,
+        model: 'runtime-model', backendSessionId: null, pendingRequests: 0, historyLength: 0,
+        lastError: null, runtimeMode: 'wsl', runtimeLabel: 'WSL · Ubuntu-24.04',
       },
     });
   });
@@ -97,7 +101,9 @@ describe('ChatInput composer', () => {
     fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'custom-model' } });
     fireEvent.click(screen.getByRole('button', { name: 'Apply model' }));
 
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith('agent:settings:update', expect.objectContaining({ model: 'custom-model' })));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('agent:settings:update', expect.objectContaining({
+      backends: expect.objectContaining({ claude: expect.objectContaining({ model: 'custom-model' }) }),
+    })));
   });
 
   it('shows removable Agent context chips without sending automatically', () => {

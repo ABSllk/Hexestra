@@ -62,10 +62,8 @@ These screenshots use the fictional Northstar Demo Lab, reserved `example.test` 
 - Node.js 24 and npm
 - Windows x64, Linux x64 (Ubuntu 24.04 baseline), macOS Intel, or macOS Apple Silicon
 - Standard Electron desktop libraries; Ubuntu needs the usual X11/GTK runtime libraries
-- mitmproxy `12.2.3` is bundled in packaged builds; source runs may provide it separately
+- mitmproxy is bundled in packaged builds; source runs may provide it separately
 - Optional Burp Suite and JDK 17 for the Bridge
-
-Native Claude Code works on every supported source-run platform. WSL Claude Code and WSL Shell profiles are Windows-only. Packaged builds include the official platform-specific mitmdump runtime; installers are not code-signed in this release.
 
 ### Install Claude Code
 
@@ -117,39 +115,24 @@ Replace the endpoint, token, and model names for another Anthropic-compatible pr
 
 ### Run from source
 
-Run these commands in the Hexestra project root. `npm ci` installs the locked Claude Agent SDK and the platform-specific prebuilt `node-pty` package:
+Run these commands in the Hexestra project root:
 
 ```bash
 npm ci
 npm run electron:dev
 ```
 
-Hexestra does not fall back to a local `node-gyp` build.
-
 ### Configure Traffic Capture and mitmproxy
 
-Packaged builds include the audited mitmdump `12.2.3` runtime, so Traffic Capture
-works without a separate mitmproxy installation. The runtime is downloaded from the
-official mitmproxy distribution during packaging, verified against the SHA-256 digest
-published in its Sigstore provenance, and stored outside Electron's `app.asar`.
-
-When running Hexestra from source, install the required version and confirm that
+When running Hexestra from source, install mitmproxy and confirm that
 `mitmdump` is available:
 
 ```bash
-uv tool install mitmproxy==12.2.3
+uv tool install mitmproxy
 mitmdump --version
 ```
 
-Open **Settings > Traffic Runtime** to inspect the selected executable. A manually
-selected path overrides the bundled runtime; source runs then fall back to
-`HEXESTRA_MITMDUMP_PATH`, `PATH`, and common installation directories. Use
-**Re-detect** after changing an external installation or **Use automatic detection**
-to clear a manual path. Hexestra accepts only version `12.2.3` in this release. See
-the [official mitmproxy installation guide](https://docs.mitmproxy.org/stable/overview/installation/)
-for other source-run installation methods.
-
-When Capture starts, Hexestra allocates loopback ports, creates a project-scoped CA, loads its addon, configures the integrated browser, and stops the sidecar with the project. A missing or incompatible runtime prevents Capture from starting and is reported in the Traffic Runtime page.
+Packaged builds include a mitmdump runtime, so Traffic Capture works without a separate mitmproxy installation.
 
 ### Configure the Burp Suite Bridge
 
@@ -164,7 +147,6 @@ npm run build:burp-bridge
 1. In Burp, open **Extensions > Installed > Add**, choose **Java**, and load `resources/burp-bridge/hexestra-burp-bridge.jar`.
 2. Open **Hexestra Bridge**, note the loopback port, and copy the pairing token.
 3. In Hexestra, open **Settings > Burp**, enter the port and token, save, and choose **Connect Bridge**.
-4. If Burp MCP is enabled, use its SSE endpoint; the default is `http://127.0.0.1:9876/sse`.
 
 Mirrored exchanges appear in **Target > Site map** and, when supported, **Organizer**. Burp's public extension API cannot create synthetic entries in **Proxy > HTTP history**.
 
@@ -187,3 +169,13 @@ See the [contribution guide](CONTRIBUTING.md) and [changelog](CHANGELOG.md).
 ## License
 
 Hexestra is licensed under the [Apache License 2.0](LICENSE). Third-party components remain subject to their own licenses and terms.
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=ABSllk%2FHexestra&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ABSllk/Hexestra&type=date&theme=dark&legend=top-left&sealed_token=As1qwyGyOE55UWpzJHHMIVahBRilgsQzeBlmLm_0sQmR5EPTI8Doco_U3bBFMtZrATePk2t7EU-3ZbXvhrVt7xmlImm88-SYpF43T3bHSyR73VuwfhNLPh8k4hPq99KfzSgXTMUmcWSqOJLeM1k1n7hR9ZNPt4KG2utW3ZMznkNFU0ZlUOFSiXYpnwP2" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ABSllk/Hexestra&type=date&legend=top-left&sealed_token=As1qwyGyOE55UWpzJHHMIVahBRilgsQzeBlmLm_0sQmR5EPTI8Doco_U3bBFMtZrATePk2t7EU-3ZbXvhrVt7xmlImm88-SYpF43T3bHSyR73VuwfhNLPh8k4hPq99KfzSgXTMUmcWSqOJLeM1k1n7hR9ZNPt4KG2utW3ZMznkNFU0ZlUOFSiXYpnwP2" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ABSllk/Hexestra&type=date&legend=top-left&sealed_token=As1qwyGyOE55UWpzJHHMIVahBRilgsQzeBlmLm_0sQmR5EPTI8Doco_U3bBFMtZrATePk2t7EU-3ZbXvhrVt7xmlImm88-SYpF43T3bHSyR73VuwfhNLPh8k4hPq99KfzSgXTMUmcWSqOJLeM1k1n7hR9ZNPt4KG2utW3ZMznkNFU0ZlUOFSiXYpnwP2" />
+ </picture>
+</a>

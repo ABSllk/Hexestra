@@ -5,12 +5,16 @@ import { I18nProvider } from '@/i18n';
 import { APP_SETTINGS_IPC } from '@electron/contracts/app-settings';
 
 const settings = {
-  version: 1 as const,
-  executionMode: 'wsl' as const,
-  wslDistribution: 'Ubuntu-24.04',
-  claudeExecutable: '/usr/bin/claude',
-  model: null,
-  settingSources: ['user', 'project', 'local'] as const,
+  version: 2 as const,
+  defaultBackendId: 'claude' as const,
+  backends: { claude: {
+    version: 1 as const,
+    executionMode: 'wsl' as const,
+    wslDistribution: 'Ubuntu-24.04',
+    claudeExecutable: '/usr/bin/claude',
+    model: null,
+    settingSources: ['user', 'project', 'local'] as const,
+  } },
 };
 
 describe('SettingsTab', () => {
@@ -66,7 +70,9 @@ describe('SettingsTab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
     expect(await screen.findByText('Connection ready')).toBeInTheDocument();
     expect(screen.getByText('2.1.140 (Claude Code)')).toBeInTheDocument();
-    expect(invoke).toHaveBeenCalledWith('agent:settings:test', expect.objectContaining({ executionMode: 'wsl' }));
+    expect(invoke).toHaveBeenCalledWith('agent:settings:test', expect.objectContaining({
+      backends: expect.objectContaining({ claude: expect.objectContaining({ executionMode: 'wsl' }) }),
+    }));
   });
 
   it('switches to native mode without retaining the Linux executable', async () => {

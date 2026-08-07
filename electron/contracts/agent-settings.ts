@@ -1,6 +1,7 @@
 export type AgentExecutionMode = 'native' | 'wsl';
 export type ClaudeSettingSource = 'user' | 'project' | 'local';
 
+/** Claude-specific connection settings retained for the Claude settings UI. */
 export interface AgentConnectionSettings {
   version: 1;
   executionMode: AgentExecutionMode;
@@ -11,6 +12,21 @@ export interface AgentConnectionSettings {
 }
 
 export type AgentConnectionSettingsInput = Partial<Omit<AgentConnectionSettings, 'version'>>;
+
+export interface AgentSettingsContainer {
+  version: 2;
+  defaultBackendId: 'claude';
+  backends: {
+    claude: AgentConnectionSettings;
+  };
+}
+
+export type AgentSettingsContainerInput = {
+  defaultBackendId?: 'claude';
+  backends?: {
+    claude?: AgentConnectionSettingsInput | AgentConnectionSettings;
+  };
+} & AgentConnectionSettingsInput;
 
 export interface AgentDiagnosticCheck {
   id: 'runtime' | 'claude' | 'authentication' | 'network';

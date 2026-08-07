@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import { createHexestraAgentTools } from './index';
-import type { AgentSdk } from './context';
 
 vi.mock('../browser.service', () => ({ browserService: {} }));
 vi.mock('../session.service', () => ({ sessionService: {} }));
@@ -29,11 +28,7 @@ const expectedToolNames = [
 
 describe('Hexestra Agent tool factories', () => {
   it('preserves the complete ordered tool manifest across domain modules', () => {
-    const sdk = {
-      tool: (name: string) => ({ name }),
-    } as unknown as AgentSdk;
     const tools = createHexestraAgentTools({
-      sdk,
       sender: {} as never,
       permissionMode: 'default',
     }) as unknown as Array<{ name: string }>;

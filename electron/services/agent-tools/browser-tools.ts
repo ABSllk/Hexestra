@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { browserService } from '../browser.service';
 import type { AgentToolContext } from './context';
+import { createAgentTool } from './contract';
 
-export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolContext) {
+export function createBrowserAgentTools({ sender, sessionId }: AgentToolContext) {
   return [
-    sdk.tool(
+    createAgentTool(
       'browser_tabs',
       'List integrated browser tabs in the active Hexestra project. The visible tab is the default for tools when tabId is omitted. scopeState is informational and never blocks browser access.',
       {},
@@ -12,7 +13,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         content: [{ type: 'text', text: JSON.stringify(browserService.listTabs(sender.id, sessionId), null, 2) }],
       }),
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_read',
       'Read a visible Hexestra browser page through Playwright. Returns informational scopeState, bounded page text, and element references that remain valid until the next navigation or snapshot. Out-of-scope pages remain accessible.',
       { tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab') },
@@ -20,7 +21,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         content: [{ type: 'text', text: JSON.stringify(await browserService.readPage(sender.id, sessionId, tabId), null, 2) }],
       }),
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_cookies',
       'Read every cookie in the active Hexestra project browser partition, including raw values and HttpOnly cookie metadata. This does not require Traffic Capture or an open browser tab.',
       {},
@@ -28,7 +29,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         content: [{ type: 'text', text: JSON.stringify(await browserService.readCookies(sessionId), null, 2) }],
       }),
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_storage',
       'Read raw localStorage and sessionStorage key/value pairs from the selected integrated browser tab current origin.',
       { tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab') },
@@ -36,7 +37,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         content: [{ type: 'text', text: JSON.stringify(await browserService.readStorage(sender.id, sessionId, tabId), null, 2) }],
       }),
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_evaluate',
       'Execute arbitrary JavaScript in the selected integrated browser tab main page context and return its serializable result. The script can modify page, storage, navigation, and network state.',
       {
@@ -47,7 +48,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         content: [{ type: 'text', text: JSON.stringify(await browserService.evaluate(sender.id, source, sessionId, tabId), null, 2) }],
       }),
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_navigate',
       'Navigate a Hexestra integrated browser tab to any HTTP(S) URL through Playwright. If no Browser tab exists, create one automatically. The returned scopeState is informational and does not block navigation.',
       {
@@ -61,7 +62,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_back',
       'Navigate back in the selected integrated browser tab.',
       { tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab') },
@@ -69,7 +70,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         content: [{ type: 'text', text: JSON.stringify(await browserService.agentGoBack(sender.id, sessionId, tabId)) }],
       }),
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_forward',
       'Navigate forward in the selected integrated browser tab.',
       { tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab') },
@@ -77,7 +78,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         content: [{ type: 'text', text: JSON.stringify(await browserService.agentGoForward(sender.id, sessionId, tabId)) }],
       }),
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_reload',
       'Reload the selected integrated browser tab.',
       { tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab') },
@@ -85,7 +86,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         content: [{ type: 'text', text: JSON.stringify(await browserService.agentReload(sender.id, sessionId, tabId)) }],
       }),
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_click',
       'Click an element reference returned by browser_read.',
       {
@@ -97,7 +98,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         return { content: [{ type: 'text', text: JSON.stringify({ action: `Clicked ${ref}`, ...location }) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_type',
       'Fill an input or textarea referenced by browser_read, optionally submitting it.',
       {
@@ -111,7 +112,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         return { content: [{ type: 'text', text: JSON.stringify({ action: `Entered text into ${ref}`, ...location }) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_fill',
       'Fill an input or textarea referenced by browser_read, optionally submitting it.',
       {
@@ -125,7 +126,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         return { content: [{ type: 'text', text: JSON.stringify({ action: `Filled ${ref}`, ...location }) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_press',
       'Press a keyboard key or chord in the selected integrated browser tab.',
       {
@@ -137,7 +138,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         return { content: [{ type: 'text', text: JSON.stringify({ action: `Pressed ${key}`, ...location }) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_hover',
       'Hover an element reference returned by browser_read.',
       {
@@ -149,7 +150,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         return { content: [{ type: 'text', text: JSON.stringify({ action: `Hovered ${ref}`, ...location }) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_wait',
       'Wait briefly for page loading, animation, or an asynchronous update in the integrated browser.',
       {
@@ -161,7 +162,7 @@ export function createBrowserAgentTools({ sdk, sender, sessionId }: AgentToolCon
         return { content: [{ type: 'text', text: JSON.stringify({ action: `Waited ${milliseconds} ms`, ...location }) }] };
       },
     ),
-    sdk.tool(
+    createAgentTool(
       'browser_screenshot',
       'Capture the current integrated browser viewport as a PNG image.',
       { tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab') },
