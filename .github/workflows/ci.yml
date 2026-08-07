@@ -71,5 +71,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Hexestra-${{ matrix.name }}
-          path: release/*
+          path: |
+            release/*.exe
+            release/*.AppImage
+            release/*.dmg
           if-no-files-found: error

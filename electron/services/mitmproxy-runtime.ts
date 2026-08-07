@@ -6,7 +6,7 @@ import path from 'path';
 export const MITMPROXY_VERSION = '12.2.3';
 
 export type MitmproxyRuntimeStatus = 'ready' | 'missing' | 'incompatible';
-export type MitmproxyRuntimeSource = 'manual' | 'environment' | 'path' | 'common' | 'none';
+export type MitmproxyRuntimeSource = 'manual' | 'bundled' | 'environment' | 'path' | 'common' | 'none';
 
 export interface MitmproxyRuntimeDiagnostic {
   status: MitmproxyRuntimeStatus;
@@ -38,8 +38,17 @@ export function listMitmdumpCandidates(search: MitmproxyRuntimeSearch = {}): Mit
   const override = cleanPath(search.override);
   if (override) return [{ executablePath: override, source: 'manual' }];
 
+  const resourcesPath = cleanPath(search.resourcesPath ?? process.resourcesPath);
+  const bundled = resourcesPath
+    ? [{
+        executablePath: path.join(resourcesPath, 'mitmproxy', 'bin', executableName),
+        source: 'bundled' as const,
+      }]
+    : [];
   const environmentPath = cleanPath(search.environmentPath ?? process.env.HEXESTRA_MITMDUMP_PATH);
-  if (environmentPath) return [{ executablePath: environmentPath, source: 'environment' }];
+  const environment = environmentPath
+    ? [{ executablePath: environmentPath, source: 'environment' as const }]
+    : [];
 
   const pathEntries = String(search.pathValue ?? process.env.PATH ?? '')
     .split(platform === 'win32' ? ';' : ':')
@@ -54,13 +63,21 @@ export function listMitmdumpCandidates(search: MitmproxyRuntimeSearch = {}): Mit
     executablePath: path.join(directory, executableName),
     source: 'common' as const,
   }));
-  return [...pathEntries, ...common, ...(search.cwd ? [{ executablePath: path.join(search.cwd, executableName), source: 'common' as const }] : [])];
+  return [
+    ...bundled,
+    ...environment,
+    ...pathEntries,
+    ...common,
+    ...(search.cwd ? [{ executablePath: path.join(search.cwd, executableName), source: 'common' as const }] : []),
+  ];
 }
 
 export function resolveMitmdumpCandidate(search: MitmproxyRuntimeSearch = {}): MitmproxyCandidate | null {
   const candidates = listMitmdumpCandidates(search);
-  if (candidates[0]?.source === 'manual' || candidates[0]?.source === 'environment') return candidates[0];
-  return candidates.find((candidate) => isFile(candidate.executablePath)) ?? null;
+  if (candidates[0]?.source === 'manual') return candidates[0];
+  return candidates.find((candidate) => isFile(candidate.executablePath))
+    ?? candidates.find((candidate) => candidate.source === 'environment')
+    ?? null;
 }
 
 export function resolveMitmdumpPath(search: MitmproxyRuntimeSearch = {}) {

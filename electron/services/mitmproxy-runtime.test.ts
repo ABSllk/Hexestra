@@ -28,6 +28,47 @@ describe('mitmproxy runtime discovery', () => {
     expect(listMitmdumpCandidates({ platform: 'win32', pathValue: 'C:\\one;C:\\two' }).slice(0, 2).every((item) => item.executablePath.endsWith('mitmdump.exe'))).toBe(true);
   });
 
+  it('prefers the packaged runtime before environment and PATH candidates', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-mitm-'));
+    roots.push(root);
+    const executable = path.join(root, 'mitmproxy', 'bin', 'mitmdump');
+    fs.mkdirSync(path.dirname(executable), { recursive: true });
+    fs.writeFileSync(executable, 'fixture');
+
+    expect(listMitmdumpCandidates({
+      platform: 'linux',
+      resourcesPath: root,
+      environmentPath: '/custom/mitmdump',
+      pathValue: '/usr/bin',
+    }).slice(0, 3)).toEqual([
+      { executablePath: executable, source: 'bundled' },
+      { executablePath: '/custom/mitmdump', source: 'environment' },
+      { executablePath: path.join('/usr/bin', 'mitmdump'), source: 'path' },
+    ]);
+    expect(resolveMitmdumpPath({
+      platform: 'linux',
+      resourcesPath: root,
+      environmentPath: '/custom/mitmdump',
+      pathValue: '',
+    })).toBe(executable);
+  });
+
+  it('keeps an explicit manual path ahead of the bundled runtime', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-mitm-'));
+    roots.push(root);
+    const manual = path.join(root, 'manual-mitmdump');
+    const bundled = path.join(root, 'resources', 'mitmproxy', 'bin', 'mitmdump');
+    fs.mkdirSync(path.dirname(bundled), { recursive: true });
+    fs.writeFileSync(manual, 'fixture');
+    fs.writeFileSync(bundled, 'fixture');
+    expect(resolveMitmdumpPath({
+      override: manual,
+      platform: 'linux',
+      resourcesPath: path.join(root, 'resources'),
+      pathValue: '',
+    })).toBe(manual);
+  });
+
   it('does not silently fall back when an explicit path is invalid', async () => {
     const status = await detectMitmproxyRuntime({ override: path.join(os.tmpdir(), 'missing-mitmdump') });
     expect(status).toMatchObject({ status: 'missing', source: 'manual', executablePath: expect.stringContaining('missing-mitmdump') });

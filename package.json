@@ -21,7 +21,7 @@
     "build": "vite build",
     "electron:compile": "tsc -p electron/tsconfig.json",
     "electron:dev": "npm run electron:compile && concurrently --kill-others \"vite\" \"wait-on http://localhost:5173 && node scripts/start-electron-dev.mjs\"",
-    "electron:build": "npm run electron:compile && npm run build && electron-builder",
+    "electron:build": "npm run prepare:mitmproxy && npm run electron:compile && npm run build && electron-builder",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -31,6 +31,7 @@
     "test:startup": "npm run electron:compile && npm run build && electron --disable-gpu --no-sandbox scripts/electron-startup-smoke.mjs",
     "test:traffic-proxy-smoke": "npm run electron:compile && node scripts/traffic-proxy-smoke.mjs",
     "build:burp-bridge": "node scripts/build-burp-bridge.mjs",
+    "prepare:mitmproxy": "node scripts/prepare-mitmproxy-runtime.mjs",
     "release:hashes": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-release-hashes.ps1",
     "release:source": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/export-public-source.ps1",
     "test:terminal-remount": "npm run electron:compile && node scripts/terminal-remount-smoke.mjs",
@@ -107,7 +108,8 @@
         "filter": [
           "hexestra_addon.py",
           "LICENSE",
-          "README.md"
+          "README.md",
+          "bin/**/*"
         ]
       },
       {
@@ -121,11 +123,17 @@
     ],
     "mac": {
       "target": "dmg",
-      "icon": "src/assets/branding/hexestra-mark.png"
+      "icon": "src/assets/branding/hexestra-mark.png",
+      "binaries": [
+        "Contents/Resources/mitmproxy/bin/mitmdump"
+      ]
     },
     "win": {
       "target": "nsis",
-      "icon": "src/assets/branding/hexestra-mark.png"
+      "icon": "src/assets/branding/hexestra-mark.png",
+      "signExts": [
+        "!mitmdump.exe"
+      ]
     },
     "linux": {
       "target": "AppImage",

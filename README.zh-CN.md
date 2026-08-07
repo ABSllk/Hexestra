@@ -62,10 +62,10 @@ Hexestra 将分散的渗透测试环节整合进同一个项目。Agent 可以�
 - Node.js 24 和 npm
 - Windows x64、Linux x64（以 Ubuntu 24.04 为基准）、macOS Intel 或 macOS Apple Silicon
 - 当前平台的标准 Electron 桌面运行库；Ubuntu 需要常见的 X11/GTK 运行库
-- 使用 Traffic Capture 时，单独安装 mitmproxy `12.2.3`
+- 打包版已内置 mitmproxy `12.2.3`；从源码运行时可单独提供
 - 可选的 Burp Suite；构建 Bridge 需要 JDK 17
 
-所有支持的源码运行平台均可使用 Native Claude Code。WSL Claude Code 和 WSL Shell 仅支持 Windows。本次发布以从源码运行为目标，不提供签名安装包，不自动安装 mitmproxy，也不捆绑 mitmproxy 二进制文件。
+所有支持的源码运行平台均可使用 Native Claude Code。WSL Claude Code 和 WSL Shell 仅支持 Windows。打包版已内置官方的平台对应 mitmdump 运行时；本次发布的安装包尚未进行代码签名。
 
 ### 安装 Claude Code
 
@@ -128,14 +128,24 @@ Hexestra 不会回退到本地 `node-gyp` 编译。
 
 ### 配置流量捕获与 mitmproxy
 
-安装所需版本的 mitmproxy，并确认 `mitmdump` 可用：
+打包版已内置经过校验的 mitmdump `12.2.3` 运行时，因此 Traffic Capture
+无需单独安装 mitmproxy。打包时会从 mitmproxy 官方分发地址下载运行时，
+按照其 Sigstore 来源证明中发布的 SHA-256 摘要进行校验，并将它存放在
+Electron 的 `app.asar` 之外。
+
+从源码运行 Hexestra 时，请安装所需版本并确认 `mitmdump` 可用：
 
 ```bash
 uv tool install mitmproxy==12.2.3
 mitmdump --version
 ```
 
-将 `mitmdump` 加入 `PATH`，再打开 **Settings > Traffic Runtime（设置 > 流量运行时）**。Hexestra 会自动检测，本版本只接受 `12.2.3`。如果从 macOS Finder 启动时没有继承 Shell 的 `PATH`，可以使用 **Choose executable（选择可执行文件）**，或在启动 Hexestra 前设置 `HEXESTRA_MITMDUMP_PATH`。更改安装后使用 **Re-detect（重新检测）**；如需清除手动路径，使用 **Use automatic detection（自动检测）**。其他安装方式请参考[官方 mitmproxy 安装指南](https://docs.mitmproxy.org/stable/overview/installation/)。
+打开 **Settings > Traffic Runtime（设置 > 流量运行时）** 可以查看当前选择的
+可执行文件。手动选择的路径优先于内置运行时；从源码运行时还会继续检查
+`HEXESTRA_MITMDUMP_PATH`、`PATH` 和常见安装目录。更改外部安装后使用
+**Re-detect（重新检测）**；如需清除手动路径，使用
+**Use automatic detection（自动检测）**。本版本只接受 `12.2.3`。其他源码运行
+安装方式请参考[官方 mitmproxy 安装指南](https://docs.mitmproxy.org/stable/overview/installation/)。
 
 启动 Capture 后，Hexestra 会自动分配本机回环端口、创建项目级 CA、加载插件、配置内置浏览器，并随项目停止 sidecar。运行时缺失或版本不兼容时，Traffic Runtime 页面会说明原因并阻止 Capture 启动。
 

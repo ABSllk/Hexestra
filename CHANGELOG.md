@@ -22,6 +22,8 @@ after the first stable release.
   copying addresses or JSON, and requesting scoped Agent rescans.
 - Four-platform desktop packaging in CI for Windows x64, Linux x64, macOS Intel, and
   macOS Apple Silicon.
+- A pinned, SHA-256-verified mitmdump 12.2.3 runtime in packaged builds for
+  zero-install Traffic Capture.
 
 ### Changed
 
@@ -29,6 +31,7 @@ after the first stable release.
 - Updated Electron to 43.2.0, `@xterm/addon-fit` to 0.11.0, and `tailwind-merge` to
   3.6.0.
 - Strengthened platform-specific `node-pty` prebuild verification and startup checks.
+- Reduced CI desktop artifacts to final `.exe`, `.AppImage`, and `.dmg` distributables.
 
 ### Security
 
