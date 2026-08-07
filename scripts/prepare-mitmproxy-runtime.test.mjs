@@ -6,6 +6,7 @@ import {
   findExtractedExecutable,
   MITMPROXY_RUNTIME_VERSION,
   resolveRuntimeRelease,
+  stageExtractedRuntime,
   verifyArchiveDigest,
 } from './prepare-mitmproxy-runtime.mjs';
 
@@ -20,6 +21,9 @@ describe('bundled mitmproxy release preparation', () => {
     );
     expect(mitmproxyResources.filter).toContain('bin/**/*');
     expect(packageJson.build.win.signExts).toContain('!mitmdump.exe');
+    expect(packageJson.build.mac.binaries).toContain(
+      'Contents/Resources/mitmproxy/bin/mitmproxy.app/Contents/MacOS/mitmdump',
+    );
   });
 
   it('maps every shipped platform and architecture to a pinned official archive', () => {
@@ -54,5 +58,51 @@ describe('bundled mitmproxy release preparation', () => {
     await expect(findExtractedExecutable(root, 'mitmdump')).resolves.toBe(executable);
     fs.writeFileSync(path.join(root, 'mitmdump'), 'duplicate');
     await expect(findExtractedExecutable(root, 'mitmdump')).rejects.toThrow('found 2');
+  });
+
+  it('preserves the complete official macOS app bundle', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-mitm-release-'));
+    roots.push(root);
+    const extractionRoot = path.join(root, 'extracted');
+    const destinationRoot = path.join(root, 'staged');
+    const executable = path.join(
+      extractionRoot,
+      'mitmproxy.app',
+      'Contents',
+      'MacOS',
+      'mitmdump',
+    );
+    const framework = path.join(
+      extractionRoot,
+      'mitmproxy.app',
+      'Contents',
+      'Frameworks',
+      'Python',
+    );
+    fs.mkdirSync(path.dirname(executable), { recursive: true });
+    fs.mkdirSync(path.dirname(framework), { recursive: true });
+    fs.writeFileSync(executable, 'executable');
+    fs.writeFileSync(framework, 'runtime dependency');
+    fs.mkdirSync(destinationRoot, { recursive: true });
+
+    await expect(stageExtractedRuntime(
+      extractionRoot,
+      destinationRoot,
+      { executableName: 'mitmdump' },
+      'darwin',
+    )).resolves.toBe(path.join(
+      destinationRoot,
+      'mitmproxy.app',
+      'Contents',
+      'MacOS',
+      'mitmdump',
+    ));
+    expect(fs.readFileSync(path.join(
+      destinationRoot,
+      'mitmproxy.app',
+      'Contents',
+      'Frameworks',
+      'Python',
+    ), 'utf8')).toBe('runtime dependency');
   });
 });

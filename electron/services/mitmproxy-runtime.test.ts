@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  bundledMitmdumpPath,
   detectMitmproxyRuntime,
   inspectMitmdump,
   listMitmdumpCandidates,
@@ -51,6 +52,20 @@ describe('mitmproxy runtime discovery', () => {
       environmentPath: '/custom/mitmdump',
       pathValue: '',
     })).toBe(executable);
+  });
+
+  it('keeps the official macOS app bundle layout intact', () => {
+    expect(bundledMitmdumpPath('/Applications/Hexestra.app/Contents/Resources', 'darwin')).toBe(
+      path.join(
+        '/Applications/Hexestra.app/Contents/Resources',
+        'mitmproxy',
+        'bin',
+        'mitmproxy.app',
+        'Contents',
+        'MacOS',
+        'mitmdump',
+      ),
+    );
   });
 
   it('keeps an explicit manual path ahead of the bundled runtime', () => {

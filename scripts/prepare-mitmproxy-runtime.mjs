@@ -4,6 +4,7 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import {
   chmod,
   copyFile,
+  cp,
   mkdir,
   mkdtemp,
   readdir,
@@ -100,6 +101,50 @@ export async function findExtractedExecutable(root, executableName) {
   return matches[0];
 }
 
+export async function stageExtractedRuntime(
+  extractionRoot,
+  destinationRoot,
+  release,
+  platform,
+) {
+  const executable = await findExtractedExecutable(
+    extractionRoot,
+    release.executableName,
+  );
+
+  let stagedExecutable;
+  if (platform === 'darwin') {
+    const bundleRoot = path.join(extractionRoot, 'mitmproxy.app');
+    const expectedExecutable = path.join(
+      bundleRoot,
+      'Contents',
+      'MacOS',
+      release.executableName,
+    );
+    if (path.resolve(executable) !== path.resolve(expectedExecutable)) {
+      throw new Error(`Unexpected macOS mitmdump location: ${executable}`);
+    }
+    const stagedBundleRoot = path.join(destinationRoot, 'mitmproxy.app');
+    await cp(bundleRoot, stagedBundleRoot, {
+      recursive: true,
+      preserveTimestamps: true,
+      verbatimSymlinks: true,
+    });
+    stagedExecutable = path.join(
+      stagedBundleRoot,
+      'Contents',
+      'MacOS',
+      release.executableName,
+    );
+  } else {
+    stagedExecutable = path.join(destinationRoot, release.executableName);
+    await copyFile(executable, stagedExecutable);
+  }
+
+  if (platform !== 'win32') await chmod(stagedExecutable, 0o755);
+  return stagedExecutable;
+}
+
 export async function prepareMitmproxyRuntime({
   platform = process.platform,
   arch = process.arch,
@@ -124,16 +169,15 @@ export async function prepareMitmproxyRuntime({
   const extractionRoot = await mkdtemp(path.join(cacheRoot, 'extract-'));
   try {
     await runCommand('tar', ['-xf', archivePath, '-C', extractionRoot]);
-    const executable = await findExtractedExecutable(
-      extractionRoot,
-      release.executableName,
-    );
     const resolvedStagingRoot = assertChildPath(stagingRoot, path.join(projectRoot, 'resources'));
     await rm(resolvedStagingRoot, { recursive: true, force: true });
     await mkdir(resolvedStagingRoot, { recursive: true });
-    const stagedExecutable = path.join(resolvedStagingRoot, release.executableName);
-    await copyFile(executable, stagedExecutable);
-    if (platform !== 'win32') await chmod(stagedExecutable, 0o755);
+    const stagedExecutable = await stageExtractedRuntime(
+      extractionRoot,
+      resolvedStagingRoot,
+      release,
+      platform,
+    );
 
     await verifyPreparedVersion(stagedExecutable);
 

@@ -32,6 +32,24 @@ export interface MitmproxyCandidate {
   source: Exclude<MitmproxyRuntimeSource, 'none'>;
 }
 
+export function bundledMitmdumpPath(
+  resourcesPath: string,
+  platform: NodeJS.Platform = process.platform,
+) {
+  const executableName = platform === 'win32' ? 'mitmdump.exe' : 'mitmdump';
+  return platform === 'darwin'
+    ? path.join(
+        resourcesPath,
+        'mitmproxy',
+        'bin',
+        'mitmproxy.app',
+        'Contents',
+        'MacOS',
+        executableName,
+      )
+    : path.join(resourcesPath, 'mitmproxy', 'bin', executableName);
+}
+
 export function listMitmdumpCandidates(search: MitmproxyRuntimeSearch = {}): MitmproxyCandidate[] {
   const platform = search.platform ?? process.platform;
   const executableName = platform === 'win32' ? 'mitmdump.exe' : 'mitmdump';
@@ -41,7 +59,7 @@ export function listMitmdumpCandidates(search: MitmproxyRuntimeSearch = {}): Mit
   const resourcesPath = cleanPath(search.resourcesPath ?? process.resourcesPath);
   const bundled = resourcesPath
     ? [{
-        executablePath: path.join(resourcesPath, 'mitmproxy', 'bin', executableName),
+        executablePath: bundledMitmdumpPath(resourcesPath, platform),
         source: 'bundled' as const,
       }]
     : [];

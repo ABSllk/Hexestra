@@ -125,7 +125,7 @@
       "target": "dmg",
       "icon": "src/assets/branding/hexestra-mark.png",
       "binaries": [
-        "Contents/Resources/mitmproxy/bin/mitmdump"
+        "Contents/Resources/mitmproxy/bin/mitmproxy.app/Contents/MacOS/mitmdump"
       ]
     },
     "win": {
