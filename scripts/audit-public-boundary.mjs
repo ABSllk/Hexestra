@@ -33,6 +33,7 @@ const PUBLIC_ROOT_DIRECTORIES = new Set([
   'resources',
   'scripts',
   'src',
+  'test',
 ]);
 
 const LOCAL_ROOT_ENTRIES = new Set([
@@ -142,18 +143,18 @@ const TEXT_BASENAMES = new Set([
 const APPROVED_OLD_BRAND_PATHS = new Set([
   '.gitignore',
   'CONTRIBUTING.md',
-  'electron/services/project-registry.test.ts',
+  'test/electron/services/project-registry.test.ts',
   'electron/services/project-registry.ts',
   'scripts/audit-public-boundary.mjs',
-  'src/stores/useSessionStore.test.ts',
+  'test/src/stores/useSessionStore.test.ts',
   'src/stores/useSessionStore.ts',
 ]);
 
 const APPROVED_DEVELOPER_PATH_FIXTURES = new Set([
-  'electron/services/claude-capabilities.service.test.ts',
-  'electron/services/wsl-agent-runtime.test.ts',
-  'src/components/center-panel/tabs/McpSettings.test.tsx',
-  'src/components/center-panel/tabs/SkillsSettings.test.tsx',
+  'test/electron/services/claude-capabilities.service.test.ts',
+  'test/electron/services/wsl-agent-runtime.test.ts',
+  'test/src/components/center-panel/tabs/McpSettings.test.tsx',
+  'test/src/components/center-panel/tabs/SkillsSettings.test.tsx',
 ]);
 
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
