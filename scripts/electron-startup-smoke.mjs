@@ -16,6 +16,34 @@ app.setPath('userData', path.join(os.tmpdir(), `hexestra-startup-${process.pid}`
 
 const startupTimeoutMs = Number(process.env.HEXESTRA_STARTUP_TIMEOUT_MS || 45_000);
 
+const registerRendererBootstrapHandlers = () => {
+  ipcMain.handle('app:window:is-maximized', (event) => (
+    BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false
+  ));
+  ipcMain.handle('project:list-recent', () => []);
+  ipcMain.handle('agent:settings:get', () => ({
+    version: 2,
+    defaultBackendId: 'claude',
+    backends: {
+      claude: {
+        version: 1,
+        executionMode: process.platform === 'win32' ? 'wsl' : 'native',
+        wslDistribution: 'Ubuntu-24.04',
+        claudeExecutable: process.platform === 'win32' ? '/usr/bin/claude' : '',
+        model: null,
+        settingSources: ['user', 'project', 'local'],
+      },
+    },
+  }));
+  ipcMain.handle('browser:reconcile', () => true);
+  ipcMain.handle('app:settings:get', () => ({
+    version: 3,
+    language: 'en',
+    theme: 'system',
+    mitmdumpPath: null,
+  }));
+};
+
 const withTimeout = (promise, milliseconds, label) => Promise.race([
   promise,
   new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${milliseconds}ms`)), milliseconds)),
@@ -27,6 +55,7 @@ const run = async () => {
   await withTimeout(app.whenReady(), startupTimeoutMs, 'Electron app ready');
   console.log('Electron app ready');
   pty = require('@lydell/node-pty');
+  registerRendererBootstrapHandlers();
   ipcMain.handle('app:getCapabilities', () => ({ platform: process.platform, arch: process.arch, supportsWsl: process.platform === 'win32', defaultShell: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')), usesNativeTitleBar: process.platform === 'darwin' }));
   window = new BrowserWindow({
     show: false,
