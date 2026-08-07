@@ -1,8 +1,9 @@
 {
   "name": "hexestra",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Human-AI penetration testing IDE with controlled autonomy and existing-tool integration",
+  "author": "ABSllk",
   "license": "Apache-2.0",
   "keywords": [
     "ai",

@@ -788,7 +788,7 @@ class AgentService {
     const context = { sdk: this.sdk, sender, sessionId, selectedTargetId, permissionMode };
     return this.sdk.createSdkMcpServer({
       name: 'hexestra',
-      version: '0.1.0',
+      version: '0.2.0',
       tools: createHexestraAgentTools(context),
     });
   }

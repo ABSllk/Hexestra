@@ -52,6 +52,9 @@ const LOCAL_ROOT_ENTRIES = new Set([
   'release',
 ]);
 
+const LOCAL_VERSIONED_RELEASE_DIRECTORY_PATTERN =
+  /^release-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+
 const SKIPPED_PUBLIC_PREFIXES = [
   'resources/mitmproxy/bin/',
   'resources/mitmproxy/__pycache__/',
@@ -74,6 +77,7 @@ const REQUIRED_IGNORE_RULES = new Set([
   'dist-electron/',
   'node_modules/',
   'release/',
+  'release-*/',
   'resources/burp-bridge/*.jar',
   'resources/mitmproxy/bin/',
   '*.pyc',
@@ -209,7 +213,12 @@ async function collectPublicFiles() {
 
   for (const entry of entries) {
     const name = entry.name;
-    if (LOCAL_ROOT_ENTRIES.has(name)) continue;
+    if (
+      LOCAL_ROOT_ENTRIES.has(name) ||
+      (entry.isDirectory() && LOCAL_VERSIONED_RELEASE_DIRECTORY_PATTERN.test(name))
+    ) {
+      continue;
+    }
 
     if (entry.isFile() && PUBLIC_ROOT_FILES.has(name)) {
       const absolutePath = resolve(projectRoot, name);

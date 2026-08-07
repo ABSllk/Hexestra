@@ -8,6 +8,7 @@ npm-debug.log*
 dist/
 dist-electron/
 release/
+release-*/
 coverage/
 artifacts/
 .ui-test/

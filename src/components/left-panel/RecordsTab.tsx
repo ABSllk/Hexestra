@@ -21,9 +21,9 @@ export function RecordsTab() {
   const confirm = useConfirmDialog();
   const [menu, setMenu] = useState<RecordMenuState | null>(null);
   const items: Array<{ id: RecordView; label: string; count: number }> = [
+    { id: 'evidence', label: 'Evidence', count: evidence.length },
     { id: 'findings', label: 'Findings', count: findings.length },
     { id: 'vulnerabilities', label: 'Vulns', count: vulnerabilities.length },
-    { id: 'evidence', label: 'Evidence', count: evidence.length },
     { id: 'reports', label: 'Reports', count: reports.length },
   ];
   const selectedRecord = menu ? findManagedRecord(menu.kind, menu.recordId, findings, vulnerabilities, evidence, reports) : null;
