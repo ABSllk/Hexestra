@@ -12,7 +12,6 @@ after the first stable release.
 
 - Apache-2.0 licensing and the initial open-source community surface.
 - Publication-boundary auditing and a Windows CI quality gate.
-- Maintainer release checklist and v0.1.0 release-note draft.
 - Patched transitive dependency versions with a clean npm security audit.
 
 ## [0.1.0] - Unreleased

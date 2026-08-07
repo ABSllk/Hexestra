@@ -79,8 +79,8 @@ Before requesting review:
 5. Confirm documentation and both READMEs remain accurate.
 
 Generated output, copied runtimes, local project state, captured traffic, and
-credentials must not be committed. See `.gitignore` and
-[the release checklist](docs/RELEASE_CHECKLIST.md).
+credentials must not be committed. See `.gitignore`; `npm run audit:public`
+enforces the reviewed public source boundary.
 
 ## Compatibility identifiers
 

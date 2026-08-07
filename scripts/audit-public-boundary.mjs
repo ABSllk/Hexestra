@@ -54,6 +54,7 @@ const LOCAL_ROOT_ENTRIES = new Set([
 
 const SKIPPED_PUBLIC_PREFIXES = [
   'resources/mitmproxy/bin/',
+  'resources/mitmproxy/__pycache__/',
 ];
 
 const SKIPPED_PUBLIC_FILES = new Set([
@@ -75,6 +76,7 @@ const REQUIRED_IGNORE_RULES = new Set([
   'release/',
   'resources/burp-bridge/*.jar',
   'resources/mitmproxy/bin/',
+  '*.pyc',
   '*.burp',
   '*.har',
   '*.key',
@@ -100,6 +102,7 @@ const DISALLOWED_EXTENSIONS = new Set([
   '.pcapng',
   '.pem',
   '.pfx',
+  '.pyc',
   '.pyd',
   '.sqlite',
   '.sqlite3',
@@ -118,6 +121,7 @@ const TEXT_EXTENSIONS = new Set([
   '.mjs',
   '.ps1',
   '.py',
+  '.svg',
   '.ts',
   '.tsx',
   '.yaml',
@@ -134,7 +138,6 @@ const TEXT_BASENAMES = new Set([
 const APPROVED_OLD_BRAND_PATHS = new Set([
   '.gitignore',
   'CONTRIBUTING.md',
-  'docs/PUBLICATION_BOUNDARY.md',
   'electron/services/project-registry.test.ts',
   'electron/services/project-registry.ts',
   'scripts/audit-public-boundary.mjs',
