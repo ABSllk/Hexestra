@@ -34,6 +34,10 @@ Hexestra 将分散的渗透测试环节整合进同一个项目。Agent 可以�
 
 *任务树、报告、Agent 活动、当前资产和包含 17 个节点的 NetMap 位于同一个可控操作面。*
 
+![Hexestra Inventory 展示目标资产列表，选定目标详细信息和AI总结](docs/images/hexestra-inventory.png)
+
+*目标资产列表将显示在左侧，并在下方 NetMap 中展示出关联资产及详细信息*
+
 ![Hexestra Evidence 原始 HTTP 响应及关联记录](docs/images/hexestra-evidence.png)
 
 *Evidence 保留原始输出，并与 Finding 和已验证的 Vulnerability 建立关联。*
@@ -42,9 +46,9 @@ Hexestra 将分散的渗透测试环节整合进同一个项目。Agent 可以�
 
 *已验证的 Vulnerability 集中保存严重度、生命周期、影响、修复建议和关联上下文。*
 
-![Hexestra 评估报告和操作员决策](docs/images/hexestra-report.png)
+![Hexestra 内置浏览器和抓包界面](docs/images/hexestra-browser.png)
 
-*报告直接使用同一份持久化项目状态，在 IDE 内形成可审阅的评估结果。*
+*可使用内置浏览器进行目标访问，在左侧开启抓包后出现流量记录，并可进行拦截，重放等操作。*
 
 ## 核心能力
 

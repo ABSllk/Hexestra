@@ -34,6 +34,10 @@ These screenshots use the fictional Northstar Demo Lab, reserved `example.test` 
 
 *The shared workspace keeps the task tree, report, Agent activity, active asset, and 17-node NetMap in one controllable surface.*
 
+![Hexestra Inventory showing target asset list, selected target details, and AI summary](docs/images/hexestra-inventory.png)
+
+*Target assets are displayed on the left, with related assets and details shown below in NetMap.*
+
 ![Hexestra Evidence record with raw HTTP response and linked records](docs/images/hexestra-evidence.png)
 
 *Evidence preserves raw output and links it to the Finding and validated Vulnerability.*
@@ -42,9 +46,9 @@ These screenshots use the fictional Northstar Demo Lab, reserved `example.test` 
 
 *A validated Vulnerability keeps severity, lifecycle, impact, remediation, and linked context together.*
 
-![Hexestra assessment report with operator decisions](docs/images/hexestra-report.png)
+![Hexestra built-in browser and traffic capture](docs/images/hexestra-browser.png)
 
-*The report turns the same durable project state into a reviewable assessment without leaving the IDE.*
+*Use the built-in browser to access targets; enable capture on the left to record traffic, with interception and replay support.*
 
 ## Core capabilities
 
