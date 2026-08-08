@@ -128,24 +128,24 @@ export function ShellConnectBuilder({ projectId, listener, onClose }: {
   };
 
   return (
-    <section aria-label="Payload Generator" className="space-y-2 rounded border border-accent-purple/35 bg-bg-secondary p-2">
+    <section aria-label="Payload Generator" className="space-y-2 rounded border border-accent-purple/35 bg-canvas p-2">
       <div className="flex items-center justify-between text-text-secondary">
         <span className="flex items-center gap-1.5"><Icon name="sparkles" size={11} className="text-accent-purple" /> Payload Generator</span>
         <button className="ui-icon-button" aria-label="Close Payload Generator" onClick={onClose}><Icon name="close" size={11} /></button>
       </div>
 
-      <div className="font-mono text-[9px] text-text-muted">
+      <div className="font-mono text-[11px] text-text-muted">
         <span className="truncate">{listener.name}</span>
         <span className="text-text-secondary"> · listener {listener.bindAddress}:{listener.port}</span>
       </div>
 
-      <label className="block text-[9px] text-text-muted">
+      <label className="block text-[11px] text-text-muted">
         Callback address
         <div className="mt-1 flex gap-1">
           <input
             type="text"
             aria-label="Callback address"
-            className="ui-control h-7 flex-1 px-2 font-mono text-[10px]"
+            className="ui-control h-7 flex-1 px-2 font-mono text-[11px]"
             value={callbackAddress}
             onChange={(event) => { setCallbackAddress(event.target.value); setNotice(''); setError(''); }}
             placeholder="e.g. 203.0.113.5"
@@ -153,18 +153,18 @@ export function ShellConnectBuilder({ projectId, listener, onClose }: {
           />
           <button
             type="button"
-            className="ui-control h-7 shrink-0 px-2 text-[9px]"
+            className="ui-control h-7 shrink-0 px-2 text-[11px]"
             disabled={detecting || !window.hexestra}
             onClick={() => void detectPublicIp()}
           >{detecting ? '…' : 'Detect'}</button>
         </div>
       </label>
 
-      <label className="block text-[9px] text-text-muted">
+      <label className="block text-[11px] text-text-muted">
         Runtime template
         <select
           aria-label="Runtime template"
-          className="ui-control mt-1 h-7 w-full px-2 text-[10px]"
+          className="ui-control mt-1 h-7 w-full px-2 text-[11px]"
           value={templateId}
           onChange={(event) => setTemplateId(event.target.value as ShellConnectTemplateId)}
         >
@@ -172,11 +172,11 @@ export function ShellConnectBuilder({ projectId, listener, onClose }: {
         </select>
       </label>
 
-      <label className="block text-[9px] text-text-muted">
+      <label className="block text-[11px] text-text-muted">
         Obfuscation
         <select
           aria-label="Obfuscation"
-          className="ui-control mt-1 h-7 w-full px-2 text-[10px]"
+          className="ui-control mt-1 h-7 w-full px-2 text-[11px]"
           value={obfuscation}
           onChange={(event) => setObfuscation(event.target.value as ShellConnectObfuscation)}
         >
@@ -185,7 +185,7 @@ export function ShellConnectBuilder({ projectId, listener, onClose }: {
       </label>
 
       {selectedTemplate && (
-        <div className="space-y-1 rounded bg-bg-tertiary p-1.5 text-[9px] leading-4 text-text-muted">
+        <div className="space-y-1 rounded bg-panel p-1.5 text-[11px] leading-4 text-text-muted">
           <div><span className="text-text-secondary">Requires:</span> {selectedTemplate.runtime}</div>
           <div><span className="text-text-secondary">Shell:</span> {selectedTemplate.shell} · PTY {selectedTemplate.pty}</div>
           <div>{selectedTemplate.note}</div>
@@ -194,7 +194,7 @@ export function ShellConnectBuilder({ projectId, listener, onClose }: {
 
       <textarea
         aria-label="Generated connection command"
-        className="ui-control min-h-24 w-full resize-y p-2 font-mono text-[9px] leading-4"
+        className="ui-control min-h-24 w-full resize-y p-2 font-mono text-[11px] leading-4"
         readOnly
         spellCheck={false}
         value={result?.command ?? ''}
@@ -206,8 +206,8 @@ export function ShellConnectBuilder({ projectId, listener, onClose }: {
         <button className="ui-control h-7" disabled={!result} onClick={askAgent}><Icon name="bot" size={10} className="mr-1 inline" />Ask Agent</button>
       </div>
 
-      {error && <DismissibleNotice tone="error" className="p-2 text-[9px]" onDismiss={() => setError('')}>{error}</DismissibleNotice>}
-      {notice && <DismissibleNotice tone="success" className="p-2 text-[9px]" onDismiss={() => setNotice('')}>{notice}</DismissibleNotice>}
+      {error && <DismissibleNotice tone="error" className="p-2 text-[11px]" onDismiss={() => setError('')}>{error}</DismissibleNotice>}
+      {notice && <DismissibleNotice tone="success" className="p-2 text-[11px]" onDismiss={() => setNotice('')}>{notice}</DismissibleNotice>}
     </section>
   );
 }

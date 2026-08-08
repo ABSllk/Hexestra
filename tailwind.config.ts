@@ -6,6 +6,14 @@ export default {
     extend: {
       colors: {
         // Semantic colors are CSS channels so opacity utilities work in both themes.
+        canvas: 'rgb(var(--color-canvas) / <alpha-value>)',
+        panel: 'rgb(var(--color-panel) / <alpha-value>)',
+        raised: 'rgb(var(--color-raised) / <alpha-value>)',
+        border: {
+          subtle: 'rgb(var(--color-border-subtle) / <alpha-value>)',
+          strong: 'rgb(var(--color-border-strong) / <alpha-value>)',
+        },
+        focus: 'rgb(var(--color-focus) / <alpha-value>)',
         bg: {
           primary: 'rgb(var(--color-bg-primary) / <alpha-value>)',
           secondary: 'rgb(var(--color-bg-secondary) / <alpha-value>)',

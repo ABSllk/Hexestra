@@ -145,15 +145,15 @@ export function McpSettings() {
     : false, [json, name, originalJson, scope, selected]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg-primary">
-      <header className="flex items-center justify-between border-b border-surface px-6 py-4">
+    <div className="flex h-full min-h-0 flex-col bg-panel">
+      <header className="flex items-center justify-between border-b border-border-subtle px-6 py-4">
         <div>
           <div className="flex items-center gap-2">
             <Icon name="server" size={17} className="text-accent-blue" />
             <h1 className="text-sm font-semibold text-text-primary">{t('mcp.title')}</h1>
-            {result && <span className="rounded bg-bg-tertiary px-1.5 py-0.5 font-mono text-[9px] text-text-muted">{result.runtimeLabel}</span>}
+            {result && <span className="rounded bg-panel px-1.5 py-0.5 font-mono text-[11px] text-text-muted">{result.runtimeLabel}</span>}
           </div>
-          <p className="mt-1 text-[10px] text-text-muted">{t('mcp.description')}</p>
+          <p className="mt-1 text-[11px] text-text-muted">{t('mcp.description')}</p>
         </div>
         <button onClick={create} className="rounded border border-accent-blue/30 bg-accent-blue/10 px-3 py-1.5 text-xs text-accent-blue hover:bg-accent-blue/20">
           Add Server
@@ -161,9 +161,9 @@ export function McpSettings() {
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-[270px_1fr]">
-        <aside className="min-h-0 overflow-y-auto border-r border-surface bg-bg-secondary/30 p-3">
+        <aside className="min-h-0 overflow-y-auto border-r border-border-subtle bg-canvas/30 p-3">
           {!result && <p className="p-3 text-xs text-text-muted">{t('mcp.loading')}</p>}
-          {result?.items.length === 0 && <p className="rounded border border-dashed border-surface p-3 text-center text-[10px] leading-4 text-text-muted">{t('mcp.empty')}</p>}
+          {result?.items.length === 0 && <p className="rounded border border-dashed border-border-subtle p-3 text-center text-[11px] leading-4 text-text-muted">{t('mcp.empty')}</p>}
           <div className="space-y-1">
             {result?.items.map((item) => (
               <button
@@ -171,21 +171,21 @@ export function McpSettings() {
                 onClick={() => select(item)}
                 className={cn(
                   'w-full rounded border px-3 py-2 text-left transition-colors',
-                  selected?.id === item.id ? 'border-accent-blue/35 bg-accent-blue/10' : 'border-transparent hover:border-surface hover:bg-bg-tertiary/60',
+                  selected?.id === item.id ? 'border-accent-blue/35 bg-accent-blue/10' : 'border-transparent hover:border-border-subtle hover:bg-panel/60',
                 )}
               >
                 <div className="flex items-center gap-2">
                   <span className={cn('h-1.5 w-1.5 rounded-full', item.effective ? 'bg-accent-green' : 'bg-text-muted')} />
                   <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary">{item.name}</span>
-                  <span className="rounded border border-surface px-1 py-0.5 text-[8px] uppercase tracking-wide text-text-muted">{item.scope}</span>
+                  <span className="rounded border border-border-subtle px-1 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">{item.scope}</span>
                 </div>
-                <p className="mt-1 truncate font-mono text-[9px] text-text-muted">{mcpSummary(item.definition)}</p>
-                {!item.effective && <p className="mt-1 text-[9px] text-severity-medium">Overridden by {item.shadowedBy}</p>}
+                <p className="mt-1 truncate font-mono text-[11px] text-text-muted">{mcpSummary(item.definition)}</p>
+                {!item.effective && <p className="mt-1 text-[11px] text-severity-medium">Overridden by {item.shadowedBy}</p>}
               </button>
             ))}
           </div>
           {result?.errors.map((item) => (
-            <div key={`${item.source}:${item.detail}`} className="mt-2 rounded border border-severity-critical/25 bg-severity-critical/5 p-2 text-[9px] text-severity-critical"><strong>{item.source}:</strong> {item.detail}</div>
+            <div key={`${item.source}:${item.detail}`} className="mt-2 rounded border border-severity-critical/25 bg-severity-critical/5 p-2 text-[11px] text-severity-critical"><strong>{item.source}:</strong> {item.detail}</div>
           ))}
         </aside>
 
@@ -195,18 +195,18 @@ export function McpSettings() {
               <div>
                 <Icon name="server" size={26} className="mx-auto mb-3 text-text-muted" />
                 <p className="text-xs text-text-secondary">{t('mcp.select')}</p>
-                {!result?.projectAvailable && <p className="mt-1 text-[10px] text-text-muted">{t('mcp.projectRequired')}</p>}
+                {!result?.projectAvailable && <p className="mt-1 text-[11px] text-text-muted">{t('mcp.projectRequired')}</p>}
               </div>
             </div>
           ) : (
             <div className="mx-auto max-w-3xl">
               <div className="mb-4 grid grid-cols-[1fr_150px] gap-3">
                 <label>
-                  <span className="mb-1 block text-[10px] font-medium text-text-secondary">Server name</span>
+                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">Server name</span>
                   <input aria-label="MCP server name" value={name} onChange={(event) => setName(event.target.value)} className="settings-input font-mono" />
                 </label>
                 <label>
-                  <span className="mb-1 block text-[10px] font-medium text-text-secondary">Scope</span>
+                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">Scope</span>
                   <select aria-label="MCP scope" value={scope} disabled={selected.id !== 'new'} onChange={(event) => setScope(event.target.value as ClaudeMcpScope)} className="settings-input">
                     <option value="user">User</option>
                     <option value="project" disabled={!result?.projectAvailable}>Project</option>
@@ -214,23 +214,23 @@ export function McpSettings() {
                   </select>
                 </label>
               </div>
-              <div className="mb-2 rounded border border-severity-medium/20 bg-severity-medium/5 px-3 py-2 text-[9px] leading-4 text-severity-medium">
+              <div className="mb-2 rounded border border-severity-medium/20 bg-severity-medium/5 px-3 py-2 text-[11px] leading-4 text-severity-medium">
                 MCP definitions can contain credentials in <span className="font-mono">env</span> or <span className="font-mono">headers</span>. They are shown because this is a local configuration editor.
               </div>
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-medium text-text-secondary">Server definition</span>
-                <span className="font-mono text-[9px] text-text-muted">JSON</span>
+                <span className="text-[11px] font-medium text-text-secondary">Server definition</span>
+                <span className="font-mono text-[11px] text-text-muted">JSON</span>
               </div>
               <textarea
                 aria-label="MCP JSON definition"
                 value={json}
                 onChange={(event) => setJson(event.target.value)}
                 spellCheck={false}
-                className="h-[380px] w-full resize-y rounded border border-surface bg-bg-tertiary/50 p-3 font-mono text-[11px] leading-5 text-text-secondary outline-none focus:border-accent-blue/50"
+                className="h-[380px] w-full resize-y rounded border border-border-subtle bg-panel/50 p-3 font-mono text-[11px] leading-5 text-text-secondary outline-none focus:border-accent-blue/50"
               />
-              {selected.sourcePath && <p className="mt-1 truncate font-mono text-[9px] text-text-muted">{selected.sourcePath}</p>}
+              {selected.sourcePath && <p className="mt-1 truncate font-mono text-[11px] text-text-muted">{selected.sourcePath}</p>}
               {error && <DismissibleNotice tone="error" className="mt-3" onDismiss={() => setError(null)}>{error}</DismissibleNotice>}
-              <div className="mt-4 flex items-center justify-between border-t border-surface pt-4">
+              <div className="mt-4 flex items-center justify-between border-t border-border-subtle pt-4">
                 <div>
                   {selected.id !== 'new' && <button onClick={() => void remove()} disabled={Boolean(busy)} className="rounded px-3 py-1.5 text-xs text-severity-critical hover:bg-severity-critical/10 disabled:opacity-40">Delete</button>}
                 </div>

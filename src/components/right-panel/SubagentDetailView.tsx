@@ -24,8 +24,8 @@ export function SubagentDetailView({
   const duration = formatDuration(run);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-bg-secondary">
-      <header className="flex shrink-0 items-center gap-2 border-b border-surface bg-bg-tertiary px-3 py-2">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas">
+      <header className="flex shrink-0 items-center gap-2 border-b border-border-subtle bg-panel px-3 py-2">
         <button
           type="button"
           className="ui-icon-button p-1"
@@ -42,22 +42,22 @@ export function SubagentDetailView({
               {run.agentType || t('agent.subagent')}
             </h2>
           </div>
-          <p className="truncate text-[9px] text-text-muted">{run.description}</p>
+          <p className="truncate text-[11px] text-text-muted">{run.description}</p>
         </div>
-        <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em] ${status.className}`}>
+        <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] uppercase tracking-[0.1em] ${status.className}`}>
           {status.label}
         </span>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        <div className="mb-3 grid grid-cols-3 gap-1.5 text-[9px]">
+        <div className="mb-3 grid grid-cols-3 gap-1.5 text-[11px]">
           <Metric label={t('agent.subagentDuration')} value={duration} />
           <Metric label={t('agent.subagentTools')} value={String(run.usage?.toolUses ?? countTools(run.activities))} />
           <Metric label={t('agent.subagentTokens')} value={run.usage?.totalTokens ? formatCount(run.usage.totalTokens) : '—'} />
         </div>
 
         {run.parentRunId && (
-          <div className="mb-3 rounded border border-accent-blue/20 bg-accent-blue/5 px-2 py-1.5 text-[9px] text-text-secondary">
+          <div className="mb-3 rounded border border-accent-blue/20 bg-accent-blue/5 px-2 py-1.5 text-[11px] text-text-secondary">
             Nested under another subagent
           </div>
         )}
@@ -65,14 +65,14 @@ export function SubagentDetailView({
         {run.activities.length > 0 ? (
           <AgentActivityList activities={run.activities as AgentActivity[]} compact />
         ) : (
-          <div className="rounded border border-surface bg-bg-tertiary px-3 py-5 text-center text-2xs text-text-muted">
+          <div className="rounded border border-border-subtle bg-panel px-3 py-5 text-center text-2xs text-text-muted">
             {t('agent.subagentWaiting')}
           </div>
         )}
 
         {run.output && (
           <section className="mt-4 rounded border border-accent-green/20 bg-accent-green/5 p-2.5">
-            <p className="mb-1 text-[8px] uppercase tracking-[0.14em] text-accent-green">{t('agent.subagentFinalOutput')}</p>
+            <p className="mb-1 text-[11px] uppercase tracking-[0.14em] text-accent-green">{t('agent.subagentFinalOutput')}</p>
             <p className="whitespace-pre-wrap break-words text-2xs leading-4 text-text-secondary">{run.output}</p>
           </section>
         )}
@@ -88,9 +88,9 @@ export function SubagentDetailView({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded border border-surface bg-bg-tertiary px-2 py-1.5">
-      <p className="text-[8px] uppercase tracking-[0.12em] text-text-muted">{label}</p>
-      <p className="mt-0.5 truncate font-mono text-[10px] text-text-secondary">{value}</p>
+    <div className="rounded border border-border-subtle bg-panel px-2 py-1.5">
+      <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted">{label}</p>
+      <p className="mt-0.5 truncate font-mono text-[11px] text-text-secondary">{value}</p>
     </div>
   );
 }

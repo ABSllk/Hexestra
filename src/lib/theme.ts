@@ -3,19 +3,19 @@ import type { ITheme } from '@xterm/xterm';
 export type ResolvedTheme = 'dark' | 'light';
 
 const DARK_TERMINAL_THEME: ITheme = {
-  background: '#1e1e2e', foreground: '#cdd6f4', cursor: '#89b4fa', selectionBackground: '#45475a',
-  black: '#45475a', red: '#f38ba8', green: '#a6e3a1', yellow: '#f9e2af', blue: '#89b4fa',
-  magenta: '#cba6f7', cyan: '#94e2d5', white: '#bac2de', brightBlack: '#585b70', brightRed: '#f38ba8',
-  brightGreen: '#a6e3a1', brightYellow: '#f9e2af', brightBlue: '#89b4fa', brightMagenta: '#cba6f7',
-  brightCyan: '#94e2d5', brightWhite: '#cdd6f4',
+  background: '#0B0F17', foreground: '#F1F5F9', cursor: '#4F8CFF', selectionBackground: '#273244',
+  black: '#273244', red: '#FB7185', green: '#6EE7B7', yellow: '#FDE68A', blue: '#4F8CFF',
+  magenta: '#A78BFA', cyan: '#2DD4BF', white: '#CBD5E1', brightBlack: '#4B5B72', brightRed: '#FB7185',
+  brightGreen: '#6EE7B7', brightYellow: '#FDE68A', brightBlue: '#7AA7FF', brightMagenta: '#C4B5FD',
+  brightCyan: '#5EEAD4', brightWhite: '#F1F5F9',
 };
 
 const LIGHT_TERMINAL_THEME: ITheme = {
-  background: '#faf9f6', foreground: '#24272c', cursor: '#315f9e', selectionBackground: '#dddad3',
-  black: '#4c5159', red: '#b84357', green: '#39734e', yellow: '#8a6422', blue: '#315f9e',
-  magenta: '#7653a6', cyan: '#2e7067', white: '#faf9f6', brightBlack: '#626a73', brightRed: '#a9374b',
-  brightGreen: '#2d6240', brightYellow: '#725119', brightBlue: '#274f86', brightMagenta: '#654391',
-  brightCyan: '#245e56', brightWhite: '#24272c',
+  background: '#F4F6F8', foreground: '#172033', cursor: '#2563EB', selectionBackground: '#D8E0EA',
+  black: '#526178', red: '#BE123C', green: '#047857', yellow: '#A16207', blue: '#2563EB',
+  magenta: '#6D28D9', cyan: '#0F766E', white: '#FFFFFF', brightBlack: '#6B7788', brightRed: '#9F1239',
+  brightGreen: '#065F46', brightYellow: '#854D0E', brightBlue: '#1D4ED8', brightMagenta: '#5B21B6',
+  brightCyan: '#115E59', brightWhite: '#172033',
 };
 
 export function getTerminalTheme(theme: ResolvedTheme): ITheme {
@@ -46,22 +46,22 @@ export interface NetMapPalette {
 }
 
 const DARK_NETMAP_PALETTE: NetMapPalette = {
-  shell: '#050b0e', chrome: '#071014', edgeBase: '#16343a', edgeLink: '#94e2d5', edgeResolve: '#89b4fa', edgeAttack: '#f38ba8',
-  edgeLabelFill: '#061014', edgeLabelStroke: '#315b65', nodeFill: '#071216', nodeFocus: '#e6fffb',
-  nodeLabel: '#b7c8cb', nodeSecondaryLabel: '#58767c', badgeFill: '#170b0f', badgeText: '#f38ba8',
+  shell: '#0B0F17', chrome: '#111827', edgeBase: '#273244', edgeLink: '#2DD4BF', edgeResolve: '#4F8CFF', edgeAttack: '#FB7185',
+  edgeLabelFill: '#0B0F17', edgeLabelStroke: '#31506A', nodeFill: '#111827', nodeFocus: '#E6FFFB',
+  nodeLabel: '#BED0DF', nodeSecondaryLabel: '#7C899B', badgeFill: '#2B1620', badgeText: '#FB7185',
   nodeColors: {
-    untested: '#6c7086', in_progress: '#89b4fa', scanned: '#f9e2af', vulnerable: '#fab387',
-    compromised: '#a6e3a1', out_of_scope: '#45475a',
+    untested: '#7C899B', in_progress: '#4F8CFF', scanned: '#FDE68A', vulnerable: '#FDBA74',
+    compromised: '#6EE7B7', out_of_scope: '#273244',
   },
 };
 
 const LIGHT_NETMAP_PALETTE: NetMapPalette = {
-  shell: '#f1f0ec', chrome: '#edebe6', edgeBase: '#c1c0ba', edgeLink: '#2e7067', edgeResolve: '#315f9e', edgeAttack: '#b84357',
-  edgeLabelFill: '#fcfbf8', edgeLabelStroke: '#72797c', nodeFill: '#fdfcf9', nodeFocus: '#2e7067',
-  nodeLabel: '#464b52', nodeSecondaryLabel: '#626a73', badgeFill: '#f8e8e8', badgeText: '#b84357',
+  shell: '#F4F6F8', chrome: '#FFFFFF', edgeBase: '#A9B7C8', edgeLink: '#0F766E', edgeResolve: '#2563EB', edgeAttack: '#BE123C',
+  edgeLabelFill: '#FFFFFF', edgeLabelStroke: '#8494A8', nodeFill: '#F8FAFC', nodeFocus: '#0F766E',
+  nodeLabel: '#344155', nodeSecondaryLabel: '#6B7788', badgeFill: '#FCE7F3', badgeText: '#BE123C',
   nodeColors: {
-    untested: '#626a73', in_progress: '#315f9e', scanned: '#8a6422', vulnerable: '#b04c24',
-    compromised: '#39734e', out_of_scope: '#a1a5a8',
+    untested: '#6B7788', in_progress: '#2563EB', scanned: '#A16207', vulnerable: '#C2410C',
+    compromised: '#047857', out_of_scope: '#A9B7C8',
   },
 };
 

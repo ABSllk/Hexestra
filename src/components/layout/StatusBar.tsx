@@ -12,14 +12,14 @@ export function StatusBar() {
   const toggleNetMap = useAppStore((s) => s.toggleNetMap);
 
   return (
-    <div className="flex h-6 shrink-0 select-none items-center border-t border-surface bg-bg-tertiary/95 px-2.5 text-2xs text-text-muted">
+    <div className="flex h-7 shrink-0 select-none items-center border-t border-border-subtle bg-canvas px-3 text-[11px] text-text-muted">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {session && (
-          <div className="flex items-center gap-2 font-mono text-[9px]">
+          <div className="flex items-center gap-2 font-mono text-[11px]">
             <span><span className="text-text-secondary">{targetCount + assetCount}</span> {t('status.assets')}</span>
-            <span className="text-surface-active">·</span>
+            <span className="text-border-strong">·</span>
             <span><span className="text-text-secondary">{session.findingCount}</span> {t('status.findings')}</span>
-            <span className="text-surface-active">·</span>
+            <span className="text-border-strong">·</span>
             <span><span className="text-text-secondary">{session.vulnerabilityCount}</span> {t('status.vulnerabilities')}</span>
           </div>
         )}
@@ -31,10 +31,10 @@ export function StatusBar() {
           aria-pressed={isNetMapVisible}
           onClick={toggleNetMap}
           className={cn(
-            'flex h-5 items-center gap-1 rounded-md border px-1.5',
+            'flex min-h-7 items-center gap-1.5 rounded-md border px-2',
             isNetMapVisible
               ? 'border-accent-teal/20 bg-accent-teal/10 text-accent-teal hover:border-accent-teal/40'
-              : 'border-transparent text-text-muted hover:border-surface hover:bg-surface/35 hover:text-text-secondary',
+              : 'border-transparent text-text-muted hover:border-border-subtle hover:bg-raised hover:text-text-secondary',
           )}
         >
           <Icon name="network" size={11} />

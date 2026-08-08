@@ -34,8 +34,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       <div
         className={
           this.props.compact
-            ? 'flex h-full min-h-32 flex-col items-center justify-center gap-2 bg-bg-secondary p-4 text-center'
-            : 'flex h-screen flex-col items-center justify-center gap-3 bg-bg-primary p-8 text-center'
+            ? 'flex h-full min-h-32 flex-col items-center justify-center gap-2 bg-canvas p-4 text-center'
+            : 'flex h-screen flex-col items-center justify-center gap-3 bg-panel p-8 text-center'
         }
         role="alert"
       >

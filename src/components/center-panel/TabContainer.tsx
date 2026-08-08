@@ -1,4 +1,6 @@
 import { lazy, Suspense } from 'react';
+import { EmptyState } from '@/components/shared';
+import { useI18n } from '@/i18n';
 import { useTabStore } from '@/stores';
 import { TabBar } from './TabBar';
 import { TerminalTab } from './tabs/TerminalTab';
@@ -15,6 +17,7 @@ const EditorTab = lazy(() =>
 );
 
 export function TabContainer() {
+  const { t } = useI18n();
   const tabs = useTabStore((s) => s.tabs);
   const activeTabId = useTabStore((s) => s.activeTabId);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
@@ -24,17 +27,18 @@ export function TabContainer() {
       <TabBar />
       <div className="min-h-0 flex-1">
         {activeTab === null && (
-          <div className="flex h-full items-center justify-center text-sm text-text-muted">
-            No tabs open. Press
-            <kbd className="mx-1 rounded bg-surface px-1.5 py-0.5 text-2xs">Ctrl+T</kbd>
-            to open a new terminal.
-          </div>
+          <EmptyState
+            icon="layers"
+            title={t('tabs.emptyTitle')}
+            description={t('tabs.emptyHint')}
+            action={<kbd className="rounded-md border border-border-subtle bg-raised px-2 py-1 font-mono text-[11px] text-text-secondary">Ctrl+T</kbd>}
+          />
         )}
 
         {activeTab?.type === 'welcome' && <WelcomeTab />}
         {activeTab?.type === 'terminal' && <TerminalTab tabId={activeTab.id} />}
         {activeTab?.type === 'editor' && (
-          <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-text-muted">Loading editor…</div>}>
+          <Suspense fallback={<EmptyState icon="code" title={t('tabs.loadingEditor')} />}>
             <EditorTab tabId={activeTab.id} />
           </Suspense>
         )}

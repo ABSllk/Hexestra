@@ -150,18 +150,18 @@ export function TrafficDetailTab({ tabId }: { tabId: string }) {
   const paused = flow?.state === 'request_paused' || flow?.state === 'response_paused';
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg-primary">
+    <div className="flex h-full min-h-0 flex-col bg-panel">
       {error && <DismissibleNotice tone="error" variant="banner" onDismiss={() => setError(null)}>{error}</DismissibleNotice>}
       {notice && <DismissibleNotice tone="success" variant="banner" onDismiss={() => setNotice(null)}>{notice}</DismissibleNotice>}
 
       {flow && (
         <>
-          <header className="shrink-0 border-b border-surface px-3 py-2">
+          <header className="shrink-0 border-b border-border-subtle px-3 py-2">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="rounded bg-accent-blue/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent-blue">{flow.request.method}</span>
+              <span className="rounded bg-accent-blue/10 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-accent-blue">{flow.request.method}</span>
               <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-primary" title={flow.request.url}>{flow.request.url}</span>
               <span className={cn(
-                'shrink-0 rounded border px-1.5 py-0.5 font-mono text-[9px]',
+                'shrink-0 rounded border px-1.5 py-0.5 font-mono text-[11px]',
                 flow.scopeState === 'in_scope'
                   ? 'border-accent-teal/30 text-accent-teal'
                   : 'border-accent-yellow/30 text-accent-yellow',
@@ -169,7 +169,7 @@ export function TrafficDetailTab({ tabId }: { tabId: string }) {
                 {flow.scopeState === 'in_scope' ? 'IN SCOPE' : 'OUT OF SCOPE'}
               </span>
             </div>
-            <div className="mt-1.5 flex items-center gap-3 font-mono text-[9px] text-text-muted">
+            <div className="mt-1.5 flex items-center gap-3 font-mono text-[11px] text-text-muted">
               <span>{flow.state}</span>
               <span>HTTP {flow.request.httpVersion.replace(/^http\//i, '')}</span>
               <span>{flow.response?.statusCode ?? t('traffic.noResponse')}</span>
@@ -186,10 +186,10 @@ export function TrafficDetailTab({ tabId }: { tabId: string }) {
             </div>
           </header>
 
-          <div className="flex shrink-0 items-center gap-1 border-b border-surface px-2 py-1.5">
-            <button className={cn('ui-segmented-item px-2 py-1 text-[10px]', side === 'request' && 'bg-surface text-text-primary')} onClick={() => setSide('request')}>{t('traffic.request')}</button>
-            <button disabled={!flow.response} className={cn('ui-segmented-item px-2 py-1 text-[10px]', side === 'response' && 'bg-surface text-text-primary')} onClick={() => setSide('response')}>{t('traffic.response')}</button>
-            {paused && <span className="ml-2 text-[9px] text-accent-yellow">Paused · editing {flow.state === 'response_paused' ? 'response' : 'request'}</span>}
+          <div className="flex shrink-0 items-center gap-1 border-b border-border-subtle px-2 py-1.5">
+            <button className={cn('ui-segmented-item px-2 py-1 text-[11px]', side === 'request' && 'bg-raised text-text-primary')} onClick={() => setSide('request')}>{t('traffic.request')}</button>
+            <button disabled={!flow.response} className={cn('ui-segmented-item px-2 py-1 text-[11px]', side === 'response' && 'bg-raised text-text-primary')} onClick={() => setSide('response')}>{t('traffic.response')}</button>
+            {paused && <span className="ml-2 text-[11px] text-accent-yellow">Paused · editing {flow.state === 'response_paused' ? 'response' : 'request'}</span>}
           </div>
 
           <textarea
@@ -198,21 +198,21 @@ export function TrafficDetailTab({ tabId }: { tabId: string }) {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             readOnly={!paused}
-            className="min-h-0 flex-1 resize-none bg-bg-primary p-3 font-mono text-[11px] leading-5 text-text-secondary outline-none"
+            className="min-h-0 flex-1 resize-none bg-panel p-3 font-mono text-[11px] leading-5 text-text-secondary outline-none"
           />
 
-          <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-surface p-2">
+          <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border-subtle p-2">
             {paused && (
               <>
-                <button className="ui-control px-2 py-1 text-[10px] text-accent-teal" disabled={busy} onClick={() => decide('forward')}>{t('traffic.forward')}</button>
-                <button className="ui-control px-2 py-1 text-[10px] text-severity-high" disabled={busy} onClick={() => decide('drop')}>{t('traffic.drop')}</button>
+                <button className="ui-control px-2 py-1 text-[11px] text-accent-teal" disabled={busy} onClick={() => decide('forward')}>{t('traffic.forward')}</button>
+                <button className="ui-control px-2 py-1 text-[11px] text-severity-high" disabled={busy} onClick={() => decide('drop')}>{t('traffic.drop')}</button>
               </>
             )}
-            <button className="ui-control px-2 py-1 text-[10px]" disabled={busy || flow.request.httpVersion === 'websocket'} onClick={openInRepeater}>{t('traffic.repeater')}</button>
-            <button className="ui-control px-2 py-1 text-[10px]" disabled={busy} onClick={askAgent}>{t('traffic.askAgent')}</button>
-            <button className="ui-control px-2 py-1 text-[10px]" disabled={busy} onClick={() => void run(() => window.hexestra.invoke(TRAFFIC_IPC.SAVE_EVIDENCE, projectId, flow.id))}>{t('traffic.saveEvidence')}</button>
-            <button className="ui-control px-2 py-1 text-[10px]" disabled={busy || !profileState?.burpStatus.tools.some((tool) => tool.startsWith('create_repeater_tab') || tool === 'repeater_send')} onClick={() => callBurp('open_repeater')}>{t('traffic.burpRepeater')}</button>
-            <button className="ui-control px-2 py-1 text-[10px]" disabled={busy || !profileState?.burpStatus.tools.some((tool) => tool === 'send_to_intruder' || tool === 'intruder_send')} onClick={() => callBurp('send_intruder')}>{t('traffic.burpIntruder')}</button>
+            <button className="ui-control px-2 py-1 text-[11px]" disabled={busy || flow.request.httpVersion === 'websocket'} onClick={openInRepeater}>{t('traffic.repeater')}</button>
+            <button className="ui-control px-2 py-1 text-[11px]" disabled={busy} onClick={askAgent}>{t('traffic.askAgent')}</button>
+            <button className="ui-control px-2 py-1 text-[11px]" disabled={busy} onClick={() => void run(() => window.hexestra.invoke(TRAFFIC_IPC.SAVE_EVIDENCE, projectId, flow.id))}>{t('traffic.saveEvidence')}</button>
+            <button className="ui-control px-2 py-1 text-[11px]" disabled={busy || !profileState?.burpStatus.tools.some((tool) => tool.startsWith('create_repeater_tab') || tool === 'repeater_send')} onClick={() => callBurp('open_repeater')}>{t('traffic.burpRepeater')}</button>
+            <button className="ui-control px-2 py-1 text-[11px]" disabled={busy || !profileState?.burpStatus.tools.some((tool) => tool === 'send_to_intruder' || tool === 'intruder_send')} onClick={() => callBurp('send_intruder')}>{t('traffic.burpIntruder')}</button>
           </footer>
         </>
       )}

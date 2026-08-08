@@ -6,39 +6,57 @@
   color-scheme: dark;
   --font-ui: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI Variable", "Segoe UI", sans-serif;
   --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "Noto Sans SC", "Microsoft YaHei UI", monospace;
-  --font-size-ui: 12px;
-  --color-bg-primary: 30 30 46;
-  --color-bg-secondary: 24 24 37;
-  --color-bg-tertiary: 17 17 27;
-  --color-surface: 49 50 68;
-  --color-surface-hover: 69 71 90;
-  --color-surface-active: 88 91 112;
-  --color-surface-light: 166 173 200;
-  --color-text-primary: 205 214 244;
-  --color-text-secondary: 166 173 200;
-  --color-text-muted: 108 112 134;
-  --color-accent-blue: 137 180 250;
-  --color-accent-green: 166 227 161;
-  --color-accent-red: 243 139 168;
-  --color-accent-yellow: 249 226 175;
-  --color-accent-purple: 203 166 247;
-  --color-accent-teal: 148 226 213;
-  --color-severity-critical: 243 139 168;
-  --color-severity-high: 250 179 135;
-  --color-severity-medium: 249 226 175;
-  --color-severity-low: 166 227 161;
-  --color-severity-info: 137 180 250;
-  --color-node-untested: 108 112 134;
-  --color-node-progress: 137 180 250;
-  --color-node-scanned: 249 226 175;
-  --color-node-vulnerable: 250 179 135;
-  --color-node-compromised: 166 227 161;
-  --color-netmap-shell: 5 11 14;
-  --color-netmap-canvas: 5 11 14;
-  --color-netmap-chrome: 7 16 20;
-  --color-netmap-grid: 86 142 149;
-  --color-netmap-edge: 49 91 101;
-  --color-netmap-label: 183 200 203;
+  --font-size-ui: 13px;
+  --space-xs: 2px;
+  --space-sm: 4px;
+  --space-md: 8px;
+  --space-lg: 12px;
+  --space-xl: 16px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-overlay: 12px;
+  --motion-fast: 140ms;
+  --motion-standard: 180ms;
+  --color-canvas: 11 15 23;
+  --color-panel: 17 24 39;
+  --color-raised: 23 32 51;
+  --color-border-subtle: 39 50 68;
+  --color-border-strong: 49 67 95;
+  --color-focus: 79 140 255;
+  --color-bg-primary: 17 24 39;
+  --color-bg-secondary: 11 15 23;
+  --color-bg-tertiary: 9 13 21;
+  --color-surface: 23 32 51;
+  --color-surface-hover: 34 47 72;
+  --color-surface-active: 49 67 95;
+  --color-surface-light: 139 153 176;
+  --color-text-primary: 241 245 249;
+  --color-text-secondary: 168 179 196;
+  --color-text-muted: 124 137 155;
+  --color-accent-blue: 79 140 255;
+  --color-accent-green: 52 211 153;
+  --color-accent-red: 251 113 133;
+  --color-accent-yellow: 253 230 138;
+  --color-accent-purple: 167 139 250;
+  --color-accent-teal: 45 212 191;
+  --color-severity-critical: 251 113 133;
+  --color-severity-high: 253 186 116;
+  --color-severity-medium: 253 230 138;
+  --color-severity-low: 110 231 183;
+  --color-severity-info: 79 140 255;
+  --color-node-untested: 124 137 155;
+  --color-node-progress: 79 140 255;
+  --color-node-scanned: 253 230 138;
+  --color-node-vulnerable: 253 186 116;
+  --color-node-compromised: 110 231 183;
+  --color-netmap-shell: 11 15 23;
+  --color-netmap-canvas: 11 15 23;
+  --color-netmap-chrome: 17 24 39;
+  --color-netmap-grid: 90 112 142;
+  --color-netmap-edge: 39 78 94;
+  --color-netmap-label: 190 207 222;
   --color-netmap-focus: 230 255 251;
   font-family: var(--font-ui);
 }
@@ -46,77 +64,89 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']):not([data-theme='light']) {
     color-scheme: light;
-    --color-bg-primary: 248 247 244;
-    --color-bg-secondary: 243 242 238;
-    --color-bg-tertiary: 236 234 229;
-    --color-surface: 221 218 211;
-    --color-surface-hover: 209 205 196;
-    --color-surface-active: 191 187 177;
-    --color-surface-light: 76 81 89;
-    --color-text-primary: 36 39 44;
-    --color-text-secondary: 76 81 89;
-    --color-text-muted: 98 106 115;
-    --color-accent-blue: 49 95 158;
-    --color-accent-green: 57 115 78;
-    --color-accent-red: 184 67 87;
-    --color-accent-yellow: 138 100 34;
-    --color-accent-purple: 118 83 166;
-    --color-accent-teal: 46 112 103;
-    --color-severity-critical: 184 67 87;
-    --color-severity-high: 176 76 36;
-    --color-severity-medium: 138 100 34;
-    --color-severity-low: 57 115 78;
-    --color-severity-info: 49 95 158;
-    --color-node-untested: 98 106 115;
-    --color-node-progress: 49 95 158;
-    --color-node-scanned: 138 100 34;
-    --color-node-vulnerable: 176 76 36;
-    --color-node-compromised: 57 115 78;
-    --color-netmap-shell: 241 240 236;
-    --color-netmap-canvas: 250 249 246;
-    --color-netmap-chrome: 237 235 230;
-    --color-netmap-grid: 126 133 138;
-    --color-netmap-edge: 132 135 131;
-    --color-netmap-label: 77 83 90;
-    --color-netmap-focus: 46 112 103;
+    --color-canvas: 244 246 248;
+    --color-panel: 255 255 255;
+    --color-raised: 248 250 252;
+    --color-border-subtle: 216 224 234;
+    --color-border-strong: 191 203 218;
+    --color-focus: 37 99 235;
+    --color-bg-primary: 255 255 255;
+    --color-bg-secondary: 244 246 248;
+    --color-bg-tertiary: 248 250 252;
+    --color-surface: 248 250 252;
+    --color-surface-hover: 232 238 246;
+    --color-surface-active: 216 224 234;
+    --color-surface-light: 82 97 120;
+    --color-text-primary: 23 32 51;
+    --color-text-secondary: 82 97 120;
+    --color-text-muted: 107 119 136;
+    --color-accent-blue: 37 99 235;
+    --color-accent-green: 4 120 87;
+    --color-accent-red: 190 18 60;
+    --color-accent-yellow: 161 98 7;
+    --color-accent-purple: 109 40 217;
+    --color-accent-teal: 15 118 110;
+    --color-severity-critical: 190 18 60;
+    --color-severity-high: 194 65 12;
+    --color-severity-medium: 161 98 7;
+    --color-severity-low: 4 120 87;
+    --color-severity-info: 37 99 235;
+    --color-node-untested: 107 119 136;
+    --color-node-progress: 37 99 235;
+    --color-node-scanned: 161 98 7;
+    --color-node-vulnerable: 194 65 12;
+    --color-node-compromised: 4 120 87;
+    --color-netmap-shell: 244 246 248;
+    --color-netmap-canvas: 244 246 248;
+    --color-netmap-chrome: 255 255 255;
+    --color-netmap-grid: 107 119 136;
+    --color-netmap-edge: 132 148 165;
+    --color-netmap-label: 52 65 85;
+    --color-netmap-focus: 15 118 110;
   }
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --color-bg-primary: 248 247 244;
-  --color-bg-secondary: 243 242 238;
-  --color-bg-tertiary: 236 234 229;
-  --color-surface: 221 218 211;
-  --color-surface-hover: 209 205 196;
-  --color-surface-active: 191 187 177;
-  --color-surface-light: 76 81 89;
-  --color-text-primary: 36 39 44;
-  --color-text-secondary: 76 81 89;
-  --color-text-muted: 98 106 115;
-  --color-accent-blue: 49 95 158;
-  --color-accent-green: 57 115 78;
-  --color-accent-red: 184 67 87;
-  --color-accent-yellow: 138 100 34;
-  --color-accent-purple: 118 83 166;
-  --color-accent-teal: 46 112 103;
-  --color-severity-critical: 184 67 87;
-  --color-severity-high: 176 76 36;
-  --color-severity-medium: 138 100 34;
-  --color-severity-low: 57 115 78;
-  --color-severity-info: 49 95 158;
-  --color-node-untested: 98 106 115;
-  --color-node-progress: 49 95 158;
-  --color-node-scanned: 138 100 34;
-  --color-node-vulnerable: 176 76 36;
-  --color-node-compromised: 57 115 78;
-  --color-netmap-shell: 241 240 236;
-  --color-netmap-canvas: 250 249 246;
-  --color-netmap-chrome: 237 235 230;
-  --color-netmap-grid: 126 133 138;
-  --color-netmap-edge: 132 135 131;
-  --color-netmap-label: 77 83 90;
-  --color-netmap-focus: 46 112 103;
+  --color-canvas: 244 246 248;
+  --color-panel: 255 255 255;
+  --color-raised: 248 250 252;
+  --color-border-subtle: 216 224 234;
+  --color-border-strong: 191 203 218;
+  --color-focus: 37 99 235;
+  --color-bg-primary: 255 255 255;
+  --color-bg-secondary: 244 246 248;
+  --color-bg-tertiary: 248 250 252;
+  --color-surface: 248 250 252;
+  --color-surface-hover: 232 238 246;
+  --color-surface-active: 216 224 234;
+  --color-surface-light: 82 97 120;
+  --color-text-primary: 23 32 51;
+  --color-text-secondary: 82 97 120;
+  --color-text-muted: 107 119 136;
+  --color-accent-blue: 37 99 235;
+  --color-accent-green: 4 120 87;
+  --color-accent-red: 190 18 60;
+  --color-accent-yellow: 161 98 7;
+  --color-accent-purple: 109 40 217;
+  --color-accent-teal: 15 118 110;
+  --color-severity-critical: 190 18 60;
+  --color-severity-high: 194 65 12;
+  --color-severity-medium: 161 98 7;
+  --color-severity-low: 4 120 87;
+  --color-severity-info: 37 99 235;
+  --color-node-untested: 107 119 136;
+  --color-node-progress: 37 99 235;
+  --color-node-scanned: 161 98 7;
+  --color-node-vulnerable: 194 65 12;
+  --color-node-compromised: 4 120 87;
+  --color-netmap-shell: 244 246 248;
+  --color-netmap-canvas: 244 246 248;
+  --color-netmap-chrome: 255 255 255;
+  --color-netmap-grid: 107 119 136;
+  --color-netmap-edge: 132 148 165;
+  --color-netmap-label: 52 65 85;
+  --color-netmap-focus: 15 118 110;
 }
 
 /* ============================================================
@@ -151,7 +181,7 @@ html, body, #root {
 }
 
 body {
-  background: rgb(var(--color-bg-tertiary));
+  background: rgb(var(--color-canvas));
   color: rgb(var(--color-text-primary));
   font-family: var(--font-ui);
   font-size: var(--font-size-ui);
@@ -177,15 +207,6 @@ samp {
   font-family: var(--font-mono);
 }
 
-/* Preserve hierarchy while keeping dense supporting copy readable. */
-.text-\[7px\],
-.text-\[8px\],
-.text-\[9px\],
-.text-\[10px\] {
-  font-size: 11px;
-  line-height: 1rem;
-}
-
 ::selection {
   background: rgb(var(--color-accent-blue) / 0.28);
   color: rgb(var(--color-text-primary));
@@ -196,7 +217,7 @@ summary,
 select,
 input,
 textarea {
-  transition-duration: 140ms;
+  transition-duration: var(--motion-fast);
   transition-property: color, background-color, border-color, box-shadow, opacity, transform;
   transition-timing-function: ease-out;
 }
@@ -210,21 +231,59 @@ summary:focus-visible,
 select:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 1px solid rgb(var(--color-accent-blue) / 0.72);
-  outline-offset: 1px;
+  outline: 2px solid rgb(var(--color-focus) / 0.86);
+  outline-offset: 2px;
 }
 
 @layer components {
+  .ui-button {
+    @apply inline-flex min-h-7 items-center justify-center gap-2 rounded-md border px-2.5 text-[11px] font-medium transition-colors;
+  }
+
+  .ui-button-primary {
+    border-color: rgb(var(--color-accent-blue) / 0.8);
+    background: rgb(var(--color-accent-blue));
+    color: white;
+  }
+
+  .ui-button-primary:hover:not(:disabled) {
+    background: rgb(var(--color-accent-blue) / 0.86);
+  }
+
+  .ui-button-neutral {
+    border-color: rgb(var(--color-border-subtle));
+    background: rgb(var(--color-raised) / 0.56);
+    color: rgb(var(--color-text-secondary));
+  }
+
+  .ui-button-neutral:hover:not(:disabled) {
+    border-color: rgb(var(--color-border-strong));
+    background: rgb(var(--color-surface-hover) / 0.7);
+    color: rgb(var(--color-text-primary));
+  }
+
+  .ui-button-danger {
+    border-color: rgb(var(--color-severity-critical) / 0.36);
+    background: rgb(var(--color-severity-critical) / 0.1);
+    color: rgb(var(--color-severity-critical));
+  }
+
+  .ui-button-danger:hover:not(:disabled) {
+    background: rgb(var(--color-severity-critical) / 0.18);
+  }
+
   .ui-icon-button {
-    @apply inline-flex items-center justify-center rounded-md border border-transparent text-text-muted;
+    @apply inline-flex h-7 min-h-7 min-w-7 items-center justify-center rounded-md border border-transparent text-text-muted transition-colors;
   }
 
   .ui-icon-button:hover:not(:disabled) {
-    @apply border-surface/80 bg-surface/45 text-text-primary;
+    border-color: rgb(var(--color-border-strong) / 0.8);
+    background: rgb(var(--color-surface-hover) / 0.7);
+    color: rgb(var(--color-text-primary));
   }
 
   .ui-segmented {
-    @apply rounded-lg border border-surface/80 bg-bg-primary/35 p-1;
+    @apply rounded-lg border border-border-subtle bg-panel/35 p-1;
   }
 
   .ui-segmented-item {
@@ -232,24 +291,28 @@ textarea:focus-visible {
   }
 
   .ui-segmented-item:hover:not(:disabled) {
-    @apply bg-surface/35 text-text-secondary;
+    @apply bg-raised/55 text-text-secondary;
   }
 
   .ui-segmented-item-active {
-    @apply border-surface/70 bg-surface/45 text-text-primary shadow-sm shadow-black/10;
+    @apply border-border-subtle bg-raised/70 text-text-primary shadow-sm shadow-black/10;
   }
 
   .ui-control {
-    @apply rounded-md border border-surface/80 bg-bg-primary/55 outline-none;
+    @apply min-h-7 rounded-md border outline-none transition-colors;
+    border-color: rgb(var(--color-border-subtle));
+    background: rgb(var(--color-panel) / 0.72);
   }
 
   .ui-control:hover:not(:disabled) {
-    @apply border-surface-active/70 bg-bg-primary/80;
+    border-color: rgb(var(--color-border-strong) / 0.8);
+    background: rgb(var(--color-panel) / 0.92);
   }
 
   .ui-control:focus-within,
   .ui-control:focus {
-    @apply border-accent-blue/45 shadow-[0_0_0_1px_rgb(var(--color-accent-blue)_/_0.08)];
+    border-color: rgb(var(--color-focus) / 0.7);
+    box-shadow: 0 0 0 2px rgb(var(--color-focus) / 0.12);
   }
 
   .ui-hover-row {
@@ -257,15 +320,48 @@ textarea:focus-visible {
   }
 
   .ui-hover-row:hover {
-    @apply border-surface/60 bg-surface/25;
+    @apply border-border-subtle bg-raised/45;
   }
 
   .ui-card {
-    @apply rounded-lg border border-surface/70 bg-bg-tertiary/55 shadow-sm shadow-black/10;
+    @apply rounded-lg border shadow-sm shadow-black/10;
+    border-color: rgb(var(--color-border-subtle) / 0.8);
+    background: rgb(var(--color-raised) / 0.56);
   }
 
   .ui-popover {
-    @apply rounded-lg border border-surface/90 bg-bg-tertiary shadow-2xl shadow-black/35;
+    @apply rounded-xl border shadow-2xl shadow-black/35;
+    border-color: rgb(var(--color-border-strong) / 0.9);
+    background: rgb(var(--color-panel));
+  }
+
+  .ui-panel-header {
+    @apply flex min-h-9 shrink-0 items-center gap-2 border-b px-3;
+    border-color: rgb(var(--color-border-subtle) / 0.75);
+    background: rgb(var(--color-panel) / 0.88);
+  }
+
+  .ui-toolbar {
+    @apply flex min-h-9 shrink-0 items-center gap-2 border-b px-2.5;
+    border-color: rgb(var(--color-border-subtle) / 0.7);
+    background: rgb(var(--color-panel) / 0.72);
+  }
+
+  .ui-empty-state {
+    @apply flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-5 py-8 text-center;
+    color: rgb(var(--color-text-muted));
+  }
+
+  .ui-field-label {
+    @apply text-[11px] font-medium text-text-secondary;
+  }
+
+  .ui-field-help {
+    @apply text-[11px] leading-4 text-text-muted;
+  }
+
+  .ui-divider {
+    border-color: rgb(var(--color-border-subtle) / 0.72);
   }
 }
 
@@ -311,7 +407,7 @@ textarea:focus-visible {
 /* Hacknet-inspired NetMap */
 .netmap-shell {
   background:
-    radial-gradient(circle at 50% 45%, rgb(var(--color-accent-teal) / 0.14), transparent 42%),
+    radial-gradient(circle at 50% 45%, rgb(var(--color-accent-teal) / 0.08), transparent 42%),
     rgb(var(--color-netmap-shell));
 }
 
@@ -338,7 +434,7 @@ textarea:focus-visible {
   pointer-events: none;
   background: linear-gradient(90deg, transparent, rgb(var(--color-accent-teal) / 0.32), transparent);
   box-shadow: 0 0 8px rgb(var(--color-accent-teal) / 0.08);
-  animation: netmap-scan 14s linear infinite;
+  animation: netmap-scan 22s linear infinite;
 }
 
 .netmap-node {
@@ -360,10 +456,10 @@ textarea:focus-visible {
     opacity: 0;
   }
   8% {
-    opacity: 0.18;
+    opacity: 0.08;
   }
   72% {
-    opacity: 0.05;
+    opacity: 0.03;
   }
   100% {
     transform: translateY(420px);
@@ -378,6 +474,15 @@ textarea:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
   .netmap-scanline,
   .netmap-link-active {
     animation: none;
@@ -401,8 +506,8 @@ textarea:focus-visible {
 .tab-bar {
   display: flex;
   align-items: center;
-  background: rgb(var(--color-bg-secondary));
-  border-bottom: 1px solid rgb(var(--color-surface));
+  background: rgb(var(--color-panel));
+  border-bottom: 1px solid rgb(var(--color-border-subtle));
   min-height: 36px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -415,22 +520,22 @@ textarea:focus-visible {
 .settings-input {
   width: 100%;
   height: 34px;
-  border: 1px solid rgb(var(--color-surface));
-  border-radius: 6px;
-  background: rgb(var(--color-bg-tertiary));
+  border: 1px solid rgb(var(--color-border-subtle));
+  border-radius: var(--radius-control);
+  background: rgb(var(--color-panel));
   padding: 0 10px;
   color: rgb(var(--color-text-primary));
-  font-size: 12px;
+  font-size: 13px;
   outline: none;
 }
 
 .settings-input:focus {
-  border-color: rgb(var(--color-accent-blue) / 0.7);
-  box-shadow: 0 0 0 1px rgb(var(--color-accent-blue) / 0.12);
+  border-color: rgb(var(--color-focus) / 0.7);
+  box-shadow: 0 0 0 2px rgb(var(--color-focus) / 0.12);
 }
 
 .settings-input:hover:not(:focus) {
-  border-color: rgb(var(--color-surface-active) / 0.85);
+  border-color: rgb(var(--color-border-strong) / 0.85);
 }
 
 /* Animation for streaming messages */

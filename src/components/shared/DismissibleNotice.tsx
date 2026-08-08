@@ -29,10 +29,10 @@ export function DismissibleNotice({
     <div
       role={tone === 'error' ? 'alert' : 'status'}
       className={cn(
-        'flex min-w-0 items-start gap-2 text-[10px]',
+        'flex min-w-0 items-start gap-2 text-[11px] leading-4',
         variant === 'banner'
-          ? 'shrink-0 border-b px-3 py-1.5'
-          : 'rounded border px-3 py-2',
+          ? 'shrink-0 border-b px-3 py-2'
+          : 'rounded-lg border px-3 py-2.5',
         TONE_CLASSES[tone],
         className,
       )}
@@ -42,10 +42,10 @@ export function DismissibleNotice({
         type="button"
         aria-label="Dismiss notice"
         title="Dismiss notice"
-        className="ui-icon-button -mr-1 -mt-0.5 h-5 w-5 shrink-0 border-transparent bg-transparent text-current opacity-70 hover:bg-current/10 hover:text-current hover:opacity-100"
+        className="ui-icon-button -mr-1 -mt-0.5 h-7 w-7 shrink-0 border-transparent bg-transparent text-current opacity-70 hover:bg-current/10 hover:text-current hover:opacity-100"
         onClick={onDismiss}
       >
-        <Icon name="close" size={10} />
+          <Icon name="close" size={13} />
       </button>
     </div>
   );

@@ -20,6 +20,7 @@ artifacts/
 .codex/
 .trellis/
 AGENTS.md
+design-system/
 
 # Editor and operating-system state
 .idea/

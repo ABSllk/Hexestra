@@ -3,17 +3,17 @@ import { getNetMapPalette, getTerminalTheme, MONACO_THEME_NAMES } from '@/lib/th
 
 describe('theme palettes', () => {
   it('keeps terminal and Monaco themes distinct without rebuilding sessions', () => {
-    expect(getTerminalTheme('dark').background).toBe('#1e1e2e');
-    expect(getTerminalTheme('light').background).toBe('#faf9f6');
+    expect(getTerminalTheme('dark').background).toBe('#0B0F17');
+    expect(getTerminalTheme('light').background).toBe('#F4F6F8');
     expect(MONACO_THEME_NAMES.dark).not.toBe(MONACO_THEME_NAMES.light);
   });
 
   it('provides accessible light NetMap colors for nodes, edges, and labels', () => {
     const palette = getNetMapPalette('light');
-    expect(palette.shell).toBe('#f1f0ec');
-    expect(palette.nodeFill).toBe('#fdfcf9');
-    expect(palette.nodeLabel).toBe('#464b52');
-    expect(palette.edgeLink).toBe('#2e7067');
-    expect(palette.nodeColors.vulnerable).toBe('#b04c24');
+    expect(palette.shell).toBe('#F4F6F8');
+    expect(palette.nodeFill).toBe('#F8FAFC');
+    expect(palette.nodeLabel).toBe('#344155');
+    expect(palette.edgeLink).toBe('#0F766E');
+    expect(palette.nodeColors.vulnerable).toBe('#C2410C');
   });
 });

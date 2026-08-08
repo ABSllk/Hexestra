@@ -68,8 +68,8 @@ export function RecordsTab() {
   };
 
   return <div className="flex h-full min-h-0 flex-col">
-    <div className="grid min-w-0 shrink-0 grid-cols-4 gap-0.5 border-b border-surface bg-bg-tertiary/50 p-1.5">
-      {items.map((item) => <button key={item.id} aria-label={`${item.label} ${item.count}`} title={item.label} onClick={() => setView(item.id)} className={`ui-segmented-item flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-center text-[9px] leading-tight ${view === item.id ? 'ui-segmented-item-active' : ''}`}><span className="block max-w-full truncate">{item.label}</span><span className="font-mono opacity-65">{item.count}</span></button>)}
+    <div className="grid min-w-0 shrink-0 grid-cols-4 gap-0.5 border-b border-border-subtle bg-panel/50 p-1.5">
+      {items.map((item) => <button key={item.id} aria-label={`${item.label} ${item.count}`} title={item.label} onClick={() => setView(item.id)} className={`ui-segmented-item flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-center text-[11px] leading-tight ${view === item.id ? 'ui-segmented-item-active' : ''}`}><span className="block max-w-full truncate">{item.label}</span><span className="font-mono opacity-65">{item.count}</span></button>)}
     </div>
     <div className="min-h-0 flex-1">
       {view === 'findings' && <FindingsTab showHeader={false} onRecordContextMenu={showMenu('finding')} />}
@@ -93,7 +93,7 @@ function ReportRecords({ records, onRecordContextMenu }: { records: ReportRecord
 }
 
 function RecordList({ rows, empty, onSelect, onRecordContextMenu }: { rows: Array<{ id: string; title: string; meta: string; badge: string }>; empty: string; onSelect: (id: string) => void; onRecordContextMenu: (event: React.MouseEvent<HTMLButtonElement>, recordId: string) => void }) {
-  return <div className="h-full overflow-y-auto p-1.5">{rows.length === 0 ? <div className="p-4 text-center text-2xs text-text-muted">{empty}</div> : rows.map((row) => <button key={row.id} onClick={() => onSelect(row.id)} onContextMenu={(event) => onRecordContextMenu(event, row.id)} className="ui-hover-row mb-1 w-full min-w-0 px-2.5 py-2 text-left"><div className="mb-1 flex min-w-0 items-start justify-between gap-2"><span className="min-w-0 flex-1 truncate text-2xs font-medium leading-relaxed text-text-primary">{row.title}</span><span className="max-w-[45%] shrink-0 truncate rounded-md bg-accent-teal/5 px-1 font-mono text-[8px] uppercase text-accent-teal" title={row.badge}>{row.badge}</span></div><div className="truncate font-mono text-[8px] text-text-muted">{row.meta}</div></button>)}</div>;
+  return <div className="h-full overflow-y-auto p-1.5">{rows.length === 0 ? <div className="p-4 text-center text-2xs text-text-muted">{empty}</div> : rows.map((row) => <button key={row.id} onClick={() => onSelect(row.id)} onContextMenu={(event) => onRecordContextMenu(event, row.id)} className="ui-hover-row mb-1 w-full min-w-0 px-2.5 py-2 text-left"><div className="mb-1 flex min-w-0 items-start justify-between gap-2"><span className="min-w-0 flex-1 truncate text-2xs font-medium leading-relaxed text-text-primary">{row.title}</span><span className="max-w-[45%] shrink-0 truncate rounded-md bg-accent-teal/5 px-1 font-mono text-[11px] uppercase text-accent-teal" title={row.badge}>{row.badge}</span></div><div className="truncate font-mono text-[11px] text-text-muted">{row.meta}</div></button>)}</div>;
 }
 
 function findManagedRecord(kind: ManagedRecordKind, id: string, findings: AsmFinding[], vulnerabilities: VulnerabilityRecord[], evidence: EvidenceRecord[], reports: ReportRecord[]): ManagedRecord | null {

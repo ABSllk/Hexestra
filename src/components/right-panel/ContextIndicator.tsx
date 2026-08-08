@@ -21,14 +21,14 @@ export function ContextIndicator() {
 
   return (
     <div
-      className="flex shrink-0 items-center gap-1.5 border-b border-surface/50 bg-bg-tertiary/50 px-3 py-1.5"
+      className="flex shrink-0 items-center gap-1.5 border-b border-border-subtle/60 bg-panel/55 px-3 py-2"
       title="Context shared with Claude"
     >
       <Icon name="eye" size={12} className="shrink-0 text-accent-teal" />
       <div className="flex min-w-0 flex-wrap gap-1">
         {selectedNode && (
           <span
-            className="max-w-full min-w-0 truncate rounded-md border border-accent-blue/25 bg-accent-blue/10 px-1.5 py-0.5 text-[9px] text-accent-blue"
+            className="max-w-full min-w-0 truncate rounded-md border border-accent-blue/25 bg-accent-blue/10 px-2 py-1 text-[11px] text-accent-blue"
             title={`${relationshipCount} asset relationship${relationshipCount === 1 ? '' : 's'} shared automatically`}
           >
             {selectedNode.label} · {relationshipCount}
@@ -39,8 +39,8 @@ export function ContextIndicator() {
             key={tab.tabId}
             onClick={() => toggleTabSharing(tab.tabId)}
             className={tab.isShared
-              ? 'max-w-full min-w-0 truncate rounded-md border border-accent-teal/25 bg-accent-teal/10 px-1.5 py-0.5 text-[9px] text-accent-teal hover:border-accent-teal/45 hover:bg-accent-teal/15'
-              : 'max-w-full min-w-0 truncate rounded-md border border-surface px-1.5 py-0.5 text-[9px] text-text-muted hover:bg-surface/35 hover:text-text-secondary'}
+              ? 'max-w-full min-w-0 truncate rounded-md border border-accent-teal/25 bg-accent-teal/10 px-2 py-1 text-[11px] text-accent-teal hover:border-accent-teal/45 hover:bg-accent-teal/15'
+              : 'max-w-full min-w-0 truncate rounded-md border border-border-subtle px-2 py-1 text-[11px] text-text-muted hover:bg-raised/35 hover:text-text-secondary'}
             title={tab.isShared ? 'Click to hide from AI' : 'Click to share with AI'}
           >
             {tab.title}

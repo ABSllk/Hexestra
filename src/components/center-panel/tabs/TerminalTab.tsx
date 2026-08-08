@@ -191,11 +191,11 @@ export function TerminalTab({ tabId }: TerminalTabProps) {
   return (
     <div
       ref={shellRef}
-      className="terminal-shell relative flex h-full min-h-0 flex-col bg-bg-tertiary"
+      className="terminal-shell relative flex h-full min-h-0 flex-col bg-panel"
       onContextMenu={handleContextMenu}
     >
       {managedShell && (
-        <div className="flex h-7 shrink-0 items-center gap-2 border-b border-surface bg-bg-secondary px-2 text-[10px] text-text-muted">
+        <div className="flex h-7 shrink-0 items-center gap-2 border-b border-border-subtle bg-canvas px-2 text-[11px] text-text-muted">
           <Icon name="shield" size={12} className="text-accent-yellow" />
           <span className="truncate">Shared with AI · Agent commands and complete output are stored in plaintext</span>
           {shellSession?.state === 'agent_locked' && (
@@ -203,21 +203,21 @@ export function TerminalTab({ tabId }: TerminalTabProps) {
               Take over
             </button>
           )}
-          {shellSession && <span className="ml-auto font-mono text-[9px] uppercase">{shellSession.state}</span>}
+          {shellSession && <span className="ml-auto font-mono text-[11px] uppercase">{shellSession.state}</span>}
         </div>
       )}
       <div ref={containerRef} className="xterm-container min-h-0 flex-1" />
       {shellSessionUnavailable && (
-        <div className="absolute inset-0 top-7 flex items-center justify-center bg-bg-primary/95">
+        <div className="absolute inset-0 top-7 flex items-center justify-center bg-panel/95">
           <div className="max-w-sm text-center">
-            <Icon name="terminal" size={28} className="mx-auto mb-3 text-accent-cyan" />
+            <Icon name="terminal" size={28} className="mx-auto mb-3 text-accent-teal" />
             <p className="text-xs text-text-secondary">{shellSessionUnavailableMessage}</p>
-            {connectionError && <p className="mt-2 break-words text-[10px] text-accent-red">{connectionError}</p>}
+            {connectionError && <p className="mt-2 break-words text-[11px] text-accent-red">{connectionError}</p>}
             {shellProfileId && <button
               type="button"
               disabled={connecting}
               onClick={() => void connectProfile()}
-              className="mt-3 rounded border border-accent-cyan/50 bg-accent-cyan/10 px-3 py-1.5 text-[11px] text-accent-cyan disabled:opacity-50"
+              className="mt-3 rounded border border-accent-teal/50 bg-accent-teal/10 px-3 py-1.5 text-[11px] text-accent-teal disabled:opacity-50"
             >
               {connecting ? 'Connecting…' : 'Reconnect'}
             </button>}
@@ -225,7 +225,7 @@ export function TerminalTab({ tabId }: TerminalTabProps) {
         </div>
       )}
       {clipboardNotice && (
-        <span className="pointer-events-none absolute right-2 top-2 z-40 rounded border border-surface bg-bg-secondary/95 px-2 py-1 text-[9px] text-accent-cyan shadow-lg" role="status">
+        <span className="pointer-events-none absolute right-2 top-2 z-40 rounded border border-border-subtle bg-canvas/95 px-2 py-1 text-[11px] text-accent-teal shadow-lg" role="status">
           {clipboardNotice}
         </span>
       )}
@@ -233,7 +233,7 @@ export function TerminalTab({ tabId }: TerminalTabProps) {
         <div
           role="menu"
           aria-label="Terminal context menu"
-          className="absolute z-50 w-42 overflow-hidden rounded border border-surface bg-bg-secondary py-1 text-[11px] text-text-primary shadow-2xl"
+          className="absolute z-50 w-42 overflow-hidden rounded border border-border-subtle bg-canvas py-1 text-[11px] text-text-primary shadow-2xl"
           style={{ left: contextMenu.x, top: contextMenu.y, width: 168 }}
           onPointerDown={(event) => event.stopPropagation()}
         >
@@ -250,7 +250,7 @@ export function TerminalTab({ tabId }: TerminalTabProps) {
             shortcut="Ctrl+Shift+V"
             onClick={() => runClipboardAction(terminal.pasteFromClipboard, 'Pasted', 'Clipboard is empty')}
           />
-          <div className="my-1 h-px bg-surface/80" />
+          <div className="my-1 h-px bg-raised/80" />
           <TerminalMenuItem
             icon="select-all"
             label="Select all"
@@ -258,7 +258,7 @@ export function TerminalTab({ tabId }: TerminalTabProps) {
           />
           {shellSessionId && (
             <>
-              <div className="my-1 h-px bg-surface/80" />
+              <div className="my-1 h-px bg-raised/80" />
               <TerminalMenuItem
                 icon="pause"
                 label="Take over / interrupt"
@@ -300,11 +300,11 @@ function TerminalMenuItem({
       role="menuitem"
       disabled={disabled}
       onClick={onClick}
-      className="flex h-7 w-full items-center gap-2 px-2.5 text-left hover:bg-surface disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+      className="flex h-7 w-full items-center gap-2 px-2.5 text-left hover:bg-raised disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
     >
       <Icon name={icon} size={13} />
       <span>{label}</span>
-      {shortcut && <span className="ml-auto font-mono text-[9px] text-text-muted">{shortcut}</span>}
+      {shortcut && <span className="ml-auto font-mono text-[11px] text-text-muted">{shortcut}</span>}
     </button>
   );
 }

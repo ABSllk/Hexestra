@@ -47,6 +47,7 @@ const LOCAL_ROOT_ENTRIES = new Set([
   'AGENTS.md',
   'artifacts',
   'coverage',
+  'design-system',
   'dist',
   'dist-electron',
   'node_modules',

@@ -42,8 +42,8 @@ export function SettingsTab() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg-primary">
-      <nav aria-label={t('common.settings')} className="flex h-10 shrink-0 items-end gap-1 border-b border-surface bg-bg-secondary/40 px-5">
+    <div className="flex h-full min-h-0 flex-col bg-panel">
+      <nav aria-label={t('common.settings')} className="flex h-10 shrink-0 items-end gap-1 overflow-x-auto border-b border-border-subtle bg-canvas/40 px-5">
         <SettingsPageButton active={page === 'general'} icon="settings" label={t('settings.general')} onClick={() => selectPage('general')} />
         <SettingsPageButton active={page === 'connection'} icon="terminal" label={t('settings.connection')} onClick={() => selectPage('connection')} />
         <SettingsPageButton active={page === 'traffic'} icon="activity" label={t('settings.trafficRuntime')} onClick={() => selectPage('traffic')} />
@@ -159,9 +159,9 @@ function ConnectionSettings() {
   const dirty = JSON.stringify(settings) !== JSON.stringify(saved);
 
   return (
-    <div className="h-full overflow-y-auto bg-bg-primary">
+    <div className="h-full overflow-y-auto bg-panel">
       <div className="mx-auto max-w-3xl px-8 py-7">
-        <header className="mb-7 flex items-start justify-between gap-4 border-b border-surface pb-5">
+        <header className="mb-7 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
           <div>
             <div className="mb-1 flex items-center gap-2">
               <Icon name="settings" size={18} className="text-accent-blue" />
@@ -171,7 +171,7 @@ function ConnectionSettings() {
               {t('settings.agentConnectionDescription')}
             </p>
           </div>
-          <span className="rounded border border-surface bg-bg-tertiary px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+          <span className="rounded border border-border-subtle bg-panel px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted">
             {t('settings.global')}
           </span>
         </header>
@@ -248,7 +248,7 @@ function ConnectionSettings() {
               {SOURCES.map((source) => {
                 const checked = claudeSettings.settingSources.includes(source.id);
                 return (
-                  <label key={source.id} className="flex cursor-pointer items-start gap-2 rounded border border-surface bg-bg-tertiary/50 p-2.5 hover:border-surface-active">
+                  <label key={source.id} className="flex cursor-pointer items-start gap-2 rounded border border-border-subtle bg-panel/50 p-2.5 hover:border-border-strong">
                     <input
                       type="checkbox"
                       checked={checked}
@@ -262,7 +262,7 @@ function ConnectionSettings() {
                     />
                     <span className="min-w-0">
                       <span className="block text-xs text-text-secondary">{source.label}</span>
-                      <span className="block truncate font-mono text-[9px] text-text-muted">{source.detail}</span>
+                      <span className="block truncate font-mono text-[11px] text-text-muted">{source.detail}</span>
                     </span>
                   </label>
                 );
@@ -274,15 +274,15 @@ function ConnectionSettings() {
         {diagnostic && <DiagnosticCard diagnostic={diagnostic} />}
         {error && <DismissibleNotice tone="error" className="mb-4 text-xs" onDismiss={() => setError(null)}>{error}</DismissibleNotice>}
 
-        <footer className="flex items-center justify-between border-t border-surface pt-4">
-          <button onClick={() => void reset()} disabled={busy !== null} className="rounded px-3 py-1.5 text-xs text-text-muted hover:bg-surface hover:text-text-secondary disabled:opacity-40">
+        <footer className="flex items-center justify-between border-t border-border-subtle pt-4">
+          <button onClick={() => void reset()} disabled={busy !== null} className="ui-button ui-button-neutral border-transparent bg-transparent text-text-muted hover:bg-raised hover:text-text-secondary">
             {t('settings.resetDefaults')}
           </button>
           <div className="flex gap-2">
-            <button onClick={() => void test()} disabled={busy !== null} className="rounded border border-surface px-3 py-1.5 text-xs text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue disabled:opacity-40">
+            <button onClick={() => void test()} disabled={busy !== null} className="ui-button ui-button-neutral hover:border-accent-blue/40 hover:text-accent-blue">
               {busy === 'test' ? t('settings.testing') : t('settings.testConnection')}
             </button>
-            <button onClick={() => void save()} disabled={busy !== null || !dirty} className="rounded border border-accent-blue/30 bg-accent-blue/15 px-3 py-1.5 text-xs font-medium text-accent-blue hover:bg-accent-blue/20 disabled:opacity-40">
+            <button onClick={() => void save()} disabled={busy !== null || !dirty} className="ui-button ui-button-primary">
               {busy === 'save' ? t('settings.saving') : dirty ? t('settings.saveChanges') : t('common.saved')}
             </button>
           </div>
@@ -338,25 +338,25 @@ function TrafficRuntimeSettings() {
 
   const tone = status?.status === 'ready' ? 'text-accent-green' : 'text-severity-critical';
   return (
-    <div className="h-full overflow-y-auto bg-bg-primary">
+    <div className="h-full overflow-y-auto bg-panel">
       <div className="mx-auto max-w-3xl px-8 py-7">
-        <header className="mb-7 flex items-start justify-between gap-4 border-b border-surface pb-5">
+        <header className="mb-7 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
           <div>
             <div className="mb-1 flex items-center gap-2"><Icon name="activity" size={18} className="text-accent-blue" /><h1 className="text-lg font-semibold text-text-primary">{t('settings.trafficRuntime')}</h1></div>
             <p className="max-w-xl text-xs leading-5 text-text-muted">{t('settings.trafficRuntimeDescription')}</p>
           </div>
-          <span className="rounded border border-surface bg-bg-tertiary px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">{t('settings.global')}</span>
+          <span className="rounded border border-border-subtle bg-panel px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted">{t('settings.global')}</span>
         </header>
         <SettingsSection title={t('settings.trafficRuntimeStatus')} description={t('settings.trafficRuntimeStatusDescription')}>
-          <div className="rounded border border-surface bg-bg-tertiary/50 p-3">
+          <div className="rounded border border-border-subtle bg-panel/50 p-3">
             <div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${status?.status === 'ready' ? 'bg-accent-green' : 'bg-severity-critical'}`} /><span className={`text-xs font-semibold uppercase ${tone}`}>{status?.status ?? t('common.loading')}</span></div>
-            <dl className="mt-3 grid grid-cols-[100px_1fr] gap-x-3 gap-y-1 text-[10px]"><dt className="text-text-muted">{t('settings.trafficRuntimePath')}</dt><dd className="break-all font-mono text-text-secondary">{status?.executablePath ?? '—'}</dd><dt className="text-text-muted">{t('settings.trafficRuntimeVersion')}</dt><dd className="font-mono text-text-secondary">{status?.version ?? '—'}</dd><dt className="text-text-muted">{t('settings.trafficRuntimeSource')}</dt><dd className="text-text-secondary">{status?.source ?? '—'}</dd></dl>
-            {status?.error && <p className="mt-3 text-[10px] leading-4 text-severity-critical">{status.error}</p>}
+            <dl className="mt-3 grid grid-cols-[100px_1fr] gap-x-3 gap-y-1 text-[11px]"><dt className="text-text-muted">{t('settings.trafficRuntimePath')}</dt><dd className="break-all font-mono text-text-secondary">{status?.executablePath ?? '???'}</dd><dt className="text-text-muted">{t('settings.trafficRuntimeVersion')}</dt><dd className="font-mono text-text-secondary">{status?.version ?? '???'}</dd><dt className="text-text-muted">{t('settings.trafficRuntimeSource')}</dt><dd className="text-text-secondary">{status?.source ?? '???'}</dd></dl>
+            {status?.error && <p className="mt-3 text-[11px] leading-4 text-severity-critical">{status.error}</p>}
           </div>
         </SettingsSection>
         <SettingsSection title={t('settings.trafficRuntimeActions')} description={t('settings.trafficRuntimeActionsDescription')}>
-          <div className="flex flex-wrap gap-2"><button onClick={() => void refresh(TRAFFIC_IPC.RUNTIME_DETECT)} disabled={busy !== null} className="rounded border border-surface px-3 py-1.5 text-xs text-text-secondary hover:border-accent-blue/40 hover:text-accent-blue disabled:opacity-40">{t('settings.trafficRuntimeRedetect')}</button><button onClick={() => void choose()} disabled={busy !== null} className="rounded border border-accent-blue/30 bg-accent-blue/15 px-3 py-1.5 text-xs text-accent-blue hover:bg-accent-blue/20 disabled:opacity-40">{t('settings.trafficRuntimeChoose')}</button><button onClick={() => void reset()} disabled={busy !== null} className="rounded px-3 py-1.5 text-xs text-text-muted hover:bg-surface hover:text-text-secondary disabled:opacity-40">{t('settings.trafficRuntimeAutomatic')}</button></div>
-          <p className="text-[10px] leading-4 text-text-muted">{t('settings.trafficRuntimeInstallHint')} <a className="text-accent-blue hover:underline" href="https://docs.mitmproxy.org/stable/overview/installation/" target="_blank" rel="noreferrer">mitmproxy installation guide</a></p>
+          <div className="flex flex-wrap gap-2"><button onClick={() => void refresh(TRAFFIC_IPC.RUNTIME_DETECT)} disabled={busy !== null} className="ui-button ui-button-neutral hover:border-accent-blue/40 hover:text-accent-blue">{t('settings.trafficRuntimeRedetect')}</button><button onClick={() => void choose()} disabled={busy !== null} className="ui-button ui-button-primary">{t('settings.trafficRuntimeChoose')}</button><button onClick={() => void reset()} disabled={busy !== null} className="ui-button ui-button-neutral border-transparent bg-transparent text-text-muted hover:bg-raised hover:text-text-secondary">{t('settings.trafficRuntimeAutomatic')}</button></div>
+          <p className="text-[11px] leading-4 text-text-muted">{t('settings.trafficRuntimeInstallHint')} <a className="text-accent-blue hover:underline" href="https://docs.mitmproxy.org/stable/overview/installation/" target="_blank" rel="noreferrer">mitmproxy installation guide</a></p>
         </SettingsSection>
         {error && <DismissibleNotice tone="error" onDismiss={() => setError(null)}>{error}</DismissibleNotice>}
       </div>
@@ -369,9 +369,9 @@ function GeneralSettings() {
   const { themePreference, setTheme } = useAppPreferences();
   const [error, setError] = useState<string | null>(null);
   return (
-    <div className="h-full overflow-y-auto bg-bg-primary">
+    <div className="h-full overflow-y-auto bg-panel">
       <div className="mx-auto max-w-3xl px-8 py-7">
-        <header className="mb-7 flex items-start justify-between gap-4 border-b border-surface pb-5">
+        <header className="mb-7 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
           <div>
             <div className="mb-1 flex items-center gap-2">
               <Icon name="settings" size={18} className="text-accent-blue" />
@@ -379,7 +379,7 @@ function GeneralSettings() {
             </div>
             <p className="max-w-xl text-xs leading-5 text-text-muted">{t('settings.interfaceDescription')}</p>
           </div>
-          <span className="rounded border border-surface bg-bg-tertiary px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-text-muted">{t('settings.global')}</span>
+          <span className="rounded border border-border-subtle bg-panel px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted">{t('settings.global')}</span>
         </header>
         <SettingsSection title={t('settings.language')} description={t('settings.languageHint')}>
           <select
@@ -428,7 +428,13 @@ function SettingsPageButton({ active, icon, label, onClick }: { active: boolean;
     <button
       aria-pressed={active}
       onClick={onClick}
-      className={cn('flex h-9 items-center gap-2 border-b-2 px-3 text-[11px] transition-colors', active ? 'border-accent-blue text-text-primary' : 'border-transparent text-text-muted hover:text-text-secondary')}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      className={cn('flex min-h-9 shrink-0 items-center gap-2 border-b-2 px-3 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-focus', active ? 'border-accent-blue text-text-primary' : 'border-transparent text-text-muted hover:text-text-secondary')}
     >
       <Icon name={icon} size={13} />
       {label}
@@ -451,10 +457,10 @@ function normalizeSettingsPayload(value: AgentSettingsContainer | AgentConnectio
 
 function SettingsSection({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
-    <section className="mb-6 grid grid-cols-[180px_1fr] gap-6">
+    <section className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-[180px_1fr] md:gap-6">
       <div>
         <h2 className="text-xs font-semibold text-text-secondary">{title}</h2>
-        <p className="mt-1 text-[10px] leading-4 text-text-muted">{description}</p>
+        <p className="mt-1 text-[11px] leading-4 text-text-muted">{description}</p>
       </div>
       <div className="space-y-4">{children}</div>
     </section>
@@ -464,10 +470,8 @@ function SettingsSection({ title, description, children }: { title: string; desc
 function Field({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 flex items-baseline justify-between gap-3">
-        <span className="text-xs font-medium text-text-secondary">{label}</span>
-        <span className="text-[9px] text-text-muted">{hint}</span>
-      </span>
+      <span className="block text-xs font-medium text-text-secondary">{label}</span>
+      <span className="mb-1.5 mt-0.5 block text-[11px] leading-4 text-text-muted">{hint}</span>
       {children}
     </label>
   );
@@ -475,11 +479,11 @@ function Field({ label, hint, children }: { label: string; hint: string; childre
 
 function RuntimeCard({ active, icon, title, detail, onClick }: { active: boolean; icon: 'terminal' | 'code'; title: string; detail: string; onClick: () => void }) {
   return (
-    <button aria-label={title} aria-pressed={active} onClick={onClick} className={cn('flex items-start gap-3 rounded border p-3 text-left transition-colors', active ? 'border-accent-blue/50 bg-accent-blue/10' : 'border-surface bg-bg-tertiary/50 hover:border-surface-active')}>
+    <button aria-label={title} aria-pressed={active} onClick={onClick} className={cn('flex min-h-16 items-start gap-3 rounded-lg border p-3 text-left transition-colors focus-visible:ring-2 focus-visible:ring-focus', active ? 'border-accent-blue/50 bg-accent-blue/10' : 'border-border-subtle bg-panel/50 hover:border-border-strong')}>
       <Icon name={icon} size={16} className={active ? 'text-accent-blue' : 'text-text-muted'} />
       <span>
         <span className="block text-xs font-medium text-text-primary">{title}</span>
-        <span className="mt-0.5 block text-[10px] leading-4 text-text-muted">{detail}</span>
+        <span className="mt-0.5 block text-[11px] leading-4 text-text-muted">{detail}</span>
       </span>
     </button>
   );
@@ -487,20 +491,20 @@ function RuntimeCard({ active, icon, title, detail, onClick }: { active: boolean
 
 function DiagnosticCard({ diagnostic }: { diagnostic: AgentConnectionDiagnostic }) {
   return (
-    <section className={cn('mb-5 rounded border p-3', diagnostic.ok ? 'border-accent-green/25 bg-accent-green/5' : 'border-severity-critical/30 bg-severity-critical/5')} aria-label="Connection diagnostic">
+    <section className={cn('mb-5 rounded-lg border p-3', diagnostic.ok ? 'border-accent-green/25 bg-accent-green/5' : 'border-severity-critical/30 bg-severity-critical/5')} aria-label="Connection diagnostic">
       <div className="mb-2 flex items-center gap-2">
         <Icon name={diagnostic.ok ? 'check' : 'alert'} size={14} className={diagnostic.ok ? 'text-accent-green' : 'text-severity-critical'} />
         <span className="text-xs font-semibold text-text-secondary">{diagnostic.ok ? 'Connection ready' : 'Connection needs attention'}</span>
-        {diagnostic.claudeVersion && <span className="ml-auto font-mono text-[9px] text-text-muted">{diagnostic.claudeVersion}</span>}
+        {diagnostic.claudeVersion && <span className="ml-auto font-mono text-[11px] text-text-muted">{diagnostic.claudeVersion}</span>}
       </div>
       <div className="grid grid-cols-3 gap-2">
         {diagnostic.checks.map((check) => (
-          <div key={check.id} className="rounded border border-surface/70 bg-bg-primary/50 p-2">
+          <div key={check.id} className="rounded border border-border-subtle/70 bg-panel/50 p-2">
             <div className="mb-1 flex items-center gap-1.5">
               <span className={cn('h-1.5 w-1.5 rounded-full', check.status === 'pass' ? 'bg-accent-green' : check.status === 'warning' ? 'bg-severity-medium' : 'bg-severity-critical')} />
-              <span className="text-[10px] font-medium text-text-secondary">{check.label}</span>
+              <span className="text-[11px] font-medium text-text-secondary">{check.label}</span>
             </div>
-            <p className="break-words font-mono text-[9px] leading-4 text-text-muted">{check.detail}</p>
+            <p className="break-words font-mono text-[11px] leading-4 text-text-muted">{check.detail}</p>
           </div>
         ))}
       </div>

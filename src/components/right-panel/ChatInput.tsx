@@ -134,12 +134,12 @@ export function ChatInput() {
   const modelLabel = connectionSettings?.backends?.claude?.model ?? agentStatus.model ?? 'Default';
 
   return (
-    <div ref={composerRef} className="relative z-30 shrink-0 border-t border-surface bg-bg-secondary/95 p-3">
-      <div className="rounded-xl border border-surface/80 bg-bg-tertiary shadow-lg shadow-black/10 transition-colors focus-within:!border-accent-blue/45 hover:border-surface-active/60">
+    <div ref={composerRef} className="relative z-30 shrink-0 border-t border-border-subtle bg-canvas/95 p-3">
+      <div className="rounded-xl border border-border-subtle/80 bg-panel shadow-lg shadow-black/10 transition-colors focus-within:!border-accent-blue/45 hover:border-border-strong/60">
         {contextRefs.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-3">
             {contextRefs.map((ref) => (
-              <span key={agentContextRefKey(ref)} title={agentContextTitle(ref)} className="flex max-w-full items-center gap-1.5 rounded-md border border-accent-blue/20 bg-accent-blue/8 px-2 py-1 text-[9px] text-text-secondary">
+              <span key={agentContextRefKey(ref)} title={agentContextTitle(ref)} className="flex max-w-full items-center gap-1.5 rounded-md border border-accent-blue/20 bg-accent-blue/8 px-2 py-1 text-[11px] text-text-secondary">
                 <Icon name={ref.kind === 'browser-page' ? 'browser' : 'activity'} size={11} className="text-accent-blue" />
                 <span className="max-w-44 truncate">{agentContextLabel(ref)}</span>
                 <button
@@ -157,7 +157,7 @@ export function ChatInput() {
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-3">
             {attachments.map((attachment) => (
-              <span key={attachment.id} className="flex max-w-full items-center gap-1.5 rounded-md border border-surface bg-bg-primary/70 px-2 py-1 text-[9px] text-text-secondary">
+              <span key={attachment.id} className="flex max-w-full items-center gap-1.5 rounded-md border border-border-subtle bg-panel/70 px-2 py-1 text-[11px] text-text-secondary">
                 <Icon name={attachment.kind === 'image' ? 'image' : 'file'} size={11} className="text-accent-teal" />
                 <span className="max-w-36 truncate">{attachment.name}</span>
                 <button
@@ -186,7 +186,7 @@ export function ChatInput() {
           disabled={isProcessing}
         />
 
-        {composerError && <div className="px-4 pb-1 text-[9px] text-severity-critical">{composerError}</div>}
+        {composerError && <div className="px-4 pb-1 text-[11px] text-severity-critical">{composerError}</div>}
 
         <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
           <div className="flex min-w-0 items-center gap-1 select-none">
@@ -201,7 +201,7 @@ export function ChatInput() {
               aria-label={isProcessing ? t('agent.cancelRequest') : t('agent.send')}
               onClick={() => isProcessing ? void cancelRequest() : void handleSend()}
               disabled={!isProcessing && !text.trim() && attachments.length === 0 && contextRefs.length === 0}
-              className={cn('ml-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors', isProcessing ? 'bg-severity-medium/15 text-severity-medium hover:bg-severity-medium/25' : 'bg-text-primary text-bg-primary hover:bg-accent-blue disabled:cursor-not-allowed disabled:bg-surface disabled:text-text-muted')}
+              className={cn('ml-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors', isProcessing ? 'bg-severity-medium/15 text-severity-medium hover:bg-severity-medium/25' : 'bg-text-primary text-canvas hover:bg-accent-blue disabled:cursor-not-allowed disabled:bg-raised disabled:text-text-muted')}
             >
               <Icon name={isProcessing ? 'close' : 'send'} size={14} />
             </button>
@@ -212,7 +212,7 @@ export function ChatInput() {
       {openMenu === 'attachments' && <Popover align="left" label={t('agent.addContext')}>
         <MenuButton icon="file" label={t('agent.addFiles')} detail="Text, code, PDF, or a local path" onClick={() => void pickAttachments('files')} />
         <MenuButton icon="image" label={t('agent.addImages')} detail="PNG, JPEG, GIF, or WebP" onClick={() => void pickAttachments('images')} />
-        <p className="mt-2 border-t border-surface pt-2 text-[9px] leading-4 text-text-muted">Up to 8 attachments · 10 MB each</p>
+        <p className="mt-2 border-t border-border-subtle pt-2 text-[11px] leading-4 text-text-muted">Up to 8 attachments · 10 MB each</p>
       </Popover>}
 
       {openMenu === 'mode' && <Popover align="left" label="Claude Mode" wide>
@@ -220,17 +220,17 @@ export function ChatInput() {
       </Popover>}
 
       {openMenu === 'model' && <Popover align="right" label={t('agent.model')} wide>
-        <p className="mb-2 text-[9px] leading-4 text-text-muted">{t('agent.modelHint')}</p>
-        <input aria-label={t('agent.modelId')} value={modelDraft} onChange={(event) => setModelDraft(event.target.value)} placeholder={agentStatus.model ?? 'Default'} className="h-8 w-full rounded border border-surface bg-bg-primary px-2 font-mono text-[10px] text-text-primary outline-none focus:border-accent-blue/50" />
+        <p className="mb-2 text-[11px] leading-4 text-text-muted">{t('agent.modelHint')}</p>
+        <input aria-label={t('agent.modelId')} value={modelDraft} onChange={(event) => setModelDraft(event.target.value)} placeholder={agentStatus.model ?? 'Default'} className="h-8 w-full rounded border border-border-subtle bg-panel px-2 font-mono text-[11px] text-text-primary outline-none focus:border-accent-blue/50" />
         <div className="mt-2 flex justify-between gap-2">
-          <button disabled={isProcessing} onClick={() => void saveModel(null)} className="rounded px-2 py-1 text-[9px] text-text-muted hover:bg-surface hover:text-text-primary disabled:opacity-40">{t('agent.useDefault')}</button>
-          <button disabled={isProcessing} onClick={() => void saveModel(modelDraft.trim() || null)} className="rounded bg-accent-blue/15 px-2 py-1 text-[9px] text-accent-blue hover:bg-accent-blue/25 disabled:opacity-40">{t('agent.applyModel')}</button>
+          <button disabled={isProcessing} onClick={() => void saveModel(null)} className="rounded px-2 py-1 text-[11px] text-text-muted hover:bg-raised hover:text-text-primary disabled:opacity-40">{t('agent.useDefault')}</button>
+          <button disabled={isProcessing} onClick={() => void saveModel(modelDraft.trim() || null)} className="rounded bg-accent-blue/15 px-2 py-1 text-[11px] text-accent-blue hover:bg-accent-blue/25 disabled:opacity-40">{t('agent.applyModel')}</button>
         </div>
       </Popover>}
 
       {openMenu === 'autonomy' && <Popover align="right" label={t('agent.autonomy')}>
         {(['low', 'medium', 'high'] as AutonomyLevel[]).map((level) => (
-          <button key={level} aria-pressed={autonomyLevel === level} onClick={() => { setAutonomyLevel(level); setOpenMenu(null); }} className={cn('flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[10px] uppercase', autonomyLevel === level ? 'bg-accent-blue/10 text-accent-blue' : 'text-text-secondary hover:bg-surface/50')}>
+          <button key={level} aria-pressed={autonomyLevel === level} onClick={() => { setAutonomyLevel(level); setOpenMenu(null); }} className={cn('flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] uppercase', autonomyLevel === level ? 'bg-accent-blue/10 text-accent-blue' : 'text-text-secondary hover:bg-raised/50')}>
             {level}{autonomyLevel === level && <Icon name="check" size={11} />}
           </button>
         ))}
@@ -265,7 +265,7 @@ function agentContextTitle(ref: AgentContextRef) {
 }
 
 function ComposerTrigger({ active, ariaLabel, onClick, icon, label, danger = false }: { active: boolean; ariaLabel: string; onClick: () => void; icon: 'plus' | 'shield' | 'bot' | 'sparkles'; label?: string; danger?: boolean }) {
-  return <button aria-label={ariaLabel} aria-expanded={active} onClick={onClick} className={cn('flex h-7 min-w-7 max-w-full items-center justify-center gap-1 overflow-hidden rounded-lg px-1.5 text-[9px] font-medium transition-colors', danger ? 'text-severity-critical hover:bg-severity-critical/10' : active ? 'bg-surface text-text-primary' : 'text-text-muted hover:bg-surface/60 hover:text-text-secondary')}>
+  return <button aria-label={ariaLabel} aria-expanded={active} onClick={onClick} className={cn('flex h-7 min-w-7 max-w-full items-center justify-center gap-1 overflow-hidden rounded-lg px-1.5 text-[11px] font-medium transition-colors', danger ? 'text-severity-critical hover:bg-severity-critical/10' : active ? 'bg-raised text-text-primary' : 'text-text-muted hover:bg-raised/60 hover:text-text-secondary')}>
     <Icon name={icon} size={13} />
     {label && <span className="min-w-0 truncate">{label}</span>}
     {label && <Icon name="chevron-right" size={9} className="rotate-90 opacity-60" />}
@@ -277,8 +277,8 @@ function Popover({ align, label, wide = false, children }: { align: 'left' | 'ri
 }
 
 function MenuButton({ icon, label, detail, onClick }: { icon: 'file' | 'image'; label: string; detail: string; onClick: () => void }) {
-  return <button aria-label={label} onClick={onClick} className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-surface/45">
+  return <button aria-label={label} onClick={onClick} className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-raised/45">
     <Icon name={icon} size={14} className="mt-0.5 text-accent-teal" />
-    <span><span className="block text-[10px] font-medium text-text-primary">{label}</span><span className="mt-0.5 block text-[9px] text-text-muted">{detail}</span></span>
+    <span><span className="block text-[11px] font-medium text-text-primary">{label}</span><span className="mt-0.5 block text-[11px] text-text-muted">{detail}</span></span>
   </button>;
 }

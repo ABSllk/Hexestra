@@ -47,7 +47,7 @@ export function TitleBar() {
   };
 
   return <header
-    className={`relative z-[100] flex h-9 shrink-0 select-none items-center border-b border-surface bg-bg-tertiary/95 text-text-muted ${capabilities?.usesNativeTitleBar ? 'pl-20' : ''}`}
+    className={`relative z-[100] flex h-9 shrink-0 select-none items-center border-b border-border-subtle bg-canvas text-text-muted ${capabilities?.usesNativeTitleBar ? 'pl-20' : ''}`}
     style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     onDoubleClick={() => void windowAction('app:window:toggle-maximize')}
   >
@@ -55,18 +55,18 @@ export function TitleBar() {
       <div className="flex h-full w-10 items-center justify-center">
         <img src={hexestraMark} alt="Hexestra" className="h-[18px] w-[18px] object-contain" />
       </div>
-      <button aria-expanded={fileMenuOpen} onClick={() => setFileMenuOpen((open) => !open)} className={`h-7 rounded-md px-2 text-[11px] ${fileMenuOpen ? 'bg-surface/70 text-text-primary' : 'hover:bg-surface/45 hover:text-text-secondary'}`}>{t('menu.file')}</button>
-      <button onClick={() => openSettingsTab()} className="h-7 rounded-md px-2 text-[11px] hover:bg-surface/45 hover:text-text-secondary">{t('common.settings')}</button>
+      <button aria-expanded={fileMenuOpen} onClick={() => setFileMenuOpen((open) => !open)} className={`h-7 rounded-md px-2.5 text-[11px] transition-colors ${fileMenuOpen ? 'bg-raised text-text-primary' : 'hover:bg-raised/75 hover:text-text-secondary'}`}>{t('menu.file')}</button>
+      <button onClick={() => openSettingsTab()} className="h-7 rounded-md px-2.5 text-[11px] transition-colors hover:bg-raised/75 hover:text-text-secondary">{t('common.settings')}</button>
       {fileMenuOpen && <div role="menu" className="ui-popover absolute left-10 top-8 w-52 p-1.5">
         <MenuItem label={t('menu.openFolder')} shortcut="Ctrl+O" onClick={() => void runMenuAction(openProjectFolder, setFileMenuOpen)} />
         <MenuItem label={t('menu.newProjectFolder')} onClick={() => void runMenuAction(createProjectFolder, setFileMenuOpen)} />
-        <div className="my-1 border-t border-surface" />
+        <div className="my-1 border-t border-border-subtle" />
         <MenuItem label={t('menu.exit')} onClick={() => { setFileMenuOpen(false); void windowAction('app:window:close'); }} />
       </div>}
     </div>
-    <div className="pointer-events-none absolute left-1/2 flex max-w-[42vw] -translate-x-1/2 items-center gap-2 truncate font-mono text-[10px] tracking-wide">
+    <div className="pointer-events-none absolute left-1/2 flex max-w-[42vw] -translate-x-1/2 items-center gap-2 truncate font-mono text-[11px] tracking-wide">
       <span className="text-text-secondary">HEXESTRA</span>
-      {project && <><span className="text-surface-light">/</span><span className="truncate text-text-muted">{project.name}</span></>}
+      {project && <><span className="text-text-muted">/</span><span className="truncate text-text-muted">{project.name}</span></>}
     </div>
     {!capabilities?.usesNativeTitleBar && <div className="ml-auto flex h-full items-stretch" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <WindowButton label={t('window.minimize')} icon="window-minimize" onClick={() => void windowAction('app:window:minimize')} />
@@ -77,11 +77,11 @@ export function TitleBar() {
 }
 
 function MenuItem({ label, shortcut, onClick }: { label: string; shortcut?: string; onClick: () => void }) {
-  return <button role="menuitem" onClick={onClick} className="flex h-7 w-full items-center rounded-md px-2 text-left text-[11px] text-text-secondary hover:bg-surface/45 hover:text-text-primary"><span className="flex-1">{label}</span>{shortcut && <span className="font-mono text-[9px] text-text-muted">{shortcut}</span>}</button>;
+  return <button role="menuitem" onClick={onClick} className="flex h-7 w-full items-center rounded-md px-2 text-left text-[11px] text-text-secondary hover:bg-raised hover:text-text-primary"><span className="flex-1">{label}</span>{shortcut && <span className="font-mono text-[11px] text-text-muted">{shortcut}</span>}</button>;
 }
 
 function WindowButton({ label, icon, destructive = false, onClick }: { label: string; icon: 'window-minimize' | 'window-maximize' | 'window-restore' | 'close'; destructive?: boolean; onClick: () => void }) {
-  return <button aria-label={label} title={label} onDoubleClick={(event) => event.stopPropagation()} onClick={onClick} className={`mx-0.5 my-1 flex w-10 items-center justify-center rounded-md ${destructive ? 'hover:bg-red-500/75 hover:text-white' : 'hover:bg-surface/55 hover:text-text-primary'}`}><Icon name={icon} size={13} /></button>;
+  return <button aria-label={label} title={label} onDoubleClick={(event) => event.stopPropagation()} onClick={onClick} className={`mx-0.5 my-1 flex w-10 items-center justify-center rounded-md transition-colors ${destructive ? 'hover:bg-red-500/75 hover:text-white' : 'hover:bg-raised hover:text-text-primary'}`}><Icon name={icon} size={13} /></button>;
 }
 
 async function runMenuAction(action: () => Promise<unknown>, setOpen: (open: boolean) => void) {

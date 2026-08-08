@@ -47,14 +47,14 @@ export function WelcomeTab() {
   };
 
   return (
-    <div className="flex h-full select-none flex-col items-center justify-start overflow-y-auto py-8">
+    <div className="flex h-full select-none flex-col items-center justify-start overflow-y-auto bg-panel py-8">
       <img
         src={resolvedTheme === 'dark' ? hexestraDarkLogo : hexestraLightLogo}
         alt="Hexestra"
-        className="mb-8 h-auto w-[22rem] max-w-[calc(100%-2rem)]"
+        className="mb-7 h-auto w-[19rem] max-w-[calc(100%-2rem)]"
       />
 
-      <div className="flex w-72 flex-col gap-3">
+      <div className="flex w-[min(24rem,calc(100%-2rem))] flex-col gap-2.5">
         <QuickAction
           onClick={openTerminal}
           icon="terminal"
@@ -87,18 +87,18 @@ export function WelcomeTab() {
         />
       </div>
 
-      {error && error !== dismissedError && <DismissibleNotice tone="error" className="mt-4 w-72 text-2xs" onDismiss={() => setDismissedError(error)}>{error}</DismissibleNotice>}
+      {error && error !== dismissedError && <DismissibleNotice tone="error" className="mt-4 w-[min(24rem,calc(100%-2rem))]" onDismiss={() => setDismissedError(error)}>{error}</DismissibleNotice>}
 
       {sessions.length > 0 && (
-        <div className="mt-6 w-72">
-          <p className="mb-2 text-2xs font-medium uppercase tracking-wider text-text-muted">
+        <div className="mt-6 w-[min(24rem,calc(100%-2rem))]">
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-text-muted">
             {t('welcome.recentProjects')}
           </p>
           <div className="space-y-1">
             {sessions.slice(0, 5).map((session) => (
               <div
                 key={session.id}
-                className="group flex items-center rounded-md border border-transparent hover:border-surface hover:bg-bg-tertiary"
+                className="group flex items-center rounded-lg border border-transparent hover:border-border-subtle hover:bg-raised"
               >
                 <button
                   onClick={() => void loadSession(session.id)}
@@ -106,12 +106,12 @@ export function WelcomeTab() {
                 >
                   <Icon name="folder" size={12} className="shrink-0 text-accent-teal" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs text-text-secondary">{session.name}</span>
-                    <span className="block truncate font-mono text-[9px] text-text-muted">
+                  <span className="block truncate text-[13px] text-text-secondary">{session.name}</span>
+                    <span className="block truncate font-mono text-[11px] text-text-muted">
                       {session.basePath}
                     </span>
                   </span>
-                  <span className="shrink-0 text-[9px] text-text-muted">
+                  <span className="shrink-0 text-[11px] text-text-muted">
                     {session.targetCount} targets
                   </span>
                 </button>
@@ -120,7 +120,7 @@ export function WelcomeTab() {
                   title="Remove from recent projects"
                   aria-label={`Remove ${session.name} from recent projects`}
                   onClick={() => void removeRecentProject(session.id)}
-                  className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-muted opacity-0 hover:bg-surface hover:text-text-primary group-hover:opacity-100"
+                  className="ui-icon-button mr-1 h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                 >
                   <Icon name="close" size={11} />
                 </button>
@@ -131,10 +131,10 @@ export function WelcomeTab() {
       )}
 
       {currentSession && (
-        <div className="mt-8 w-72 text-center text-2xs text-text-muted">
+        <div className="mt-8 w-[min(24rem,calc(100%-2rem))] text-center text-[11px] text-text-muted">
           <span className="block font-mono text-accent-teal">{currentSession.name}</span>
           <span
-            className="mt-1 block truncate font-mono text-[9px]"
+            className="mt-1 block truncate font-mono text-[11px]"
             title={currentSession.basePath}
           >
             {currentSession.basePath}
@@ -142,8 +142,8 @@ export function WelcomeTab() {
         </div>
       )}
 
-      <div className="mt-4 text-2xs text-text-muted/60">
-        Press <kbd className="rounded bg-surface px-1 py-0.5 text-2xs">Ctrl+T</kbd> for a new terminal
+      <div className="mt-4 text-[11px] text-text-muted/70">
+        Press <kbd className="rounded-md border border-border-subtle bg-raised px-1.5 py-0.5 text-[11px]">Ctrl+T</kbd> for a new terminal
       </div>
     </div>
   );
@@ -163,14 +163,14 @@ function QuickAction({
   return (
     <button
       onClick={onClick}
-      className="group flex items-center gap-3 rounded-lg border border-surface/40 bg-surface/65 px-4 py-3 text-left shadow-sm shadow-black/5 hover:-translate-y-px hover:border-accent-blue/25 hover:bg-surface-hover hover:shadow-md hover:shadow-black/15"
+      className="group flex min-h-[68px] items-center gap-3 rounded-lg border border-border-subtle/80 bg-raised/75 px-4 py-3 text-left shadow-sm shadow-black/5 transition-colors hover:border-accent-blue/35 hover:bg-raised hover:shadow-md hover:shadow-black/10"
     >
-      <span className="flex h-9 w-9 items-center justify-center rounded-md border border-surface-active/50 bg-bg-tertiary text-text-muted transition-colors group-hover:text-accent-blue">
+      <span className="flex h-10 w-10 items-center justify-center rounded-md border border-border-strong/60 bg-canvas text-text-muted transition-colors group-hover:border-accent-blue/35 group-hover:text-accent-blue">
         <Icon name={icon} size={18} />
       </span>
       <span>
-        <span className="block text-sm font-medium text-text-primary">{title}</span>
-        <span className="block text-2xs text-text-muted">{description}</span>
+        <span className="block text-[13px] font-medium text-text-primary">{title}</span>
+        <span className="block text-[11px] text-text-muted">{description}</span>
       </span>
     </button>
   );

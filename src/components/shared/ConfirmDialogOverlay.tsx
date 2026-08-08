@@ -30,7 +30,7 @@ export function ConfirmDialogOverlay() {
 
   return (
     <div
-      className="flex h-screen w-screen items-center justify-center bg-bg-primary/75 p-4 backdrop-blur-[2px]"
+      className="flex h-screen w-screen items-center justify-center bg-panel/75 p-4 backdrop-blur-[2px]"
       onMouseDown={(event) => event.target === event.currentTarget && finish(false)}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -47,22 +47,22 @@ export function ConfirmDialogOverlay() {
       }}
     >
       <div ref={dialogRef} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" className={cn('ui-popover w-full max-w-[28rem] overflow-hidden border', border)}>
-        <div className="flex items-start gap-3 border-b border-surface/80 px-4 py-3.5">
-          <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-bg-primary/60', border, accent)}>
+        <div className="flex items-start gap-3 border-b border-border-subtle/80 px-4 py-3.5">
+          <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-panel/60', border, accent)}>
             <Icon name={tone === 'trust' ? 'shield' : 'alert'} size={15} />
           </div>
           <div className="min-w-0">
-            <div className="mb-1 text-[8px] font-semibold uppercase tracking-[0.18em] text-text-muted">{request.eyebrow ?? 'Hexestra confirmation'}</div>
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-text-muted">{request.eyebrow ?? 'Hexestra confirmation'}</div>
             <h2 id="confirm-title" className="text-[13px] font-semibold text-text-primary">{request.title}</h2>
           </div>
         </div>
         <div className="space-y-3 px-4 py-4">
           <p id="confirm-description" className="whitespace-pre-line text-[11px] leading-5 text-text-secondary">{request.description}</p>
-          {request.details && <div className="max-h-36 overflow-auto rounded-md border border-surface/75 bg-bg-primary/55 px-3 py-2 font-mono text-[9px] leading-4 text-text-muted">{request.details}</div>}
+          {request.details && <div className="max-h-36 overflow-auto rounded-md border border-border-subtle/75 bg-panel/55 px-3 py-2 font-mono text-[11px] leading-4 text-text-muted">{request.details}</div>}
         </div>
-        <div className="flex justify-end gap-2 border-t border-surface/80 bg-bg-primary/25 px-4 py-3">
-          <button ref={cancelRef} type="button" className="ui-control min-w-20 px-3 py-1.5 text-[10px] text-text-secondary" onClick={() => finish(false)}>{request.cancelLabel ?? 'Cancel'}</button>
-          <button ref={confirmRef} type="button" className={cn('ui-control min-w-24 px-3 py-1.5 text-[10px] font-semibold', accent, tone === 'danger' && 'border-severity-high/35 bg-severity-high/5 hover:bg-severity-high/10')} onClick={() => finish(true)}>{request.confirmLabel ?? 'Confirm'}</button>
+        <div className="flex justify-end gap-2 border-t border-border-subtle/80 bg-panel/25 px-4 py-3">
+          <button ref={cancelRef} type="button" className="ui-control min-w-20 px-3 py-1.5 text-[11px] text-text-secondary" onClick={() => finish(false)}>{request.cancelLabel ?? 'Cancel'}</button>
+          <button ref={confirmRef} type="button" className={cn('ui-control min-w-24 px-3 py-1.5 text-[11px] font-semibold', accent, tone === 'danger' && 'border-severity-high/35 bg-severity-high/5 hover:bg-severity-high/10')} onClick={() => finish(true)}>{request.confirmLabel ?? 'Confirm'}</button>
         </div>
       </div>
     </div>

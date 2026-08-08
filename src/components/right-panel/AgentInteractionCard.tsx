@@ -20,28 +20,28 @@ function ToolApprovalCard({ request }: { request: ToolApprovalRequest }) {
   const reject = useChatStore((state) => state.rejectToolRequest);
 
   return (
-    <section className="shrink-0 border-t border-severity-medium/30 bg-bg-secondary p-3" aria-label="Tool approval">
+    <section className="shrink-0 border-t border-severity-medium/30 bg-canvas p-3" aria-label="Tool approval">
       <div className="mb-2 flex items-center gap-2">
         <Icon name="tool" size={14} className="text-severity-medium" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-semibold text-text-primary">{request.toolName}</p>
-          <p className="text-[9px] uppercase tracking-wider text-severity-medium">
+          <p className="text-[11px] uppercase tracking-wider text-severity-medium">
             Human approval required · {request.riskLevel}
           </p>
           {request.agentType && (
-            <p className="mt-0.5 truncate text-[9px] text-accent-blue">
+            <p className="mt-0.5 truncate text-[11px] text-accent-blue">
               Source agent: {request.agentType}
             </p>
           )}
         </div>
       </div>
-      <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-bg-primary/70 p-2 font-mono text-[9px] text-text-muted">
+      <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-panel/70 p-2 font-mono text-[11px] text-text-muted">
         {request.description}
       </pre>
       <div className="mt-2 flex justify-end gap-2">
         <button
           onClick={() => reject(request.id)}
-          className="rounded border border-surface px-2.5 py-1 text-2xs text-text-muted hover:text-text-primary"
+          className="rounded border border-border-subtle px-2.5 py-1 text-2xs text-text-muted hover:text-text-primary"
         >
           Reject
         </button>
@@ -139,7 +139,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
   return (
     <section
       aria-label="Claude question"
-      className="border-t border-accent-blue/25 bg-bg-secondary p-3"
+      className="border-t border-accent-blue/25 bg-canvas p-3"
     >
       <div className="mb-3 flex items-start gap-2">
         <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-accent-blue/20 bg-accent-blue/10">
@@ -147,11 +147,11 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
         </div>
         <div>
           <p className="text-xs font-semibold text-text-primary">Claude needs your input</p>
-          <p className="mt-0.5 text-[9px] leading-relaxed text-text-muted">
+          <p className="mt-0.5 text-[11px] leading-relaxed text-text-muted">
             The Agent is paused. Your answers will be returned to the active Claude turn.
           </p>
           {request.agentType && (
-            <p className="mt-0.5 text-[9px] text-accent-blue">
+            <p className="mt-0.5 text-[11px] text-accent-blue">
               Source agent: {request.agentType}
             </p>
           )}
@@ -164,10 +164,10 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
           return (
             <fieldset key={question.question} className="min-w-0">
               <legend className="mb-2 w-full">
-                <span className="mr-2 rounded border border-surface bg-bg-primary px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wide text-accent-blue">
+                <span className="mr-2 rounded border border-border-subtle bg-panel px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-accent-blue">
                   {question.header}
                 </span>
-                <span className="text-[9px] text-text-muted">
+                <span className="text-[11px] text-text-muted">
                   {questionIndex + 1}/{request.questions.length}
                   {question.multiSelect ? ' · multiple choices' : ''}
                 </span>
@@ -184,7 +184,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
                       key={option.label}
                       className={selected
                         ? 'flex cursor-pointer gap-2 rounded-md border border-accent-blue/35 bg-accent-blue/10 p-2'
-                        : 'flex cursor-pointer gap-2 rounded-md border border-surface/70 bg-bg-primary/45 p-2 hover:border-surface-hover'}
+                        : 'flex cursor-pointer gap-2 rounded-md border border-border-subtle/70 bg-panel/45 p-2 hover:border-border-strong'}
                     >
                       <input
                         checked={selected}
@@ -195,12 +195,12 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
                         value={option.label}
                       />
                       <span className="min-w-0">
-                        <span className="block text-[10px] font-medium text-text-primary">{option.label}</span>
-                        <span className="mt-0.5 block text-[9px] leading-relaxed text-text-muted">
+                        <span className="block text-[11px] font-medium text-text-primary">{option.label}</span>
+                        <span className="mt-0.5 block text-[11px] leading-relaxed text-text-muted">
                           {option.description}
                         </span>
                         {option.preview && (
-                          <pre className="mt-1.5 max-h-28 overflow-auto whitespace-pre-wrap rounded border border-surface/60 bg-bg-tertiary p-1.5 font-mono text-[8px] text-text-secondary">
+                          <pre className="mt-1.5 max-h-28 overflow-auto whitespace-pre-wrap rounded border border-border-subtle/60 bg-panel p-1.5 font-mono text-[11px] text-text-secondary">
                             {option.preview}
                           </pre>
                         )}
@@ -211,9 +211,9 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
 
                 <label className={draft.customActive
                   ? 'block rounded-md border border-accent-blue/35 bg-accent-blue/10 p-2'
-                  : 'block rounded-md border border-surface/70 bg-bg-primary/45 p-2 hover:border-surface-hover'}
+                  : 'block rounded-md border border-border-subtle/70 bg-panel/45 p-2 hover:border-border-strong'}
                 >
-                  <span className="flex cursor-pointer items-center gap-2 text-[10px] font-medium text-text-primary">
+                  <span className="flex cursor-pointer items-center gap-2 text-[11px] font-medium text-text-primary">
                     <input
                       checked={draft.customActive}
                       className="accent-[rgb(var(--color-accent-blue))]"
@@ -225,7 +225,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
                   </span>
                   <input
                     aria-label={`Custom answer for ${question.question}`}
-                    className="mt-1.5 w-full rounded border border-surface bg-bg-tertiary px-2 py-1.5 text-[10px] text-text-primary outline-none placeholder:text-text-muted/60 focus:border-accent-blue/50"
+                    className="mt-1.5 w-full rounded border border-border-subtle bg-panel px-2 py-1.5 text-[11px] text-text-primary outline-none placeholder:text-text-muted/60 focus:border-accent-blue/50"
                     onChange={(event) => setCustom(question, event.target.value)}
                     onFocus={() => setCustomActive(question, true)}
                     placeholder="Type your own answer"
@@ -239,16 +239,16 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
       </div>
 
       {submitError && (
-        <p className="mt-2 rounded border border-severity-critical/25 bg-severity-critical/10 px-2 py-1.5 text-[9px] text-severity-critical">
+        <p className="mt-2 rounded border border-severity-critical/25 bg-severity-critical/10 px-2 py-1.5 text-[11px] text-severity-critical">
           {submitError}
         </p>
       )}
 
-      <div className="sticky bottom-0 -mx-3 -mb-3 mt-3 flex justify-end gap-2 border-t border-surface/50 bg-bg-secondary px-3 py-2.5">
+      <div className="sticky bottom-0 -mx-3 -mb-3 mt-3 flex justify-end gap-2 border-t border-border-subtle/50 bg-canvas px-3 py-2.5">
         <button
           disabled={submitting}
           onClick={() => reject(request.id)}
-          className="rounded border border-surface px-2.5 py-1 text-2xs text-text-muted hover:text-text-primary disabled:opacity-50"
+          className="rounded border border-border-subtle px-2.5 py-1 text-2xs text-text-muted hover:text-text-primary disabled:opacity-50"
         >
           Cancel
         </button>

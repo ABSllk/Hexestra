@@ -172,15 +172,15 @@ export function BrowserTab({ tabId }: { tabId: string }) {
 
   if (!projectId) {
     return (
-      <div className="flex h-full items-center justify-center bg-bg-primary text-xs text-text-muted">
+      <div className="flex h-full items-center justify-center bg-panel text-xs text-text-muted">
         {t('browser.openProject')}
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg-primary">
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-surface bg-bg-tertiary/80 px-2">
+    <div className="flex h-full min-h-0 flex-col bg-panel">
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border-subtle bg-panel/80 px-2">
         <BrowserButton label={t('browser.back')} disabled={!browserState.canGoBack} onClick={() => void invoke(BROWSER_IPC.BACK)}>
           <Icon name="chevron-right" size={13} className="rotate-180" />
         </BrowserButton>
@@ -208,7 +208,7 @@ export function BrowserTab({ tabId }: { tabId: string }) {
           <Icon name="message" size={13} />
         </BrowserButton>
         <span
-          className={`w-12 text-center text-[9px] ${browserState.error ? 'text-severity-high' : 'text-text-muted'}`}
+          className={`w-12 text-center text-[11px] ${browserState.error ? 'text-severity-high' : 'text-text-muted'}`}
           title={browserState.error ?? (browserState.scopeState === 'out_of_scope'
             ? t('browser.outOfScopeHint')
             : undefined)}

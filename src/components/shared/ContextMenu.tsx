@@ -76,12 +76,12 @@ export function ContextMenu({
     >
       {items.map((item) => (
         <div key={item.id}>
-          {item.separatorBefore && <div className="my-1 border-t border-surface" />}
+          {item.separatorBefore && <div className="my-1 border-t border-border-subtle" />}
           <button
             role="menuitem"
             disabled={item.disabled}
             className={cn(
-              'flex w-full rounded px-2 py-1.5 text-left text-[10px] outline-none hover:bg-surface/55 focus:bg-surface/70 disabled:cursor-not-allowed disabled:opacity-35',
+              'flex min-h-7 w-full rounded-md px-2.5 py-1.5 text-left text-[11px] outline-none hover:bg-raised/55 focus:bg-raised/70 disabled:cursor-not-allowed disabled:opacity-35',
               item.danger ? 'text-severity-high' : 'text-text-secondary',
             )}
             onClick={() => {

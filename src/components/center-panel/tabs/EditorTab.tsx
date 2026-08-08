@@ -79,13 +79,13 @@ export function EditorTab({ tabId }: { tabId: string }) {
   const handleMount: OnMount = (editor, editorApi) => {
     editorApi.editor.defineTheme('hexestra-dark', {
       base: 'vs-dark', inherit: true,
-      rules: [{ token: 'comment', foreground: '6c7086', fontStyle: 'italic' }],
-      colors: { 'editor.background': '#1e1e2e', 'editorCursor.foreground': '#89b4fa' },
+      rules: [{ token: 'comment', foreground: '7C899B', fontStyle: 'italic' }],
+      colors: { 'editor.background': '#0B0F17', 'editor.foreground': '#F1F5F9', 'editorCursor.foreground': '#4F8CFF', 'editor.selectionBackground': '#273244' },
     });
     editorApi.editor.defineTheme('hexestra-light', {
       base: 'vs', inherit: true,
-      rules: [{ token: 'comment', foreground: '626a73', fontStyle: 'italic' }],
-      colors: { 'editor.background': '#faf9f6', 'editor.foreground': '#24272c', 'editorCursor.foreground': '#315f9e' },
+      rules: [{ token: 'comment', foreground: '526178', fontStyle: 'italic' }],
+      colors: { 'editor.background': '#F4F6F8', 'editor.foreground': '#172033', 'editorCursor.foreground': '#2563EB', 'editor.selectionBackground': '#D8E0EA' },
     });
     editorApi.editor.setTheme(MONACO_THEME_NAMES[resolvedTheme]);
     editor.focus();
@@ -95,10 +95,10 @@ export function EditorTab({ tabId }: { tabId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-surface bg-bg-tertiary/60 px-2 text-2xs text-text-muted">
+      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border-subtle bg-panel/60 px-2 text-2xs text-text-muted">
         <span className="min-w-0 flex-1 truncate font-mono">{filePath ?? 'Untitled'}</span>
         {isMarkdown && (
-          <div className="flex rounded border border-surface bg-bg-primary/50 p-0.5" aria-label="Markdown view">
+          <div className="flex rounded border border-border-subtle bg-panel/50 p-0.5" aria-label="Markdown view">
             {(['preview', 'source'] as const).map((mode) => (
               <button
                 key={mode}
@@ -107,7 +107,7 @@ export function EditorTab({ tabId }: { tabId: string }) {
                 onClick={() => setMarkdownMode(mode)}
                 className={`rounded px-2 py-0.5 capitalize ${
                   markdownMode === mode
-                    ? 'bg-surface text-text-primary'
+                    ? 'bg-raised text-text-primary'
                     : 'text-text-muted hover:text-text-secondary'
                 }`}
               >
@@ -118,14 +118,14 @@ export function EditorTab({ tabId }: { tabId: string }) {
         )}
         <span>{status === 'loading' ? 'Loading…' : status === 'saving' ? 'Saving…' : status === 'error' ? 'Error' : dirty ? 'Modified' : 'Saved'}</span>
         {filePath && (
-          <button aria-label="Save file" title="Save (Ctrl+S)" onClick={() => void save()} className="rounded p-1 hover:bg-surface hover:text-text-primary">
+          <button aria-label="Save file" title="Save (Ctrl+S)" onClick={() => void save()} className="rounded p-1 hover:bg-raised hover:text-text-primary">
             <Icon name="check" size={13} />
           </button>
         )}
       </div>
       <div className="min-h-0 flex-1">
         {isMarkdown && markdownMode === 'preview' ? (
-          <div className="h-full overflow-y-auto bg-bg-primary px-6 py-5 text-sm leading-6 text-text-secondary">
+          <div className="h-full overflow-y-auto bg-panel px-6 py-5 text-sm leading-6 text-text-secondary">
             <MarkdownContent content={content || '_Empty Markdown file_'} />
           </div>
         ) : (

@@ -163,7 +163,7 @@ export function AppShell() {
   }, [assets, currentSessionId, netmapEdges, setGraphData, targets]);
 
   return (
-    <div className="h-screen flex flex-col bg-bg-primary">
+    <div className="h-screen flex flex-col bg-canvas">
       <TitleBar />
       {/* Main resizable layout */}
       <div className="flex-1 min-h-0">

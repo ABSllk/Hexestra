@@ -175,18 +175,18 @@ export function TrafficReplayTab({ tabId }: { tabId: string }) {
   if (!session && !error) return <ReplayEmpty message="Loading Repeater session…" />;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg-primary">
-      <header className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-surface px-2 py-1.5">
-        <button className="ui-control flex items-center gap-1.5 px-3 py-1 text-[10px] text-accent-teal" disabled={busy || !session} onClick={send}>
+    <div className="flex h-full min-h-0 flex-col bg-panel">
+      <header className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
+        <button className="ui-control flex items-center gap-1.5 px-3 py-1 text-[11px] text-accent-teal" disabled={busy || !session} onClick={send}>
           <Icon name="send" size={11} /> {t('traffic.send')}
         </button>
         {waiting && (
-          <button title="Stops UI waiting only; the request remains captured if it later completes." className="ui-control px-2 py-1 text-[10px] text-accent-yellow" onClick={() => setIgnoredWaits((ids) => [...ids, selected.id])}>{t('traffic.cancelWait')}</button>
+          <button title="Stops UI waiting only; the request remains captured if it later completes." className="ui-control px-2 py-1 text-[11px] text-accent-yellow" onClick={() => setIgnoredWaits((ids) => [...ids, selected.id])}>{t('traffic.cancelWait')}</button>
         )}
-        <button className="ui-control px-2 py-1 text-[10px]" disabled={busy || !source} onClick={resetDraft}>{t('traffic.resetRequest')}</button>
-        <button className="ui-control px-2 py-1 text-[10px]" disabled={!draft} onClick={() => void window.hexestra?.invoke('clipboard:write-text', draft)}>{t('traffic.copyRequest')}</button>
-        <button className="ui-control px-2 py-1 text-[10px]" disabled={!selected?.response} onClick={() => void window.hexestra?.invoke('clipboard:write-text', formatRawResponse(selected?.response))}>{t('traffic.copyResponse')}</button>
-        <button className="ui-control ml-auto px-2 py-1 text-[10px] text-severity-high" disabled={busy} onClick={clear}>{t('traffic.clearSession')}</button>
+        <button className="ui-control px-2 py-1 text-[11px]" disabled={busy || !source} onClick={resetDraft}>{t('traffic.resetRequest')}</button>
+        <button className="ui-control px-2 py-1 text-[11px]" disabled={!draft} onClick={() => void window.hexestra?.invoke('clipboard:write-text', draft)}>{t('traffic.copyRequest')}</button>
+        <button className="ui-control px-2 py-1 text-[11px]" disabled={!selected?.response} onClick={() => void window.hexestra?.invoke('clipboard:write-text', formatRawResponse(selected?.response))}>{t('traffic.copyResponse')}</button>
+        <button className="ui-control ml-auto px-2 py-1 text-[11px] text-severity-high" disabled={busy} onClick={clear}>{t('traffic.clearSession')}</button>
       </header>
 
       {error && <DismissibleNotice tone="error" variant="banner" onDismiss={() => setError(null)}>{error}</DismissibleNotice>}
@@ -194,21 +194,21 @@ export function TrafficReplayTab({ tabId }: { tabId: string }) {
 
       <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-surface">
         <section className="flex min-h-0 flex-col">
-          <div className="flex h-8 shrink-0 items-center border-b border-surface px-3 text-[9px] font-semibold tracking-wider text-text-muted">{t('traffic.requestDraft')}</div>
-          <textarea aria-label="Repeater request editor" spellCheck={false} value={draft} onChange={(event) => setDraft(event.target.value)} className="min-h-0 flex-1 resize-none bg-bg-primary p-3 font-mono text-[11px] leading-5 text-text-secondary outline-none focus:bg-bg-secondary/20" />
+          <div className="flex h-8 shrink-0 items-center border-b border-border-subtle px-3 text-[11px] font-semibold tracking-wider text-text-muted">{t('traffic.requestDraft')}</div>
+          <textarea aria-label="Repeater request editor" spellCheck={false} value={draft} onChange={(event) => setDraft(event.target.value)} className="min-h-0 flex-1 resize-none bg-panel p-3 font-mono text-[11px] leading-5 text-text-secondary outline-none focus:bg-canvas/20" />
         </section>
         <section className="flex min-h-0 flex-col">
-          <div className="flex min-h-9 shrink-0 items-center gap-1 overflow-x-auto border-b border-surface p-1.5">
+          <div className="flex min-h-9 shrink-0 items-center gap-1 overflow-x-auto border-b border-border-subtle p-1.5">
             {attempts.map((attempt, index) => (
-              <button key={attempt.id} title={attempt.id} onClick={() => selectAttempt(attempt.id)} className={cn('shrink-0 rounded border px-2 py-1 font-mono text-[9px]', selected?.id === attempt.id ? 'border-accent-blue/40 bg-accent-blue/10 text-accent-blue' : 'border-surface text-text-muted hover:bg-surface/30')}>
+              <button key={attempt.id} title={attempt.id} onClick={() => selectAttempt(attempt.id)} className={cn('shrink-0 rounded border px-2 py-1 font-mono text-[11px]', selected?.id === attempt.id ? 'border-accent-blue/40 bg-accent-blue/10 text-accent-blue' : 'border-border-subtle text-text-muted hover:bg-raised/30')}>
                 #{index + 1} · {attempt.response?.statusCode ?? attempt.state}
               </button>
             ))}
-            {attempts.length === 0 && <span className="px-2 text-[9px] text-text-muted">{t('traffic.noSends')}</span>}
+            {attempts.length === 0 && <span className="px-2 text-[11px] text-text-muted">{t('traffic.noSends')}</span>}
           </div>
           {selected ? (
             <>
-              <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1 border-b border-surface px-3 py-2 font-mono text-[9px] text-text-muted">
+              <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1 border-b border-border-subtle px-3 py-2 font-mono text-[11px] text-text-muted">
                 <span>{selected.state}</span>
                 <span>{selected.timing.durationMs === undefined ? 'waiting' : `${selected.timing.durationMs} ms`}</span>
                 <span>{selected.response?.body.byteLength ?? 0} bytes</span>

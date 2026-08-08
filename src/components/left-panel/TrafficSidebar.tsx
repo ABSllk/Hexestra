@@ -252,26 +252,26 @@ export function TrafficSidebar() {
   const dismissPersistentNotice = (message: string) => setDismissedPersistentNotices((current) => current.includes(message) ? current : [...current, message]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg-secondary/45">
-      <header className="shrink-0 border-b border-surface/80 p-2">
+    <div className="flex h-full min-h-0 flex-col bg-canvas/45">
+      <header className="shrink-0 border-b border-border-subtle/80 p-2">
         <div className="mb-2 flex items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-secondary">{t('nav.traffic')}</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary">{t('nav.traffic')}</span>
           <button type="button" className="ui-icon-button ml-auto text-text-muted hover:text-severity-high" disabled={busy} aria-label={t('traffic.clearHistory')} title={t('traffic.clearHistory')} onClick={clearHistory}>
             <Icon name="trash" size={12} />
           </button>
-          <span className={cn('rounded border px-1.5 py-0.5 font-mono text-[8px]', runtime === 'ready' ? 'border-accent-teal/35 text-accent-teal' : runtime === 'blocked' || runtime === 'error' ? 'border-severity-high/35 text-severity-high' : 'border-surface text-text-muted')}>{runtime.toUpperCase()}</span>
+          <span className={cn('rounded border px-1.5 py-0.5 font-mono text-[11px]', runtime === 'ready' ? 'border-accent-teal/35 text-accent-teal' : runtime === 'blocked' || runtime === 'error' ? 'border-severity-high/35 text-severity-high' : 'border-border-subtle text-text-muted')}>{runtime.toUpperCase()}</span>
         </div>
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1.5">
           <button
             type="button"
-            className={cn('ui-control flex min-w-0 items-center justify-center gap-1.5 px-2 py-1.5 text-[9px]', proxyEnabled ? 'text-accent-teal' : 'text-text-muted')}
+            className={cn('ui-control flex min-w-0 items-center justify-center gap-1.5 px-2 py-1.5 text-[11px]', proxyEnabled ? 'text-accent-teal' : 'text-text-muted')}
             disabled={busy}
             title={proxyEnabled ? t('traffic.stopCapture') : t('traffic.startCapture')}
             onClick={() => void run(() => window.hexestra.invoke(proxyEnabled ? TRAFFIC_IPC.STOP : TRAFFIC_IPC.START, projectId))}
           >
             <Icon name={proxyEnabled ? 'activity' : 'pause'} size={11} /><span className="min-w-0 truncate">{proxyEnabled ? t('traffic.captureOn') : t('traffic.captureOff')}</span>
           </button>
-          <button type="button" className={cn('ui-control flex min-w-0 items-center justify-center px-2 py-1.5 text-[9px]', burpEnabled && 'text-accent-blue')} disabled={busy} onClick={() => void run(() => window.hexestra.invoke(burpEnabled ? TRAFFIC_IPC.BURP_DISCONNECT : TRAFFIC_IPC.BURP_CONNECT, projectId))}>
+          <button type="button" className={cn('ui-control flex min-w-0 items-center justify-center px-2 py-1.5 text-[11px]', burpEnabled && 'text-accent-blue')} disabled={busy} onClick={() => void run(() => window.hexestra.invoke(burpEnabled ? TRAFFIC_IPC.BURP_DISCONNECT : TRAFFIC_IPC.BURP_CONNECT, projectId))}>
             <span className="min-w-0 truncate">{burpEnabled ? t('traffic.burpSync') : t('traffic.burpOff')}</span>
           </button>
           <button type="button" className="ui-icon-button" disabled={busy} aria-label={t('traffic.openBurpSettings')} title={t('traffic.openBurpSettings')} onClick={() => openSettingsTab('burp')}>
@@ -284,57 +284,57 @@ export function TrafficSidebar() {
         </div>
       </header>
 
-      {(error || persistentNoticeVisible(profileError)) && <DismissibleNotice tone="error" variant="banner" className="px-2 text-[9px]" onDismiss={() => { setError(null); if (profileError) dismissPersistentNotice(profileError); }}>{error ?? profileError}</DismissibleNotice>}
-      {notice && <DismissibleNotice tone="success" variant="banner" className="px-2 text-[9px]" onDismiss={() => setNotice(null)}>{notice}</DismissibleNotice>}
-      {persistentNoticeVisible(mirrorOfflineWarning) && <DismissibleNotice tone="warning" variant="banner" className="px-2 text-[9px]" onDismiss={() => dismissPersistentNotice(mirrorOfflineWarning!)}>{mirrorOfflineWarning}</DismissibleNotice>}
-      {persistentNoticeVisible(burpMcpWarning) && <DismissibleNotice tone="warning" variant="banner" className="px-2 text-[9px]" onDismiss={() => dismissPersistentNotice(burpMcpWarning!)}>{burpMcpWarning}</DismissibleNotice>}
+      {(error || persistentNoticeVisible(profileError)) && <DismissibleNotice tone="error" variant="banner" className="px-2 text-[11px]" onDismiss={() => { setError(null); if (profileError) dismissPersistentNotice(profileError); }}>{error ?? profileError}</DismissibleNotice>}
+      {notice && <DismissibleNotice tone="success" variant="banner" className="px-2 text-[11px]" onDismiss={() => setNotice(null)}>{notice}</DismissibleNotice>}
+      {persistentNoticeVisible(mirrorOfflineWarning) && <DismissibleNotice tone="warning" variant="banner" className="px-2 text-[11px]" onDismiss={() => dismissPersistentNotice(mirrorOfflineWarning!)}>{mirrorOfflineWarning}</DismissibleNotice>}
+      {persistentNoticeVisible(burpMcpWarning) && <DismissibleNotice tone="warning" variant="banner" className="px-2 text-[11px]" onDismiss={() => dismissPersistentNotice(burpMcpWarning!)}>{burpMcpWarning}</DismissibleNotice>}
 
-      <div className="shrink-0 space-y-1.5 border-b border-surface/70 p-2">
+      <div className="shrink-0 space-y-1.5 border-b border-border-subtle/70 p-2">
         <div className="flex items-center gap-1.5">
           <Icon name="search" size={11} className="shrink-0 text-text-muted" />
-          <input aria-label={t('traffic.search')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('traffic.searchPlaceholder')} className="ui-control min-w-0 flex-1 px-2 py-1 text-[10px]" />
-          <span className="shrink-0 font-mono text-[8px] text-text-muted">{flows.total}</span>
+          <input aria-label={t('traffic.search')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('traffic.searchPlaceholder')} className="ui-control min-w-0 flex-1 px-2 py-1 text-[11px]" />
+          <span className="shrink-0 font-mono text-[11px] text-text-muted">{flows.total}</span>
         </div>
         <FilterRow label={t('traffic.status')} values={[{ id: 'all', label: t('traffic.all') }, { id: 'paused', label: t('traffic.paused') }, { id: 'completed', label: t('traffic.completed') }, { id: 'failed', label: t('traffic.failed') }]} active={status} onChange={(value) => setStatus(value as StatusFilter)} />
         <div className="grid grid-cols-2 gap-1.5">
-          <select aria-label="Traffic scope filter" className="ui-control min-w-0 px-1 py-1 text-[9px]" value={scope} onChange={(event) => setScope(event.target.value as ScopeFilter)}>
+          <select aria-label="Traffic scope filter" className="ui-control min-w-0 px-1 py-1 text-[11px]" value={scope} onChange={(event) => setScope(event.target.value as ScopeFilter)}>
             <option value="all">{t('traffic.allScope')}</option><option value="in_scope">{t('traffic.inScope')}</option><option value="out_of_scope">{t('traffic.outOfScope')}</option>
           </select>
-          <select aria-label="Traffic source filter" className="ui-control min-w-0 px-1 py-1 text-[9px]" value={source} onChange={(event) => setSource(event.target.value as SourceFilter)}>
+          <select aria-label="Traffic source filter" className="ui-control min-w-0 px-1 py-1 text-[11px]" value={source} onChange={(event) => setSource(event.target.value as SourceFilter)}>
             <option value="all">{t('traffic.allSources')}</option><option value="browser">{t('traffic.browser')}</option><option value="replay">{t('traffic.replay')}</option>
           </select>
         </div>
-        {(host || parentFlowId) && <button className="flex w-full items-center justify-between rounded bg-accent-blue/8 px-2 py-1 text-[9px] text-accent-blue" onClick={() => { setHost(''); setParentFlowId(''); }}><span className="truncate">{host ? `Host: ${host}` : `Replays of ${parentFlowId}`}</span><Icon name="close" size={10} /></button>}
+        {(host || parentFlowId) && <button className="flex w-full items-center justify-between rounded bg-accent-blue/8 px-2 py-1 text-[11px] text-accent-blue" onClick={() => { setHost(''); setParentFlowId(''); }}><span className="truncate">{host ? `Host: ${host}` : `Replays of ${parentFlowId}`}</span><Icon name="close" size={10} /></button>}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {flows.items.map((flow) => <TrafficListItem key={flow.id} flow={flow} active={flow.id === activeFlowId} onOpen={() => openTrafficFlowTab(flow)} onContextMenu={(event) => { event.preventDefault(); setMenu({ flow, x: event.clientX, y: event.clientY, target: event.currentTarget }); }} />)}
         {flows.items.length === 0 && <EmptyState message={t('traffic.empty')} compact />}
-        {flows.items.length < flows.total && <button className="ui-control mt-1 w-full py-1.5 text-[9px]" disabled={busy} onClick={() => void loadFlows(true)}>{t('traffic.loadMore')} · {flows.total - flows.items.length}</button>}
+        {flows.items.length < flows.total && <button className="ui-control mt-1 w-full py-1.5 text-[11px]" disabled={busy} onClick={() => void loadFlows(true)}>{t('traffic.loadMore')} · {flows.total - flows.items.length}</button>}
       </div>
 
-      <footer className="shrink-0 border-t border-surface/70 px-2 py-1.5 text-[8px] leading-3 text-text-muted">{t('traffic.storageWarning')}</footer>
+      <footer className="shrink-0 border-t border-border-subtle/70 px-2 py-1.5 text-[11px] leading-3 text-text-muted">{t('traffic.storageWarning')}</footer>
       <ContextMenu open={!!menu} x={menu?.x ?? 0} y={menu?.y ?? 0} items={menuItems} returnFocus={menu?.target} onClose={() => setMenu(null)} />
     </div>
   );
 }
 
 function FilterRow({ label, values, active, onChange }: { label: string; values: Array<{ id: string; label: string }>; active: string; onChange: (value: string) => void }) {
-  return <div className="flex min-w-0 flex-wrap items-center gap-0.5"><span className="mr-0.5 shrink-0 text-[7px] text-text-muted">{label}</span>{values.map((value) => <button key={value.id} title={value.label} className={cn('min-w-0 rounded px-1.5 py-0.5 text-[8px] uppercase leading-tight', active === value.id ? 'bg-accent-blue/12 text-accent-blue' : 'text-text-muted hover:bg-surface/40')} onClick={() => onChange(value.id)}><span className="block truncate">{value.label}</span></button>)}</div>;
+  return <div className="flex min-w-0 flex-wrap items-center gap-0.5"><span className="mr-0.5 shrink-0 text-[11px] text-text-muted">{label}</span>{values.map((value) => <button key={value.id} title={value.label} className={cn('min-w-0 rounded px-1.5 py-0.5 text-[11px] uppercase leading-tight', active === value.id ? 'bg-accent-blue/12 text-accent-blue' : 'text-text-muted hover:bg-raised/40')} onClick={() => onChange(value.id)}><span className="block truncate">{value.label}</span></button>)}</div>;
 }
 
 function InterceptToggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
-  return <label className={cn('ui-control flex items-center gap-1.5 px-2 py-1 text-[9px] text-text-muted', disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer')}><input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} /><span className="truncate">{label}</span></label>;
+  return <label className={cn('ui-control flex items-center gap-1.5 px-2 py-1 text-[11px] text-text-muted', disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer')}><input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} /><span className="truncate">{label}</span></label>;
 }
 
 function TrafficListItem({ flow, active, onOpen, onContextMenu }: { flow: TrafficSummary; active: boolean; onOpen: () => void; onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void }) {
-  return <button type="button" aria-label={`Open ${flow.method} ${flow.url}`} onClick={onOpen} onContextMenu={onContextMenu} className={cn('mb-1 flex w-full flex-col gap-1 rounded-md border px-2 py-1.5 text-left transition-colors', active ? 'border-accent-blue/35 bg-accent-blue/10' : 'border-transparent hover:border-surface/70 hover:bg-surface/25')}>
-    <span className="flex w-full min-w-0 items-center gap-1.5"><span className="shrink-0 font-mono text-[9px] font-semibold text-accent-blue">{flow.method}</span><span className="min-w-0 flex-1 truncate font-mono text-[9px] text-text-secondary" title={flow.url}>{flow.host}{safePath(flow.url)}</span><span className="shrink-0 font-mono text-[8px] text-text-muted">{flow.statusCode ?? '—'}</span></span>
-    <span className="flex w-full items-center gap-1.5 font-mono text-[8px]"><span className={cn('truncate', flow.state.includes('paused') ? 'text-accent-yellow' : flow.state === 'failed' ? 'text-severity-high' : 'text-text-muted')}>{flow.state}</span>{flow.source === 'replay' && <span className="text-accent-blue">REPLAY</span>}{flow.burpMirrorState === 'synced' && <span className="text-accent-teal">BURP SYNC</span>}{flow.burpMirrorState === 'pending' && <span className="text-accent-yellow">SYNC PENDING</span>}{flow.burpMirrorState === 'failed' && <span className="text-severity-high">SYNC FAILED</span>}<span className="ml-auto text-text-muted">{formatBytes((flow.requestBytes ?? 0) + (flow.responseBytes ?? 0))} · {flow.durationMs === undefined ? '—' : `${flow.durationMs}ms`}</span><span className={flow.scopeState === 'in_scope' ? 'text-accent-teal' : 'text-text-muted'}>{flow.scopeState === 'in_scope' ? 'IN' : 'OUT'}</span></span>
+  return <button type="button" aria-label={`Open ${flow.method} ${flow.url}`} onClick={onOpen} onContextMenu={onContextMenu} className={cn('mb-1 flex w-full flex-col gap-1 rounded-md border px-2 py-1.5 text-left transition-colors', active ? 'border-accent-blue/35 bg-accent-blue/10' : 'border-transparent hover:border-border-subtle/70 hover:bg-raised/25')}>
+    <span className="flex w-full min-w-0 items-center gap-1.5"><span className="shrink-0 font-mono text-[11px] font-semibold text-accent-blue">{flow.method}</span><span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={flow.url}>{flow.host}{safePath(flow.url)}</span><span className="shrink-0 font-mono text-[11px] text-text-muted">{flow.statusCode ?? '—'}</span></span>
+    <span className="flex w-full items-center gap-1.5 font-mono text-[11px]"><span className={cn('truncate', flow.state.includes('paused') ? 'text-accent-yellow' : flow.state === 'failed' ? 'text-severity-high' : 'text-text-muted')}>{flow.state}</span>{flow.source === 'replay' && <span className="text-accent-blue">REPLAY</span>}{flow.burpMirrorState === 'synced' && <span className="text-accent-teal">BURP SYNC</span>}{flow.burpMirrorState === 'pending' && <span className="text-accent-yellow">SYNC PENDING</span>}{flow.burpMirrorState === 'failed' && <span className="text-severity-high">SYNC FAILED</span>}<span className="ml-auto text-text-muted">{formatBytes((flow.requestBytes ?? 0) + (flow.responseBytes ?? 0))} · {flow.durationMs === undefined ? '—' : `${flow.durationMs}ms`}</span><span className={flow.scopeState === 'in_scope' ? 'text-accent-teal' : 'text-text-muted'}>{flow.scopeState === 'in_scope' ? 'IN' : 'OUT'}</span></span>
   </button>;
 }
 
-function EmptyState({ message, compact = false }: { message: string; compact?: boolean }) { return <div className={cn('flex items-center justify-center text-center text-[10px] text-text-muted', compact ? 'px-3 py-8' : 'h-full px-5')}>{message}</div>; }
+function EmptyState({ message, compact = false }: { message: string; compact?: boolean }) { return <div className={cn('flex items-center justify-center text-center text-[11px] text-text-muted', compact ? 'px-3 py-8' : 'h-full px-5')}>{message}</div>; }
 function safePath(value: string) { try { const url = new URL(value); return `${url.pathname}${url.search}`; } catch { return value; } }
 function formatBytes(value: number) { return value < 1024 ? `${value}B` : `${(value / 1024).toFixed(value < 10_240 ? 1 : 0)}K`; }
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }

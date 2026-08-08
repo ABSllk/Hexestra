@@ -354,11 +354,11 @@ export function NetMapView() {
           <span className="font-mono text-xs font-semibold tracking-[0.16em] text-text-secondary select-none">
             NETMAP
           </span>
-          <span className="font-mono text-[9px] text-text-muted select-none">
+          <span className="font-mono text-[11px] text-text-muted select-none">
             {renderedNodes.length} NODES / {renderedEdges.length} LINKS
           </span>
           {isPreview && (
-            <span className="rounded-md border border-accent-teal/20 bg-accent-teal/5 px-1.5 py-0.5 font-mono text-[8px] tracking-wider text-accent-teal/70 select-none">
+            <span className="rounded-md border border-accent-teal/20 bg-accent-teal/5 px-1.5 py-0.5 font-mono text-[11px] tracking-wider text-accent-teal/70 select-none">
               PREVIEW TOPOLOGY
             </span>
           )}
@@ -366,7 +366,7 @@ export function NetMapView() {
 
         <div className="flex items-center gap-1 select-none">
           <MapControl label="Zoom out" icon="zoom-out" onClick={() => zoomBy(0.86)} />
-          <span className="min-w-10 text-center font-mono text-[9px] text-text-muted">
+          <span className="min-w-10 text-center font-mono text-[11px] text-text-muted">
             {Math.round(view.scale * 100)}%
           </span>
           <MapControl label="Zoom in" icon="zoom-in" onClick={() => zoomBy(1.16)} />
@@ -459,7 +459,7 @@ export function NetMapView() {
 
       </div>
 
-      <footer className="flex shrink-0 items-center gap-3 border-t border-accent-teal/10 bg-[rgb(var(--color-netmap-chrome)/0.95)] px-3 py-1 font-mono text-[8px] text-text-muted select-none">
+      <footer className="flex shrink-0 items-center gap-3 border-t border-accent-teal/10 bg-[rgb(var(--color-netmap-chrome)/0.95)] px-3 py-1 font-mono text-[11px] text-text-muted select-none">
         {Object.entries(palette.nodeColors).map(([status, color]) => (
           <div key={status} className="flex items-center gap-1.5">
             <span
@@ -592,12 +592,7 @@ const AssetNode = memo(function AssetNode({
   const secondaryLabel = node.ip ?? url ?? node.hostname ?? node.type.toUpperCase();
   const showSecondaryLabel = secondaryLabel.toLocaleLowerCase() !== node.label.toLocaleLowerCase();
   const showLabels = !dense || selected || highlighted || dragging || hovered;
-  const showGlow = !dense
-    || selected
-    || highlighted
-    || dragging
-    || hovered
-    || node.status === 'in_progress';
+  const showGlow = selected || highlighted || dragging || hovered;
 
   return (
     <g
@@ -624,7 +619,7 @@ const AssetNode = memo(function AssetNode({
       opacity={dimmed && !selected && !highlighted ? 0.2 : 1}
     >
       <g transform={`scale(${visualScale})`}>
-      {(selected || highlighted || node.status === 'in_progress') && (
+      {(selected || highlighted) && (
         <circle
           data-testid="netmap-node-emphasis"
           r={riskSize + 7}

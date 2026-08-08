@@ -148,7 +148,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
           mcpServers: {
             hexestra: this.sdk.createSdkMcpServer({
               name: 'hexestra',
-              version: '0.2.0',
+              version: '0.2.1',
               tools: createClaudeSdkTools(this.sdk, tools),
             }),
           },

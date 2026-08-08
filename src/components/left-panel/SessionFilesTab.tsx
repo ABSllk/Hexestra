@@ -65,13 +65,13 @@ export function SessionFilesTab() {
   const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-surface px-2 text-2xs text-text-muted">
+      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border-subtle px-2 text-2xs text-text-muted">
         {path && (
           <button aria-label="Parent directory" onClick={() => void openDirectory(parent)} className="ui-icon-button p-1">
             <Icon name="chevron-right" size={12} className="rotate-180" />
           </button>
         )}
-        <button onClick={() => void openDirectory('')} className="truncate rounded px-1 py-0.5 hover:bg-surface hover:text-text-primary">
+        <button onClick={() => void openDirectory('')} className="truncate rounded px-1 py-0.5 hover:bg-raised hover:text-text-primary">
           {session.name}
         </button>
         {path && <span className="truncate font-mono text-accent-teal">/{path}</span>}
@@ -96,7 +96,7 @@ export function SessionFilesTab() {
           >
             <Icon name={entry.type === 'directory' ? 'folder' : 'file'} size={14} className={entry.type === 'directory' ? 'text-accent-blue' : 'text-text-muted'} />
             <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-            {entry.type === 'file' && <span className="text-[9px] text-text-muted">{formatBytes(entry.size)}</span>}
+            {entry.type === 'file' && <span className="text-[11px] text-text-muted">{formatBytes(entry.size)}</span>}
           </button>
         ))}
       </div>

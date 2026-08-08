@@ -24,7 +24,7 @@ export function FourPanelLayout({
         <PanelGroup direction="horizontal" autoSaveId="hexestra-top-columns">
           {/* Left panel */}
           <Panel defaultSize={18} minSize={12} maxSize={35} collapsible>
-            <div className="h-full min-w-0 overflow-hidden border-r border-surface bg-bg-secondary">
+            <div className="h-full min-w-0 overflow-hidden border-r border-border-subtle bg-panel">
               {leftPanel}
             </div>
           </Panel>
@@ -32,14 +32,14 @@ export function FourPanelLayout({
           <PanelResizeHandle
             className={cn(
               'w-1 transition-colors',
-              'bg-transparent hover:bg-accent-blue/50',
+              'bg-transparent hover:bg-accent-blue/45',
               'data-[resize-handle-active]:bg-accent-blue'
             )}
           />
 
           {/* Center panel */}
           <Panel defaultSize={57} minSize={30}>
-            <div className="h-full min-w-0 overflow-hidden bg-bg-primary">
+            <div className="h-full min-w-0 overflow-hidden bg-panel">
               {centerPanel}
             </div>
           </Panel>
@@ -47,14 +47,14 @@ export function FourPanelLayout({
           <PanelResizeHandle
             className={cn(
               'w-1 transition-colors',
-              'bg-transparent hover:bg-accent-blue/50',
+              'bg-transparent hover:bg-accent-blue/45',
               'data-[resize-handle-active]:bg-accent-blue'
             )}
           />
 
           {/* Right panel */}
           <Panel defaultSize={25} minSize={15} maxSize={40} collapsible>
-            <div className="h-full min-w-0 overflow-hidden border-l border-surface bg-bg-secondary">
+            <div className="h-full min-w-0 overflow-hidden border-l border-border-subtle bg-panel">
               {rightPanel}
             </div>
           </Panel>
@@ -67,13 +67,13 @@ export function FourPanelLayout({
           <PanelResizeHandle
             className={cn(
               'h-1 transition-colors',
-              'bg-surface/50 hover:bg-accent-blue/50',
+              'bg-border-subtle/45 hover:bg-accent-blue/50',
               'data-[resize-handle-active]:bg-accent-blue'
             )}
           />
           {/* Bottom panel: NetMap — spans full width */}
           <Panel defaultSize={28} minSize={10} maxSize={50} collapsible>
-            <div className="h-full bg-bg-tertiary border-t border-surface overflow-hidden">
+            <div className="h-full overflow-hidden border-t border-border-subtle bg-canvas">
               {bottomPanel}
             </div>
           </Panel>

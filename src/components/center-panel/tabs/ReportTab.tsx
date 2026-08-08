@@ -30,10 +30,10 @@ export function ReportTab({ tabId }: { tabId: string }) {
     );
   };
 
-  return <div className="flex h-full min-h-0 flex-col bg-bg-primary">
-    <div className="flex h-9 shrink-0 items-center justify-between border-b border-surface bg-bg-tertiary/70 px-3">
+  return <div className="flex h-full min-h-0 flex-col bg-panel">
+    <div className="flex h-9 shrink-0 items-center justify-between border-b border-border-subtle bg-panel/70 px-3">
       <span className="text-xs font-medium text-text-secondary">Live engagement preview</span>
-      <button disabled={!session || isProcessing} onClick={() => void generateFormalReport()} className="flex items-center gap-1 rounded border border-surface px-2 py-1 text-2xs text-text-muted hover:border-accent-blue hover:text-accent-blue disabled:opacity-40"><Icon name="report" size={12} />{isProcessing ? 'Agent working…' : 'Generate with AI'}</button>
+      <button disabled={!session || isProcessing} onClick={() => void generateFormalReport()} className="flex items-center gap-1 rounded border border-border-subtle px-2 py-1 text-2xs text-text-muted hover:border-accent-blue hover:text-accent-blue disabled:opacity-40"><Icon name="report" size={12} />{isProcessing ? 'Agent working…' : 'Generate with AI'}</button>
     </div>
     <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-6 font-sans text-xs leading-6 text-text-secondary">{report}</pre>
   </div>;

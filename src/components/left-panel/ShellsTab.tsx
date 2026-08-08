@@ -247,13 +247,13 @@ export function ShellsTab() {
       <ShellSection title={t('shell.profiles')} count={profiles.length}>
         {profiles.length === 0 && <SectionEmpty text={t('shell.noProfiles')} />}
         {profiles.map((profile) => (
-          <div key={profile.id} className="group flex min-w-0 items-center gap-1.5 rounded px-1.5 py-1.5 hover:bg-surface/35">
+          <div key={profile.id} className="group flex min-w-0 items-center gap-1.5 rounded px-1.5 py-1.5 hover:bg-raised/35">
             <Icon name={profile.kind === 'ssh' ? 'server' : 'terminal'} size={12} className="text-accent-blue" />
             <button className="min-w-0 flex-1 text-left" onClick={() => void run(`connect-${profile.id}`, () => connectProfile(profile))}>
               <span className="block truncate text-text-secondary">{profile.name}</span>
-              <span className="block truncate font-mono text-[8px] text-text-muted">{profile.kind === 'ssh' ? `${profile.username}@${profile.host}:${profile.port}` : profile.kind.toUpperCase()}</span>
+              <span className="block truncate font-mono text-[11px] text-text-muted">{profile.kind === 'ssh' ? `${profile.username}@${profile.host}:${profile.port}` : profile.kind.toUpperCase()}</span>
             </button>
-            <span className="max-w-20 shrink-0 truncate text-[8px] uppercase text-text-muted" title={profile.assetRole}>{busy === `connect-${profile.id}` ? '…' : profile.assetRole}</span>
+            <span className="max-w-20 shrink-0 truncate text-[11px] uppercase text-text-muted" title={profile.assetRole}>{busy === `connect-${profile.id}` ? '…' : profile.assetRole}</span>
             <button title="Edit profile" className="ui-icon-button h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100" onClick={() => { setProfileDraft(profile); setEditorMode('profile'); }}><Icon name="edit" size={11} /></button>
             <button title="Delete profile" className="ui-icon-button h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100" onClick={() => void run(`delete-${profile.id}`, () => window.hexestra.invoke(SHELL_IPC.PROFILE_DELETE, projectId, profile.id))}><Icon name="close" size={11} /></button>
           </div>
@@ -263,21 +263,21 @@ export function ShellsTab() {
       <ShellSection title={t('shell.listen')} count={listeners.length}>
         {listeners.length === 0 && <SectionEmpty text={t('shell.noListeners')} />}
         {listeners.map(({ profile, state, sessionCount }) => (
-          <div key={profile.id} className="group flex min-w-0 flex-wrap items-center gap-1.5 rounded px-1.5 py-1.5 hover:bg-surface/35">
+          <div key={profile.id} className="group flex min-w-0 flex-wrap items-center gap-1.5 rounded px-1.5 py-1.5 hover:bg-raised/35">
             <span className={`h-1.5 w-1.5 rounded-full ${state === 'listening' ? 'bg-accent-green' : state === 'error' ? 'bg-accent-red' : 'bg-text-muted'}`} />
             <div className="min-w-0 flex-1 basis-24">
               <span className="block truncate text-text-secondary">{profile.name}</span>
-              <span className="font-mono text-[8px] text-text-muted">{profile.bindAddress}:{profile.port} · {sessionCount}</span>
+              <span className="font-mono text-[11px] text-text-muted">{profile.bindAddress}:{profile.port} · {sessionCount}</span>
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-1">
               <button
                 type="button"
-                className="shrink-0 rounded border border-accent-purple/30 px-1.5 py-0.5 text-[9px] text-accent-purple"
+                className="shrink-0 rounded border border-accent-purple/30 px-1.5 py-0.5 text-[11px] text-accent-purple"
                 title="Generate a connection command"
                 onClick={() => setBuilderListener(profile)}
               >Generate</button>
               <button
-                className="shrink-0 rounded border border-surface px-1.5 py-0.5 text-[9px] text-text-muted hover:text-text-primary"
+                className="shrink-0 rounded border border-border-subtle px-1.5 py-0.5 text-[11px] text-text-muted hover:text-text-primary"
                 onClick={() => void run(`listener-${profile.id}`, () => window.hexestra.invoke(
                   state === 'listening' ? SHELL_IPC.LISTENER_STOP : SHELL_IPC.LISTENER_START,
                   projectId,
@@ -305,15 +305,15 @@ export function ShellsTab() {
       <ShellSection title={t('shell.sessions')} count={sessions.length}>
         {sessions.length === 0 && <SectionEmpty text="No live or disconnected sessions" />}
         {sessions.map((session) => (
-          <div key={session.id} className="rounded border border-transparent px-1.5 py-1.5 hover:border-surface/60 hover:bg-surface/25">
+          <div key={session.id} className="rounded border border-transparent px-1.5 py-1.5 hover:border-border-subtle/60 hover:bg-raised/25">
             <div className="flex items-center gap-2">
               <span className={`h-1.5 w-1.5 rounded-full ${session.state === 'ready' ? 'bg-accent-green' : session.state === 'agent_locked' ? 'bg-accent-yellow' : session.state === 'quarantined' ? 'bg-accent-purple' : 'bg-text-muted'}`} />
               <button className="min-w-0 flex-1 truncate text-left text-text-secondary" onClick={() => openSession(session, profiles.find((profile) => profile.id === session.profileId))}>{session.title}</button>
-              <span className="max-w-24 shrink-0 truncate font-mono text-[8px] uppercase text-text-muted" title={session.state}>{session.state}</span>
+              <span className="max-w-24 shrink-0 truncate font-mono text-[11px] uppercase text-text-muted" title={session.state}>{session.state}</span>
             </div>
             {session.state === 'quarantined' && (
               <div className="mt-1.5 flex gap-1 pl-3.5">
-                <select className="ui-control min-w-0 flex-1 px-1 text-[9px]" defaultValue="" onChange={(event) => {
+                <select className="ui-control min-w-0 flex-1 px-1 text-[11px]" defaultValue="" onChange={(event) => {
                   if (event.target.value) void run(`bind-${session.id}`, () => window.hexestra.invoke(SHELL_IPC.REVERSE_BIND, projectId, session.id, event.target.value));
                 }}>
                   <option value="">Bind to Scope asset…</option>
@@ -323,7 +323,7 @@ export function ShellsTab() {
                 <button className="ui-icon-button" title="Reject connection" onClick={() => void run(`reject-${session.id}`, () => window.hexestra.invoke(SHELL_IPC.REVERSE_REJECT, projectId, session.id))}><Icon name="close" size={11} /></button>
               </div>
             )}
-            {session.preview && <pre className="mt-1 max-h-16 overflow-hidden whitespace-pre-wrap break-all rounded bg-bg-tertiary p-1 font-mono text-[8px] text-text-muted">{session.preview}</pre>}
+            {session.preview && <pre className="mt-1 max-h-16 overflow-hidden whitespace-pre-wrap break-all rounded bg-panel p-1 font-mono text-[11px] text-text-muted">{session.preview}</pre>}
           </div>
         ))}
       </ShellSection>
@@ -349,7 +349,7 @@ function ProfileEditor({ draft, profiles, credentials, assets, supportsWsl, secr
   const set = <K extends keyof ShellProfile>(key: K, value: ShellProfile[K]) => onChange({ ...draft, [key]: value });
   const kind = draft.kind ?? 'ssh';
   return (
-    <div className="space-y-2 rounded border border-surface bg-bg-secondary p-2">
+    <div className="space-y-2 rounded border border-border-subtle bg-canvas p-2">
       <div className="flex items-center justify-between text-text-secondary"><span>{draft.id ? 'Edit connection' : 'New connection'}</span><button onClick={onCancel}><Icon name="close" size={11} /></button></div>
       <select className="ui-control h-7 w-full px-2" value={kind} onChange={(event) => set('kind', event.target.value as ShellProfileKind)}>
         <option value="ssh">SSH</option><option value="local">Local</option>{supportsWsl && <option value="wsl">WSL</option>}
@@ -365,7 +365,7 @@ function ProfileEditor({ draft, profiles, credentials, assets, supportsWsl, secr
           <option value="password">Password</option><option value="private_key">Private key</option><option value="keyboard_interactive">Keyboard interactive</option>
         </select>
         {credentials.length > 0 && <select className="ui-control h-7 w-full px-2" value={draft.credentialId ?? ''} onChange={(event) => set('credentialId', event.target.value || undefined)}><option value="">New credential below</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select>}
-        {draft.authMethod === 'private_key' ? <textarea className="ui-control min-h-20 w-full resize-y p-2 font-mono text-[9px]" placeholder="Paste OpenSSH or PEM private key" value={secret} onChange={(event) => onSecret(event.target.value)} /> : <input className="ui-control h-7 w-full px-2" type="password" placeholder={draft.credentialId ? 'Leave blank to keep saved credential' : 'Password'} value={secret} onChange={(event) => onSecret(event.target.value)} />}
+        {draft.authMethod === 'private_key' ? <textarea className="ui-control min-h-20 w-full resize-y p-2 font-mono text-[11px]" placeholder="Paste OpenSSH or PEM private key" value={secret} onChange={(event) => onSecret(event.target.value)} /> : <input className="ui-control h-7 w-full px-2" type="password" placeholder={draft.credentialId ? 'Leave blank to keep saved credential' : 'Password'} value={secret} onChange={(event) => onSecret(event.target.value)} />}
         {draft.authMethod === 'private_key' && <input className="ui-control h-7 w-full px-2" type="password" placeholder="Private-key passphrase (optional)" value={passphrase} onChange={(event) => onPassphrase(event.target.value)} />}
         <select className="ui-control h-7 w-full px-2" value={draft.jumpProfileId ?? ''} onChange={(event) => set('jumpProfileId', event.target.value || undefined)}><option value="">No jump host</option>{profiles.filter((item) => item.kind === 'ssh' && item.id !== draft.id && !item.jumpProfileId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <select className="ui-control h-7 w-full px-2" value={draft.assetRole ?? 'target'} onChange={(event) => set('assetRole', event.target.value as ShellProfile['assetRole'])}><option value="target">Target</option><option value="infrastructure">Infrastructure / jump only</option></select>
@@ -385,27 +385,27 @@ function ListenerEditor({ draft, interfaces, onChange, onCancel, onSave, busy }:
   onSave: () => void;
   busy: boolean;
 }) {
-  return <div className="space-y-2 rounded border border-surface bg-bg-secondary p-2">
+  return <div className="space-y-2 rounded border border-border-subtle bg-canvas p-2">
     <div className="flex items-center justify-between text-text-secondary"><span>New reverse listener</span><button onClick={onCancel}><Icon name="close" size={11} /></button></div>
     <input className="ui-control h-7 w-full px-2" placeholder="Name" value={draft.name ?? ''} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
     <select className="ui-control h-7 w-full px-2" value={draft.bindAddress ?? ''} onChange={(event) => onChange({ ...draft, bindAddress: event.target.value })}><option value="">Choose a concrete interface…</option>{interfaces.map((item) => <option key={`${item.name}-${item.address}`} value={item.address}>{item.name} · {item.address}</option>)}</select>
     <input className="ui-control h-7 w-full px-2" type="number" min={1} max={65535} value={draft.port ?? 4444} onChange={(event) => onChange({ ...draft, port: Number(event.target.value) })} />
     <select className="ui-control h-7 w-full px-2" value={draft.shellFlavor ?? 'raw'} onChange={(event) => onChange({ ...draft, shellFlavor: event.target.value as ReverseListenerProfile['shellFlavor'] })}><option value="raw">Unknown/raw</option><option value="posix">POSIX</option><option value="powershell">PowerShell</option><option value="cmd">cmd.exe</option></select>
-    <p className="text-[8px] leading-3 text-text-muted">Hexestra never changes the firewall or creates a public tunnel.</p>
+    <p className="text-[11px] leading-3 text-text-muted">Hexestra never changes the firewall or creates a public tunnel.</p>
     <button disabled={busy} className="h-7 w-full rounded border border-accent-purple/50 bg-accent-purple/10 text-accent-purple disabled:opacity-50" onClick={onSave}>{busy ? 'Saving…' : 'Save listener'}</button>
   </div>;
 }
 
 function ShellSection({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
-  return <section><div className="mb-1 flex items-center gap-2 px-1 text-[9px] font-semibold uppercase tracking-wider text-text-muted"><span>{title}</span><span className="rounded bg-surface px-1 font-mono text-[8px]">{count}</span></div><div>{children}</div></section>;
+  return <section><div className="mb-1 flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted"><span>{title}</span><span className="rounded bg-raised px-1 font-mono text-[11px]">{count}</span></div><div>{children}</div></section>;
 }
 
 function SectionEmpty({ text }: { text: string }) {
-  return <div className="px-2 py-2 text-[9px] italic text-text-muted">{text}</div>;
+  return <div className="px-2 py-2 text-[11px] italic text-text-muted">{text}</div>;
 }
 
 function EmptyShells({ message }: { message: string }) {
-  return <div className="flex h-full flex-col items-center justify-center gap-2 p-5 text-center text-[10px] text-text-muted"><Icon name="terminal" size={24} />{message}</div>;
+  return <div className="flex h-full flex-col items-center justify-center gap-2 p-5 text-center text-[11px] text-text-muted"><Icon name="terminal" size={24} />{message}</div>;
 }
 
 function errorMessage(error: unknown) {

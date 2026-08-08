@@ -37,7 +37,7 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
     >
       <div className="flex shrink-0 items-center justify-between border-b border-accent-teal/10 px-3 py-2 select-none">
         <div className="min-w-0">
-          <div className="font-mono text-[8px] uppercase tracking-[0.18em] text-accent-teal/70">Selected asset</div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent-teal/70">Selected asset</div>
           <div className="truncate font-mono text-xs font-semibold text-text-primary">{node.label}</div>
         </div>
         <div className="ml-3 flex shrink-0 items-center gap-2">
@@ -64,7 +64,7 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
         <DetailRow label="Vulnerabilities" value={String(node.vulnCount)} danger={node.vulnCount > 0} />
 
         {target && (
-          <div className="border-t border-surface/70 pt-2 select-none">
+          <div className="border-t border-border-subtle/70 pt-2 select-none">
             <div className="mb-1.5 flex items-center justify-between font-medium text-text-muted">
               <span>Open Ports &amp; Services</span>
               <span className="font-mono">{openPorts.length}</span>
@@ -72,10 +72,10 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
             {openPorts.length > 0 ? (
               <div className="space-y-1.5">
                 {openPorts.map((port) => (
-                  <div key={port.id} className="ui-card p-2 transition-colors hover:border-accent-teal/20 hover:bg-bg-primary/60">
+                  <div key={port.id} className="ui-card p-2 transition-colors hover:border-accent-teal/20 hover:bg-panel/60">
                     <div className="flex items-center justify-between">
                       <span className="font-mono font-semibold text-accent-teal">{port.endpoint}</span>
-                      <span className="font-mono text-[9px] uppercase tracking-wider text-accent-green">{port.state}</span>
+                      <span className="font-mono text-[11px] uppercase tracking-wider text-accent-green">{port.state}</span>
                     </div>
                     <div className="mt-1 grid grid-cols-[48px_1fr] gap-x-2 leading-relaxed">
                       <span className="text-text-muted">Service</span>
@@ -91,13 +91,13 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
                 ))}
               </div>
             ) : (
-              <div className="rounded-md border border-dashed border-surface px-2 py-3 text-center text-text-muted">No open ports observed</div>
+              <div className="rounded-md border border-dashed border-border-subtle px-2 py-3 text-center text-text-muted">No open ports observed</div>
             )}
           </div>
         )}
 
         {(target?.aiSummary || asset?.aiSummary) && (
-          <div className="rounded border border-surface bg-bg-primary/40 p-2 leading-relaxed text-text-secondary">
+          <div className="rounded border border-border-subtle bg-panel/40 p-2 leading-relaxed text-text-secondary">
             <div className="mb-1 font-medium text-text-muted">AI Summary</div>
             {target?.aiSummary ?? asset?.aiSummary}
           </div>

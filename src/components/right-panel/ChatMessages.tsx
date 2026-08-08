@@ -70,7 +70,7 @@ export function ChatMessages() {
             {message.role === 'user' && message.status === 'complete' && (
               <button
                 aria-label="Edit message and create branch"
-                className="rounded p-0.5 text-text-muted opacity-0 transition hover:bg-surface hover:text-accent-blue group-hover:opacity-100 focus:opacity-100"
+                className="rounded p-0.5 text-text-muted opacity-0 transition hover:bg-raised hover:text-accent-blue group-hover:opacity-100 focus:opacity-100"
                 disabled={isProcessing}
                 onClick={() => {
                   setEditingMessageId(message.id);
@@ -89,8 +89,8 @@ export function ChatMessages() {
               message.role === 'user'
                 ? 'bg-accent-blue/20 text-text-primary'
                 : message.role === 'system'
-                  ? 'bg-surface/50 text-2xs italic text-text-muted'
-                  : 'bg-surface text-text-primary',
+                  ? 'bg-raised/50 text-2xs italic text-text-muted'
+                  : 'bg-raised text-text-primary',
             )}
           >
             {message.content}
@@ -104,7 +104,7 @@ export function ChatMessages() {
               {message.attachments.map((attachment) => (
                 <span
                   key={attachment.id}
-                  className="flex max-w-full items-center gap-1 rounded border border-surface bg-bg-tertiary px-2 py-1 text-[9px] text-text-secondary"
+                  className="flex max-w-full items-center gap-1 rounded border border-border-subtle bg-panel px-2 py-1 text-[11px] text-text-secondary"
                   title={attachment.path}
                 >
                   <Icon name={attachment.kind === 'image' ? 'image' : 'file'} size={11} className="text-accent-teal" />
@@ -117,7 +117,7 @@ export function ChatMessages() {
           {message.contextRefs?.length ? (
             <div className="mt-1.5 flex max-w-full flex-wrap justify-end gap-1">
               {message.contextRefs.map((ref) => (
-                <span key={agentContextRefKey(ref)} className="flex max-w-full items-center gap-1 rounded border border-accent-blue/20 bg-accent-blue/8 px-2 py-1 text-[9px] text-text-secondary" title={messageContextTitle(ref)}>
+                <span key={agentContextRefKey(ref)} className="flex max-w-full items-center gap-1 rounded border border-accent-blue/20 bg-accent-blue/8 px-2 py-1 text-[11px] text-text-secondary" title={messageContextTitle(ref)}>
                   <Icon name={ref.kind === 'browser-page' ? 'browser' : ref.kind === 'shell-command' ? 'terminal' : 'activity'} size={11} className="text-accent-blue" />
                   <span className="max-w-40 truncate">{messageContextLabel(ref)}</span>
                 </span>
@@ -140,21 +140,21 @@ export function ChatMessages() {
             <span className="mt-0.5 text-2xs text-severity-critical">Failed to send</span>
           )}
           {editingMessageId === message.id && (
-            <div className="mt-2 w-full min-w-[280px] rounded-lg border border-accent-blue/25 bg-bg-tertiary p-2 shadow-xl">
+            <div className="mt-2 w-full min-w-[280px] rounded-lg border border-accent-blue/25 bg-panel p-2 shadow-xl">
               <textarea
                 aria-label="Edited message"
                 autoFocus
-                className="min-h-20 w-full resize-y rounded border border-surface bg-bg-primary px-2 py-1.5 text-xs text-text-primary outline-none focus:border-accent-blue/50"
+                className="min-h-20 w-full resize-y rounded border border-border-subtle bg-panel px-2 py-1.5 text-xs text-text-primary outline-none focus:border-accent-blue/50"
                 onChange={(event) => setDraft(event.target.value)}
                 value={draft}
               />
-              <p className="mt-1 text-[9px] leading-relaxed text-text-muted">
+              <p className="mt-1 text-[11px] leading-relaxed text-text-muted">
                 Hexestra will create a new Claude branch from this turn. Project assets,
                 Scope, tasks, Findings, Evidence, Reports, and files remain shared.
               </p>
               <div className="mt-2 flex justify-end gap-1.5">
                 <button
-                  className="rounded px-2 py-1 text-2xs text-text-muted hover:bg-surface"
+                  className="rounded px-2 py-1 text-2xs text-text-muted hover:bg-raised"
                   onClick={() => setEditingMessageId(null)}
                 >
                   Cancel

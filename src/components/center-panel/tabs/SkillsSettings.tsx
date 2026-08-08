@@ -179,15 +179,15 @@ export function SkillsSettings() {
     : false, [content, document, name, scope]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg-primary">
-      <header className="flex items-center justify-between border-b border-surface px-6 py-4">
+    <div className="flex h-full min-h-0 flex-col bg-panel">
+      <header className="flex items-center justify-between border-b border-border-subtle px-6 py-4">
         <div>
           <div className="flex items-center gap-2">
             <Icon name="sparkles" size={17} className="text-accent-blue" />
             <h1 className="text-sm font-semibold text-text-primary">{t('skills.title')}</h1>
-            {result && <span className="rounded bg-bg-tertiary px-1.5 py-0.5 font-mono text-[9px] text-text-muted">{result.runtimeLabel}</span>}
+            {result && <span className="rounded bg-panel px-1.5 py-0.5 font-mono text-[11px] text-text-muted">{result.runtimeLabel}</span>}
           </div>
-          <p className="mt-1 text-[10px] text-text-muted">{t('skills.description')}</p>
+          <p className="mt-1 text-[11px] text-text-muted">{t('skills.description')}</p>
         </div>
         <button onClick={create} className="rounded border border-accent-blue/30 bg-accent-blue/10 px-3 py-1.5 text-xs text-accent-blue hover:bg-accent-blue/20">
           New Skill
@@ -195,7 +195,7 @@ export function SkillsSettings() {
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-[250px_1fr]">
-        <aside className="min-h-0 overflow-y-auto border-r border-surface bg-bg-secondary/30 p-3">
+        <aside className="min-h-0 overflow-y-auto border-r border-border-subtle bg-canvas/30 p-3">
           {!result && <p className="p-3 text-xs text-text-muted">{t('skills.loading')}</p>}
           {result?.items.length === 0 && <EmptyList text="No personal or project Skills found." />}
           <div className="space-y-1">
@@ -205,7 +205,7 @@ export function SkillsSettings() {
                 onClick={() => void select(item)}
                 className={cn(
                   'w-full rounded border px-3 py-2 text-left transition-colors',
-                  document?.id === item.id ? 'border-accent-blue/35 bg-accent-blue/10' : 'border-transparent hover:border-surface hover:bg-bg-tertiary/60',
+                  document?.id === item.id ? 'border-accent-blue/35 bg-accent-blue/10' : 'border-transparent hover:border-border-subtle hover:bg-panel/60',
                 )}
               >
                 <div className="flex items-center gap-2">
@@ -213,7 +213,7 @@ export function SkillsSettings() {
                   <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary">{item.name}</span>
                   <ScopeBadge scope={item.scope} />
                 </div>
-                <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-text-muted">{item.description}</p>
+                <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-text-muted">{item.description}</p>
               </button>
             ))}
           </div>
@@ -226,18 +226,18 @@ export function SkillsSettings() {
               <div>
                 <Icon name="sparkles" size={26} className="mx-auto mb-3 text-text-muted" />
                 <p className="text-xs text-text-secondary">{t('skills.select')}</p>
-                {!result?.projectAvailable && <p className="mt-1 text-[10px] text-text-muted">{t('skills.projectRequired')}</p>}
+                {!result?.projectAvailable && <p className="mt-1 text-[11px] text-text-muted">{t('skills.projectRequired')}</p>}
               </div>
             </div>
           ) : (
             <div className="mx-auto max-w-3xl">
               <div className="mb-4 grid grid-cols-[1fr_150px] gap-3">
                 <label>
-                  <span className="mb-1 block text-[10px] font-medium text-text-secondary">Skill name</span>
+                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">Skill name</span>
                   <input aria-label="Skill name" value={name} onChange={(event) => setName(event.target.value)} className="settings-input font-mono" />
                 </label>
                 <label>
-                  <span className="mb-1 block text-[10px] font-medium text-text-secondary">Scope</span>
+                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">Scope</span>
                   <select aria-label="Skill scope" value={scope} disabled={document.id !== 'new'} onChange={(event) => setScope(event.target.value as ClaudeSkillScope)} className="settings-input">
                     <option value="personal">Personal</option>
                     <option value="project" disabled={!result?.projectAvailable}>Project</option>
@@ -245,23 +245,23 @@ export function SkillsSettings() {
                 </label>
               </div>
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[10px] font-medium text-text-secondary">SKILL.md</span>
-                <span className="font-mono text-[9px] text-text-muted">{content.length.toLocaleString()} chars</span>
+                <span className="text-[11px] font-medium text-text-secondary">SKILL.md</span>
+                <span className="font-mono text-[11px] text-text-muted">{content.length.toLocaleString()} chars</span>
               </div>
               <textarea
                 aria-label="Skill markdown"
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
                 spellCheck={false}
-                className="h-[420px] w-full resize-y rounded border border-surface bg-bg-tertiary/50 p-3 font-mono text-[11px] leading-5 text-text-secondary outline-none focus:border-accent-blue/50"
+                className="h-[420px] w-full resize-y rounded border border-border-subtle bg-panel/50 p-3 font-mono text-[11px] leading-5 text-text-secondary outline-none focus:border-accent-blue/50"
               />
-              {document.sourcePath && <p className="mt-1 truncate font-mono text-[9px] text-text-muted">{document.sourcePath}</p>}
+              {document.sourcePath && <p className="mt-1 truncate font-mono text-[11px] text-text-muted">{document.sourcePath}</p>}
               {error && <DismissibleNotice tone="error" className="mt-3" onDismiss={() => setError(null)}>{error}</DismissibleNotice>}
-              <div className="mt-4 flex items-center justify-between border-t border-surface pt-4">
+              <div className="mt-4 flex items-center justify-between border-t border-border-subtle pt-4">
                 <div className="flex gap-2">
                   {document.id !== 'new' && (
                     <>
-                      <button onClick={() => void toggle()} disabled={Boolean(busy)} className="rounded border border-surface px-3 py-1.5 text-xs text-text-secondary hover:border-accent-blue/30 disabled:opacity-40">
+                      <button onClick={() => void toggle()} disabled={Boolean(busy)} className="rounded border border-border-subtle px-3 py-1.5 text-xs text-text-secondary hover:border-accent-blue/30 disabled:opacity-40">
                         {document.enabled ? 'Disable' : 'Enable'}
                       </button>
                       <button onClick={() => void remove()} disabled={Boolean(busy)} className="rounded px-3 py-1.5 text-xs text-severity-critical hover:bg-severity-critical/10 disabled:opacity-40">Delete</button>
@@ -281,13 +281,13 @@ export function SkillsSettings() {
 }
 
 function ScopeBadge({ scope }: { scope: ClaudeSkillScope }) {
-  return <span className="rounded border border-surface px-1 py-0.5 text-[8px] uppercase tracking-wide text-text-muted">{scope}</span>;
+  return <span className="rounded border border-border-subtle px-1 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">{scope}</span>;
 }
 
 function EmptyList({ text }: { text: string }) {
-  return <p className="rounded border border-dashed border-surface p-3 text-center text-[10px] leading-4 text-text-muted">{text}</p>;
+  return <p className="rounded border border-dashed border-border-subtle p-3 text-center text-[11px] leading-4 text-text-muted">{text}</p>;
 }
 
 function SourceError({ source, detail }: { source: string; detail: string }) {
-  return <div className="mt-2 rounded border border-severity-critical/25 bg-severity-critical/5 p-2 text-[9px] text-severity-critical"><strong>{source}:</strong> {detail}</div>;
+  return <div className="mt-2 rounded border border-severity-critical/25 bg-severity-critical/5 p-2 text-[11px] text-severity-critical"><strong>{source}:</strong> {detail}</div>;
 }

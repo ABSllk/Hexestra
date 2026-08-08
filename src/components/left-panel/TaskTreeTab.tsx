@@ -37,12 +37,12 @@ export function TaskTreeTab() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b border-surface bg-bg-tertiary/50 px-3 py-2">
+      <div className="shrink-0 border-b border-border-subtle bg-panel/50 px-3 py-2">
         <div className="mb-1 flex items-center justify-between">
           <span className="text-xs font-medium text-text-secondary">MITRE ATT&amp;CK</span>
           <span className="text-2xs text-text-muted">{progress}%</span>
         </div>
-        <div className="h-1 overflow-hidden rounded-full bg-surface">
+        <div className="h-1 overflow-hidden rounded-full bg-raised">
           <div
             className="h-full rounded-full bg-accent-blue transition-all duration-300"
             style={{ width: `${progress}%` }}
@@ -57,7 +57,7 @@ export function TaskTreeTab() {
           const stageTasks = tasksByStage[stage] ?? [];
 
           return (
-            <div key={stage} className="mx-1.5 my-0.5 overflow-hidden rounded-md border border-transparent hover:border-surface/35">
+            <div key={stage} className="mx-1.5 my-0.5 overflow-hidden rounded-md border border-transparent hover:border-border-subtle/35">
               <button
                 onClick={() => {
                   toggleStage(stage);
@@ -65,7 +65,7 @@ export function TaskTreeTab() {
                     selectTask(null);
                   }
                 }}
-                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-surface/25"
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-raised/25"
               >
                 <Icon
                   name="chevron-right"
@@ -88,7 +88,7 @@ export function TaskTreeTab() {
               </button>
 
               {isExpanded && (
-                <div className="rounded-b-md bg-bg-tertiary/30 pb-1">
+                <div className="rounded-b-md bg-panel/30 pb-1">
                   {stageTasks.length === 0 ? (
                     <p className="px-5 py-2 text-2xs italic text-text-muted">No tasks yet</p>
                   ) : (
@@ -150,7 +150,7 @@ function TaskBranch({
         )}
         <div
           className={cn(
-            'group mr-1 flex min-h-8 items-center gap-1.5 rounded-r-md border-l-2 border-l-transparent pr-2 text-2xs hover:bg-surface/30',
+            'group mr-1 flex min-h-8 items-center gap-1.5 rounded-r-md border-l-2 border-l-transparent pr-2 text-2xs hover:bg-raised/30',
             depth === 0 ? 'pl-4' : 'pl-3',
             selectedTaskId === task.id && 'border-l-accent-blue bg-accent-blue/10',
           )}
@@ -185,7 +185,7 @@ function TaskBranch({
             </span>
           </button>
           {hasChildren && (
-            <span className="font-mono text-[9px] text-text-muted">
+            <span className="font-mono text-[11px] text-text-muted">
               {descendants.filter((child) => child.status === 'completed').length}/{descendants.length}
             </span>
           )}
@@ -219,7 +219,7 @@ function TaskDetail({ task, onStatusChange }: {
 }) {
   if (!task) return null;
   return (
-    <div className="max-h-48 shrink-0 overflow-y-auto border-t border-surface bg-bg-tertiary/75 p-3">
+    <div className="max-h-48 shrink-0 overflow-y-auto border-t border-border-subtle bg-panel/75 p-3">
       <div className="mb-1 text-xs font-semibold text-text-primary">{task.title}</div>
       <p className="mb-3 text-2xs leading-relaxed text-text-muted">{task.description}</p>
       <div className="flex flex-wrap gap-1">
@@ -231,7 +231,7 @@ function TaskDetail({ task, onStatusChange }: {
               'rounded border px-2 py-1 text-2xs transition-colors',
               task.status === action.status
                 ? 'border-accent-blue bg-accent-blue/15 text-accent-blue'
-                : 'border-surface text-text-muted hover:border-surface-active hover:text-text-primary',
+                : 'border-border-subtle text-text-muted hover:border-border-strong hover:text-text-primary',
             )}
           >
             {action.label}
