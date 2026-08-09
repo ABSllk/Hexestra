@@ -62,7 +62,7 @@ describe('AppSettingsService', () => {
     mocks.windows = [{ isDestroyed: () => false, setBackgroundColor, webContents: { id: 1, send: vi.fn() } }];
     mocks.nativeTheme.shouldUseDarkColors = false;
     new AppSettingsService().applyNativeTheme();
-    expect(setBackgroundColor).toHaveBeenCalledWith('#f8f7f4');
+    expect(setBackgroundColor).toHaveBeenCalledWith('#e1e6ed');
   });
 
   it('rejects an invalid theme patch before persistence', () => {

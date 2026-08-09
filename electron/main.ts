@@ -64,7 +64,7 @@ function createWindow() {
     minHeight: 600,
     title: 'Hexestra — AI-Assisted Pentest IDE',
     icon: getAppIconPath(),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e2e' : '#f8f7f4',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e2e' : '#e1e6ed',
     frame: process.platform === 'darwin',
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
     webPreferences: {

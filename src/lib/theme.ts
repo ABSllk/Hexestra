@@ -2,6 +2,21 @@ import type { ITheme } from '@xterm/xterm';
 
 export type ResolvedTheme = 'dark' | 'light';
 
+export const LIGHT_THEME_COLOR_HEX = {
+  canvas: '#E1E6ED',
+  panel: '#EAEDF2',
+  raised: '#E5E9EF',
+  borderSubtle: '#C4CDD8',
+  borderStrong: '#A6B2C0',
+  surfaceActive: '#C5CFDB',
+  textPrimary: '#1F2A3A',
+  textSecondary: '#46566A',
+  textMuted: '#566476',
+  accentBlue: '#315F9F',
+  accentRed: '#A83A50',
+  accentTeal: '#176E67',
+} as const;
+
 const DARK_TERMINAL_THEME: ITheme = {
   background: '#0B0F17', foreground: '#F1F5F9', cursor: '#4F8CFF', selectionBackground: '#273244',
   black: '#273244', red: '#FB7185', green: '#6EE7B7', yellow: '#FDE68A', blue: '#4F8CFF',
@@ -11,11 +26,13 @@ const DARK_TERMINAL_THEME: ITheme = {
 };
 
 const LIGHT_TERMINAL_THEME: ITheme = {
-  background: '#F4F6F8', foreground: '#172033', cursor: '#2563EB', selectionBackground: '#D8E0EA',
-  black: '#526178', red: '#BE123C', green: '#047857', yellow: '#A16207', blue: '#2563EB',
-  magenta: '#6D28D9', cyan: '#0F766E', white: '#FFFFFF', brightBlack: '#6B7788', brightRed: '#9F1239',
-  brightGreen: '#065F46', brightYellow: '#854D0E', brightBlue: '#1D4ED8', brightMagenta: '#5B21B6',
-  brightCyan: '#115E59', brightWhite: '#172033',
+  background: LIGHT_THEME_COLOR_HEX.canvas, foreground: LIGHT_THEME_COLOR_HEX.textPrimary,
+  cursor: LIGHT_THEME_COLOR_HEX.accentBlue, selectionBackground: LIGHT_THEME_COLOR_HEX.surfaceActive,
+  black: LIGHT_THEME_COLOR_HEX.textSecondary, red: LIGHT_THEME_COLOR_HEX.accentRed, green: '#176B52', yellow: '#7A5B00',
+  blue: LIGHT_THEME_COLOR_HEX.accentBlue, magenta: '#66519A', cyan: LIGHT_THEME_COLOR_HEX.accentTeal,
+  white: LIGHT_THEME_COLOR_HEX.panel, brightBlack: LIGHT_THEME_COLOR_HEX.textMuted, brightRed: '#8F3044',
+  brightGreen: '#125B46', brightYellow: '#684E00', brightBlue: '#284F86', brightMagenta: '#564381',
+  brightCyan: '#125D57', brightWhite: LIGHT_THEME_COLOR_HEX.textPrimary,
 };
 
 export function getTerminalTheme(theme: ResolvedTheme): ITheme {
@@ -56,12 +73,14 @@ const DARK_NETMAP_PALETTE: NetMapPalette = {
 };
 
 const LIGHT_NETMAP_PALETTE: NetMapPalette = {
-  shell: '#F4F6F8', chrome: '#FFFFFF', edgeBase: '#A9B7C8', edgeLink: '#0F766E', edgeResolve: '#2563EB', edgeAttack: '#BE123C',
-  edgeLabelFill: '#FFFFFF', edgeLabelStroke: '#8494A8', nodeFill: '#F8FAFC', nodeFocus: '#0F766E',
-  nodeLabel: '#344155', nodeSecondaryLabel: '#6B7788', badgeFill: '#FCE7F3', badgeText: '#BE123C',
+  shell: LIGHT_THEME_COLOR_HEX.canvas, chrome: LIGHT_THEME_COLOR_HEX.panel, edgeBase: '#8E9CAC',
+  edgeLink: LIGHT_THEME_COLOR_HEX.accentTeal, edgeResolve: LIGHT_THEME_COLOR_HEX.accentBlue,
+  edgeAttack: LIGHT_THEME_COLOR_HEX.accentRed, edgeLabelFill: LIGHT_THEME_COLOR_HEX.panel,
+  edgeLabelStroke: '#75869A', nodeFill: LIGHT_THEME_COLOR_HEX.raised, nodeFocus: LIGHT_THEME_COLOR_HEX.accentTeal,
+  nodeLabel: '#324053', nodeSecondaryLabel: LIGHT_THEME_COLOR_HEX.textMuted, badgeFill: '#E7D7DE', badgeText: LIGHT_THEME_COLOR_HEX.accentRed,
   nodeColors: {
-    untested: '#6B7788', in_progress: '#2563EB', scanned: '#A16207', vulnerable: '#C2410C',
-    compromised: '#047857', out_of_scope: '#A9B7C8',
+    untested: LIGHT_THEME_COLOR_HEX.textMuted, in_progress: LIGHT_THEME_COLOR_HEX.accentBlue, scanned: '#7A5B00', vulnerable: '#9A4521',
+    compromised: '#176B52', out_of_scope: '#8E9CAC',
   },
 };
 

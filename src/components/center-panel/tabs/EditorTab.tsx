@@ -5,7 +5,7 @@ import { Icon } from '@/components/shared';
 import { MarkdownContent } from '@/components/right-panel/AgentTimelineMessage';
 import { detectEditorLanguage, isMarkdownPath } from '@/lib/editorLanguage';
 import { APP_CODE_FONT_SIZE_PX, getMonoFontFamily } from '@/lib/typography';
-import { MONACO_THEME_NAMES } from '@/lib/theme';
+import { LIGHT_THEME_COLOR_HEX, MONACO_THEME_NAMES } from '@/lib/theme';
 import { useAppPreferences } from '@/i18n';
 import { useSessionStore, useTabStore } from '@/stores';
 import type { SessionFileContent } from '@/types';
@@ -84,8 +84,14 @@ export function EditorTab({ tabId }: { tabId: string }) {
     });
     editorApi.editor.defineTheme('hexestra-light', {
       base: 'vs', inherit: true,
-      rules: [{ token: 'comment', foreground: '526178', fontStyle: 'italic' }],
-      colors: { 'editor.background': '#F4F6F8', 'editor.foreground': '#172033', 'editorCursor.foreground': '#2563EB', 'editor.selectionBackground': '#D8E0EA' },
+      rules: [{ token: 'comment', foreground: LIGHT_THEME_COLOR_HEX.textMuted.slice(1), fontStyle: 'italic' }],
+      colors: {
+        'editor.background': LIGHT_THEME_COLOR_HEX.canvas,
+        'editor.foreground': LIGHT_THEME_COLOR_HEX.textPrimary,
+        'editorCursor.foreground': LIGHT_THEME_COLOR_HEX.accentBlue,
+        'editor.selectionBackground': LIGHT_THEME_COLOR_HEX.surfaceActive,
+        'editor.lineHighlightBackground': LIGHT_THEME_COLOR_HEX.raised,
+      },
     });
     editorApi.editor.setTheme(MONACO_THEME_NAMES[resolvedTheme]);
     editor.focus();

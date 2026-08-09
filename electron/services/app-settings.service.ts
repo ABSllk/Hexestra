@@ -95,7 +95,7 @@ export class AppSettingsService {
   }
 
   private updateWindowBackgrounds() {
-    const background = nativeTheme.shouldUseDarkColors ? '#1e1e2e' : '#f8f7f4';
+    const background = nativeTheme.shouldUseDarkColors ? '#1e1e2e' : '#e1e6ed';
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed()) window.setBackgroundColor(background);
     }
