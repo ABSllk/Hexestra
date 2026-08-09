@@ -25,6 +25,7 @@ describe('ChatMessages conversation branches', () => {
       }],
       activeBranchId: 'main',
       isProcessing: false,
+      chatScrollTop: 0,
       branchFromMessage,
     });
   });
@@ -95,5 +96,47 @@ describe('ChatMessages conversation branches', () => {
     });
     act(flushFrames);
     expect(scroller.scrollTop).toBe(1_000);
+  });
+
+  it('stops following as soon as the operator wheels upward from the bottom', () => {
+    let nextFrameId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      const id = ++nextFrameId;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
+      frames.delete(id);
+    });
+    const flushFrames = () => {
+      const callbacks = [...frames.values()];
+      frames.clear();
+      callbacks.forEach((callback) => callback(0));
+    };
+
+    const { container } = render(<ChatMessages />);
+    act(flushFrames);
+    const scroller = container.firstElementChild as HTMLDivElement;
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 1_000 },
+    });
+    scroller.scrollTop = 900;
+    fireEvent.scroll(scroller);
+
+    fireEvent.wheel(scroller, { deltaY: -20 });
+    act(() => {
+      useChatStore.getState().appendMessage({
+        id: 'assistant-live',
+        role: 'assistant',
+        content: 'live update before the browser scroll event',
+        timestamp: '2026-07-31T00:00:01.000Z',
+        status: 'streaming',
+      });
+    });
+    act(flushFrames);
+
+    expect(scroller.scrollTop).toBe(900);
   });
 });

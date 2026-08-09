@@ -17,6 +17,7 @@ export function ChatMessages() {
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const followOutputRef = useRef(chatScrollTop <= 0);
+  const lastScrollTopRef = useRef(chatScrollTop);
   const restoredScrollRef = useRef(false);
 
   useEffect(() => {
@@ -31,14 +32,24 @@ export function ChatMessages() {
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [messages, chatScrollTop]);
+  }, [messages]);
 
   return (
     <div
       className="h-full overflow-y-auto"
+      onWheel={(event) => {
+        if (event.deltaY < 0) followOutputRef.current = false;
+      }}
       onScroll={(event) => {
         const scroller = event.currentTarget;
-        followOutputRef.current = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 64;
+        const isScrollingUp = scroller.scrollTop < lastScrollTopRef.current;
+        const isAtBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 1;
+        if (isScrollingUp || !isAtBottom) {
+          followOutputRef.current = false;
+        } else {
+          followOutputRef.current = true;
+        }
+        lastScrollTopRef.current = scroller.scrollTop;
         setChatScrollTop(scroller.scrollTop);
       }}
       ref={scrollRef}
