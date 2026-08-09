@@ -20,6 +20,7 @@ const READ_ONLY_HEXESTRA_TOOLS = new Set([
   'shell_sessions',
   'shell_read',
   'shell_audit_list',
+  'shell_profile_status',
 ]);
 
 const SUBAGENT_SPAWN_TOOLS = new Set(['Agent', 'Task']);

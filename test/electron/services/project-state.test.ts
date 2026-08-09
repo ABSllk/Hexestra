@@ -206,7 +206,7 @@ describe('project state', () => {
       },
     });
 
-    expect(migrated.version).toBe(6);
+    expect(migrated.version).toBe(7);
     expect(migrated.shells).toEqual({ profiles: [], listeners: [] });
     expect(migrated.workspace.tabs[0].data).toEqual({ managedShell: true, shellProfileId: 'profile-1' });
   });
@@ -238,7 +238,7 @@ describe('project state', () => {
       workspace: { tabs: [] },
     });
 
-    expect(migrated.version).toBe(6);
+    expect(migrated.version).toBe(7);
     expect(migrated.agent.branches[0].subagentRuns[0]).toMatchObject({
       id: 'run-1',
       status: 'interrupted',

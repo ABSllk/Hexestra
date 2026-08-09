@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import net from 'net';
+import http from 'http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -107,15 +108,422 @@ describe('ShellService local session and Agent lease', () => {
       command: 'Write-Output hello', timeoutMs: 5_000,
     }, 'default');
     const wrapped = String(pty.write.mock.calls.at(-1)?.[0]);
-    const nonce = wrapped.match(/__HEXESTRA_([a-f0-9]+)__/)?.[1];
+    expect(wrapped).not.toMatch(/hexestra/i);
+    const nonce = wrapped.match(/([a-f0-9]{24}):/)?.[1];
     expect(nonce).toBeTruthy();
-    pty.emitData(`hello\r\n__HEXESTRA_${nonce}__:0\r\n`);
+    pty.emitData(`hello\r\n${nonce}:0\r\n`);
 
     const result = await resultPromise;
     expect(result).toMatchObject({ outcome: 'completed', exitCode: 0, command: 'Write-Output hello' });
     expect(result.output).toContain('hello');
-    expect(result.output).not.toContain('__HEXESTRA_');
+    expect(result.output).not.toContain(nonce);
     expect(service.listAudits('project-1')).toMatchObject([{ id: result.id, outcome: 'completed' }]);
+  });
+
+  it('returns an actionable WebShell profile error instead of a generic rejection', () => {
+    expect(() => service.saveProfile('project-1', {
+      name: 'Invalid WebShell',
+      kind: 'webshell',
+      assetRole: 'infrastructure',
+      shellFlavor: 'posix',
+      webshell: {
+        url: 'https://example.test/run?cmd={command}',
+        method: 'GET',
+        headers: [],
+        bodyKind: 'none',
+        responseExtract: 'body',
+        responseEncoding: 'auto',
+        allowInvalidTls: false,
+      },
+    })).toThrow('exactly one supported placeholder ({{command}} or {{command_base64}})');
+  });
+
+  it('runs a WebShell fixture through the visible terminal and preserves cwd for Agent commands', async () => {
+    mocks.target = { id: 'asset-1', status: 'active' };
+    const server = http.createServer((request, response) => {
+      const target = new URL(request.url ?? '/', 'http://127.0.0.1');
+      const command = target.searchParams.get('cmd') ?? '';
+      const nonce = command.match(/([a-f0-9]{32}):0/)?.[1];
+      const begin = nonce ? `${nonce}:0` : undefined;
+      const end = nonce ? `${nonce}:1` : undefined;
+      if (!begin || !end) {
+        response.writeHead(400);
+        response.end('missing marker');
+        return;
+      }
+      const output = nonce && command.includes(`${nonce}:2`)
+        ? `${nonce}:2`
+        : command.includes('printf lines') ? 'bin\nboot\ndev' : command.includes('echo hi') ? 'hi' : 'ready';
+      const cwd = command.includes('cd /tmp') ? '/tmp' : '/';
+      response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end(`${begin}\n${output}\n${end}:0:${cwd}\n`);
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Fixture did not bind');
+    const profile = service.saveProfile('project-1', {
+      name: 'Fixture WebShell', kind: 'webshell', assetRole: 'target', assetId: 'asset-1', shellFlavor: 'posix',
+      webshell: {
+        url: `http://127.0.0.1:${address.port}/run?cmd={{command}}`, method: 'GET', headers: [], bodyKind: 'none',
+        responseExtract: 'body', responseEncoding: 'utf-8', allowInvalidTls: false,
+      },
+    });
+    const connected = await service.connect('project-1', profile.id, 1, 'terminal-webshell');
+    expect(connected).toMatchObject({
+      kind: 'webshell', state: 'ready', shellFlavor: 'posix', webshellCommandMode: 'os',
+      capabilities: { resize: false, exitCode: true },
+    });
+
+    service.write('project-1', connected.id, 'cd /tmp\r');
+    await waitFor(() => service.readTranscript('project-1', connected.id).content.includes('/tmp$'));
+    expect(service.readTranscript('project-1', connected.id).content).toContain('/tmp$');
+
+    service.write('project-1', connected.id, 'printf lines\r');
+    await waitFor(() => service.readTranscript('project-1', connected.id).content.includes('bin\r\nboot\r\ndev\r\n'));
+    expect(service.readTranscript('project-1', connected.id).content).toContain('bin\r\nboot\r\ndev\r\n');
+
+    const result = await service.executeCommand({ projectId: 'project-1', sessionId: connected.id, command: 'echo hi' }, 'default');
+    expect(result).toMatchObject({ outcome: 'completed', output: 'hi', exitCode: 0 });
+    expect(service.listAudits('project-1')).toMatchObject([{ id: result.id, outcome: 'completed' }]);
+    expect(service.readAudit('project-1', result.id)).toMatchObject({ output: 'hi', exitCode: 0 });
+    service.disconnect('project-1', connected.id);
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('connects through a language eval form without interpolating the shell wrapper into source code', async () => {
+    const decodedWrappers: string[] = [];
+    const server = http.createServer((request, response) => {
+      let body = '';
+      request.setEncoding('utf8');
+      request.on('data', (chunk) => { body += chunk; });
+      request.on('end', () => {
+        const source = new URLSearchParams(body).get('x') ?? '';
+        const encoded = source.match(/base64_decode\('([^']+)'\)/)?.[1] ?? '';
+        const command = Buffer.from(encoded, 'base64').toString('utf8');
+        decodedWrappers.push(command);
+        const nonce = command.match(/([a-f0-9]{32}):0/)?.[1];
+        const begin = nonce ? `${nonce}:0` : undefined;
+        const end = nonce ? `${nonce}:1` : undefined;
+        const probe = nonce && command.includes(`${nonce}:2`) ? `${nonce}:2` : undefined;
+        if (!begin || !end || !probe) {
+          response.writeHead(400);
+          response.end('invalid decoded wrapper');
+          return;
+        }
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end(`${begin}\n${probe}\n${end}:0:/\n`);
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Fixture did not bind');
+      const profile = service.saveProfile('project-1', {
+        name: 'Eval form fixture', kind: 'webshell', assetRole: 'infrastructure', shellFlavor: 'posix',
+        webshell: {
+          url: `http://127.0.0.1:${address.port}/run`, method: 'POST', headers: [], bodyKind: 'form',
+          bodyTemplate: "x=ob_end_clean();$c=base64_decode('{{command_base64}}');passthru($c);",
+          responseExtract: 'body', responseEncoding: 'utf-8', allowInvalidTls: false,
+        },
+      });
+      const connected = await service.connect('project-1', profile.id, 1, 'terminal-base64-webshell');
+
+      expect(connected).toMatchObject({ kind: 'webshell', state: 'ready', shellFlavor: 'posix' });
+      // The probe wrapper plus the system-info collection attempt; the fixture
+      // 400s the info command, so only the probe wrapper is verified here.
+      expect(decodedWrappers).toHaveLength(2);
+      expect(decodedWrappers[0]).toMatch(/printf '[a-f0-9]{32}:2\\n'/);
+      expect(decodedWrappers[0]).not.toMatch(/hexestra/i);
+      expect(decodedWrappers[0]).toMatch(/r_[a-f0-9]{32}=\$\?/);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('records an Agent WebShell timeout as a failed health event', async () => {
+    mocks.target = { id: 'asset-1', status: 'active' };
+    const server = http.createServer((request, response) => {
+      const target = new URL(request.url ?? '/', 'http://127.0.0.1');
+      const command = target.searchParams.get('cmd') ?? '';
+      const nonce = command.match(/([a-f0-9]{32}):0/)?.[1];
+      const begin = nonce ? `${nonce}:0` : undefined;
+      const end = nonce ? `${nonce}:1` : undefined;
+      if (!begin || !end) {
+        response.writeHead(400);
+        response.end('missing marker');
+        return;
+      }
+      if (command.includes('delayed-command')) {
+        setTimeout(() => {
+          if (!response.destroyed) {
+            response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+            response.end(`${begin}\nlate\n${end}:0:/\n`);
+          }
+        }, 1_200);
+        return;
+      }
+      const output = nonce && command.includes(`${nonce}:2`) ? `${nonce}:2` : 'ready';
+      response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end(`${begin}\n${output}\n${end}:0:/\n`);
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Fixture did not bind');
+      const profile = service.saveProfile('project-1', {
+        name: 'Timeout fixture', kind: 'webshell', assetRole: 'target', assetId: 'asset-1', shellFlavor: 'posix',
+        webshell: {
+          url: `http://127.0.0.1:${address.port}/run?cmd={{command}}`, method: 'GET', headers: [], bodyKind: 'none',
+          commandMode: 'os', responseExtract: 'body', responseEncoding: 'utf-8', allowInvalidTls: false,
+        },
+      });
+      const connected = await service.connect('project-1', profile.id, 1, 'terminal-timeout');
+      const result = await service.executeCommand({
+        projectId: 'project-1', sessionId: connected.id, command: 'delayed-command', timeoutMs: 1_000,
+      }, 'default');
+
+      expect(result.outcome).toBe('timeout');
+      expect(service.listProfileHealth('project-1').find((item) => item.profileId === profile.id)).toMatchObject({
+        status: 'degraded',
+        consecutiveFailures: 1,
+        lastError: 'WebShell request timed out',
+      });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('auto-detects a PHP eval endpoint independently from the target OS shell flavor', async () => {
+    let requestCount = 0;
+    const decodedWrappers: string[] = [];
+    const server = http.createServer((request, response) => {
+      let body = '';
+      request.setEncoding('utf8');
+      request.on('data', (chunk) => { body += chunk; });
+      request.on('end', () => {
+        requestCount += 1;
+        const source = new URLSearchParams(body).get('x') ?? '';
+        const encoded = source.match(/base64_decode\('([^']+)'\)/)?.[1];
+        if (!encoded) {
+          response.writeHead(400);
+          response.end('expected PHP source');
+          return;
+        }
+        const command = Buffer.from(encoded, 'base64').toString('utf8');
+        decodedWrappers.push(command);
+        const nonce = command.match(/([a-f0-9]{32}):0/)?.[1];
+        const begin = nonce ? `${nonce}:0` : undefined;
+        const end = nonce ? `${nonce}:1` : undefined;
+        const probe = nonce && command.includes(`${nonce}:2`) ? `${nonce}:2` : undefined;
+        if (!begin || !end || !probe) {
+          response.writeHead(400);
+          response.end('invalid wrapper');
+          return;
+        }
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end(`${begin}\n${probe}\n${end}:0:/\n`);
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Fixture did not bind');
+      const profile = service.saveProfile('project-1', {
+        name: 'Auto PHP eval fixture', kind: 'webshell', assetRole: 'infrastructure', shellFlavor: 'posix',
+        webshell: {
+          url: `http://127.0.0.1:${address.port}/run`, method: 'POST', headers: [], bodyKind: 'form',
+          bodyTemplate: 'x={{command}}', commandMode: 'auto', responseExtract: 'body', responseEncoding: 'utf-8', allowInvalidTls: false,
+        },
+      });
+      const connected = await service.connect('project-1', profile.id, 1, 'terminal-auto-php-webshell');
+
+      expect(connected).toMatchObject({ kind: 'webshell', state: 'ready', shellFlavor: 'posix', webshellCommandMode: 'php_eval' });
+      // OS probe (1) + php_eval probe (1) + system-info collection attempt (1).
+      // The fixture 400s the info command, so collection fails without failing the connection.
+      expect(requestCount).toBe(3);
+      expect(decodedWrappers).toHaveLength(2);
+      expect(decodedWrappers[0]).toMatch(/printf '[a-f0-9]{32}:2\\n'/);
+      expect(decodedWrappers[0]).not.toMatch(/hexestra/i);
+      service.disconnect('project-1', connected.id);
+
+      const reconnected = await service.connect('project-1', profile.id, 1, 'terminal-auto-php-webshell-2');
+      expect(reconnected).toMatchObject({ webshellCommandMode: 'php_eval', shellFlavor: 'posix' });
+      expect(requestCount).toBe(5);
+      expect(decodedWrappers).toHaveLength(4);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('collects and persists system information once after the first successful connection', async () => {
+    let infoRequests = 0;
+    const server = http.createServer((request, response) => {
+      const target = new URL(request.url ?? '/', 'http://127.0.0.1');
+      const command = target.searchParams.get('cmd') ?? '';
+      const nonce = command.match(/([a-f0-9]{32}):0/)?.[1];
+      const begin = nonce ? `${nonce}:0` : undefined;
+      const end = nonce ? `${nonce}:1` : undefined;
+      if (!begin || !end) {
+        response.writeHead(400);
+        response.end('missing marker');
+        return;
+      }
+      if (nonce && command.includes(`${nonce}:2`)) {
+        const probe = `${nonce}:2`;
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end(`${begin}\n${probe}\n${end}:0:/\n`);
+        return;
+      }
+      const infoNonce = command.match(/([a-f0-9]{32}):3:0:/)?.[1];
+      if (infoNonce) {
+        infoRequests += 1;
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end([
+          begin,
+          `${infoNonce}:3:0:Linux fixture 6.1 x86_64`,
+          `${infoNonce}:3:1:web01`,
+          `${infoNonce}:3:2:www-data`,
+          `${infoNonce}:3:3:/var/www`,
+          `${infoNonce}:3:4:8.2.21`,
+          `${end}:0:/var/www`,
+          '',
+        ].join('\n'));
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end(`${begin}\nready\n${end}:0:/\n`);
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Fixture did not bind');
+      const profile = service.saveProfile('project-1', {
+        name: 'Info fixture', kind: 'webshell', assetRole: 'infrastructure', shellFlavor: 'posix',
+        webshell: {
+          url: `http://127.0.0.1:${address.port}/run?cmd={{command}}`, method: 'GET', headers: [], bodyKind: 'none',
+          commandMode: 'os', responseExtract: 'body', responseEncoding: 'utf-8', allowInvalidTls: false,
+        },
+      });
+      const connected = await service.connect('project-1', profile.id, 1, 'terminal-info');
+      const health = service.listProfileHealth('project-1').find((item) => item.profileId === profile.id);
+      expect(health).toMatchObject({
+        status: 'healthy',
+        adapterId: 'generic',
+        runtime: 'auto',
+        shellFlavor: 'posix',
+        commandMode: 'os',
+      });
+      expect(health?.systemInfo).toEqual({
+        os: 'Linux fixture 6.1 x86_64',
+        hostname: 'web01',
+        user: 'www-data',
+        cwd: '/var/www',
+        runtimeVersion: '8.2.21',
+      });
+      service.disconnect('project-1', connected.id);
+
+      // A reconnection reuses the stored system information and collects no more.
+      const reconnected = await service.connect('project-1', profile.id, 1, 'terminal-info-2');
+      expect(infoRequests).toBe(1);
+
+      const verified = await service.verifyProfile('project-1', profile.id);
+      expect(verified).toMatchObject({ status: 'healthy', profileId: profile.id });
+      expect(service.listSessions('project-1').map((item) => item.id)).toEqual([reconnected.id]);
+      expect(infoRequests).toBe(2);
+
+      service.saveProfile('project-1', { ...profile, name: 'Updated info fixture' });
+      expect(service.listProfileHealth('project-1')).toEqual([{
+        profileId: profile.id,
+        status: 'unknown',
+        consecutiveFailures: 0,
+      }]);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('does not fail the connection when system information collection fails', async () => {
+    const server = http.createServer((request, response) => {
+      const target = new URL(request.url ?? '/', 'http://127.0.0.1');
+      const command = target.searchParams.get('cmd') ?? '';
+      const nonce = command.match(/([a-f0-9]{32}):0/)?.[1];
+      const begin = nonce ? `${nonce}:0` : undefined;
+      const end = nonce ? `${nonce}:1` : undefined;
+      if (!begin || !end) {
+        response.writeHead(400);
+        response.end('missing marker');
+        return;
+      }
+      if (nonce && command.includes(`${nonce}:2`)) {
+        const probe = `${nonce}:2`;
+        response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end(`${begin}\n${probe}\n${end}:0:/\n`);
+        return;
+      }
+      // Anything that is not a probe is an info collection: refuse it.
+      response.writeHead(503);
+      response.end('system information unavailable');
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Fixture did not bind');
+      const profile = service.saveProfile('project-1', {
+        name: 'No-info fixture', kind: 'webshell', assetRole: 'infrastructure', shellFlavor: 'posix',
+        webshell: {
+          url: `http://127.0.0.1:${address.port}/run?cmd={{command}}`, method: 'GET', headers: [], bodyKind: 'none',
+          commandMode: 'os', responseExtract: 'body', responseEncoding: 'utf-8', allowInvalidTls: false,
+        },
+      });
+      const connected = await service.connect('project-1', profile.id, 1, 'terminal-no-info');
+      expect(connected.state).toBe('ready');
+      const health = service.listProfileHealth('project-1').find((item) => item.profileId === profile.id);
+      expect(health?.status).toBe('healthy');
+      expect(health?.systemInfo).toBeUndefined();
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('returns failed verification health and removes the temporary failed session', async () => {
+    const port = await getFreePort();
+    const profile = service.saveProfile('project-1', {
+      name: 'Offline fixture', kind: 'webshell', assetRole: 'infrastructure', shellFlavor: 'posix',
+      webshell: {
+        url: `http://127.0.0.1:${port}/run?cmd={{command}}`, method: 'GET', headers: [], bodyKind: 'none',
+        commandMode: 'os', responseExtract: 'body', responseEncoding: 'utf-8', allowInvalidTls: false,
+      },
+    });
+
+    const health = await service.verifyProfile('project-1', profile.id);
+    expect(health).toMatchObject({
+      profileId: profile.id,
+      status: 'degraded',
+      consecutiveFailures: 1,
+    });
+    expect(health.lastError).toContain('WebShell probe failed');
+    expect(service.listSessions('project-1')).toEqual([]);
   });
 
   it('quarantines a raw reverse connection until it is bound to an in-scope asset', async () => {
@@ -274,8 +682,8 @@ describe('ShellService local session and Agent lease', () => {
       command: 'echo ok',
     }, 'bypassPermissions');
     const wrapped = String(pty.write.mock.calls.at(-1)?.[0]);
-    const nonce = wrapped.match(/__HEXESTRA_([a-f0-9]+)__/)?.[1];
-    if (nonce) pty.emitData(`__HEXESTRA_${nonce}__:0\r\n`);
+    const nonce = wrapped.match(/([a-f0-9]{24}):/)?.[1];
+    if (nonce) pty.emitData(`${nonce}:0\r\n`);
     const result = await resultPromise;
     expect(result).toMatchObject({ outcome: 'completed' });
     expect(service.listSessions('project-1').find((item) => item.id === connected.id)?.state).toBe('ready');

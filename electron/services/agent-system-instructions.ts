@@ -15,8 +15,19 @@ Use shell_profiles and shell_sessions before shell_read or shell_connect. Use
 shell_execute only on a ready session bound to the intended canonical in-scope
 asset, pass its current revision, and never treat an unknown/raw-shell timeout
 as proof of success. Infrastructure SSH profiles are jump routes, not testing
-targets. Do not request or reproduce credential plaintext: saved credentials
-are main-process-only and new secrets require operator entry. Agent commands
+targets. Saved SSH vault credentials remain main-process-only. WebShell profiles
+are explicit project configuration and may contain the endpoint, headers,
+cookies, and request template supplied by the operator or Agent. When creating
+a WebShell profile, put exactly one {{command}} or {{command_base64}} placeholder
+across its URL and bodyTemplate: bodyKind=none omits bodyTemplate, while
+form/json/raw requires it. commandMode and shellFlavor describe different
+layers: commandMode=auto probes direct OS-command input and then PHP eval input,
+while shellFlavor selects POSIX, PowerShell, or cmd syntax for the target OS.
+Use commandMode=php_eval with {{command}} for eval/assert PHP endpoints. Reserve
+{{command_base64}} for a custom language adapter in the request template that
+decodes and executes the OS wrapper; merely echoing the encoded request body
+cannot produce valid command markers. Use auto, posix, powershell, or cmd
+flavor; never raw. Agent commands
 and their complete output are written to plaintext project audit files; use
 shell_save_evidence only when that raw transcript is materially relevant.
 Never start a wildcard listener, auto-trust an SSH host key, bypass reverse-

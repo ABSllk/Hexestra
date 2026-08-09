@@ -1,0 +1,32 @@
+{
+  "client": "AntSword",
+  "clientVersion": "2.1.16",
+  "fixtureProvenance": "Application-generated compatibility fixture; not captured from the reference client",
+  "referenceClientCaptured": false,
+  "adapterId": "antsword.v2.php",
+  "runtime": "php",
+  "protocolVersion": "2",
+  "commandMode": "php_eval",
+  "httpMethod": "POST",
+  "contentType": "application/x-www-form-urlencoded",
+  "passwordParameter": "pass",
+  "commandPlaceholder": "{{command}}",
+  "payloadBuilder": "buildWebShellPayload(php_eval, wrapper)",
+  "outerEncoders": [
+    "raw",
+    "base64",
+    "hex"
+  ],
+  "endpointDecoderRequiredFor": [
+    "base64",
+    "hex"
+  ],
+  "command": "id",
+  "shellFlavor": "posix",
+  "cwd": "/",
+  "nonce": "f15c4d4a",
+  "responseMarkers": [
+    "f15c4d4a:0",
+    "f15c4d4a:1:<exitCode>:<cwd>"
+  ]
+}

@@ -69,8 +69,8 @@ describe('ShellService SSH loopback integration', () => {
             const stream = acceptShell() as ServerChannel;
             stream.on('data', (data: Buffer) => {
               const command = data.toString('utf8');
-              const nonce = command.match(/__HEXESTRA_([a-f0-9]+)__/)?.[1];
-              if (nonce) stream.write(`loopback-user\r\n__HEXESTRA_${nonce}__:0\r\n`);
+              const nonce = command.match(/([a-f0-9]{24}):/)?.[1];
+              if (nonce) stream.write(`loopback-user\r\n${nonce}:0\r\n`);
               else stream.write(command);
             });
           });

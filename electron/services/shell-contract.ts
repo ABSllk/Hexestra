@@ -1,11 +1,14 @@
 import crypto from 'crypto';
 import {
   DEFAULT_SHELL_PROJECT_STATE,
+  WEBSHELL_COMMAND_PLACEHOLDERS,
   type ReverseListenerProfile,
+  type ShellHttpHeader,
   type ShellFlavor,
   type ShellProfile,
   type ShellProjectState,
   type ShellSessionState,
+  type WebShellProfileOptions,
 } from '../contracts/shell';
 
 const IDENTIFIER = /^[a-zA-Z0-9_-]{1,200}$/;
@@ -33,13 +36,18 @@ export function normalizeShellProfile(value: unknown): ShellProfile[] {
   const host = bounded(value.host, 500);
   const username = bounded(value.username, 200);
   if (kind === 'ssh' && (!host || !username || !isPort(value.port))) return [];
+  const webshell = kind === 'webshell' ? normalizeWebShellOptions(value.webshell) : undefined;
+  if (kind === 'webshell' && !webshell) return [];
+  const shellFlavor = isShellFlavor(value.shellFlavor) ? value.shellFlavor : defaultFlavor(kind);
+  if (kind === 'webshell' && shellFlavor === 'raw') return [];
   return [{
     id: value.id,
     name: bounded(value.name, 100) || (kind === 'ssh' ? host! : kind.toUpperCase()),
     kind,
+    webshell,
     assetId: optionalIdentifier(value.assetId),
     assetRole: value.assetRole === 'infrastructure' ? 'infrastructure' : 'target',
-    shellFlavor: isShellFlavor(value.shellFlavor) ? value.shellFlavor : defaultFlavor(kind),
+    shellFlavor,
     executable: bounded(value.executable, 1_000),
     args: Array.isArray(value.args) ? value.args.flatMap((item) => bounded(item, 1_000) ?? []).slice(0, 50) : undefined,
     wslDistribution: bounded(value.wslDistribution, 200),
@@ -107,6 +115,140 @@ function defaultFlavor(kind: ShellProfile['kind']): ShellFlavor {
   return kind === 'wsl' ? 'posix' : 'auto';
 }
 
+export function normalizeWebShellOptions(value: unknown): WebShellProfileOptions | undefined {
+  try {
+    return validateWebShellOptions(value);
+  } catch {
+    return undefined;
+  }
+}
+
+export function validateWebShellOptions(value: unknown): WebShellProfileOptions {
+  if (!isRecord(value)) throw new Error('WebShell settings are required');
+  const url = bounded(value.url, 2_000);
+  if (!url) throw new Error('WebShell URL is required');
+  if (!/^https?:\/\//i.test(url)) throw new Error('WebShell URL must use HTTP or HTTPS');
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('WebShell URL is invalid');
+  }
+  if (parsed.username || parsed.password) throw new Error('WebShell URL must not contain username or password');
+  const method = value.method === 'GET' || value.method === 'POST' ? value.method : undefined;
+  const bodyKind = isWebShellBodyKind(value.bodyKind) ? value.bodyKind : undefined;
+  const adapterId = value.adapterId === undefined || value.adapterId === 'generic'
+    ? 'generic'
+    : value.adapterId === 'antsword.v2.php' ? value.adapterId : undefined;
+  if (!adapterId) throw new Error('WebShell adapterId must be generic or antsword.v2.php');
+  if (!method) throw new Error('WebShell method must be GET or POST');
+  if (!bodyKind) throw new Error('WebShell bodyKind must be none, form, json, or raw');
+  const bodyTemplate = bounded(value.bodyTemplate, 64 * 1024);
+  if (adapterId === 'generic' && bodyKind !== 'none' && !bodyTemplate) {
+    throw new Error(`WebShell bodyTemplate is required when bodyKind is ${bodyKind}`);
+  }
+  if (bodyKind === 'none' && bodyTemplate) {
+    throw new Error('WebShell bodyTemplate must be omitted when bodyKind is none');
+  }
+  const runtime = value.runtime === undefined
+    ? (adapterId === 'antsword.v2.php' ? 'php' : 'auto')
+    : isWebShellRuntime(value.runtime) ? value.runtime : undefined;
+  if (!runtime) throw new Error('WebShell runtime must be auto, php, jsp, jspx, or aspx');
+  if (adapterId === 'antsword.v2.php' && runtime !== 'php') {
+    throw new Error('AntSword v2 adapter currently supports the PHP runtime only');
+  }
+  const placeholderCount = countCommandPlaceholders(url) + countCommandPlaceholders(bodyTemplate ?? '');
+  if (adapterId === 'generic' && placeholderCount !== 1) {
+    throw new Error('WebShell URL and bodyTemplate must contain exactly one supported placeholder ({{command}} or {{command_base64}}) in total');
+  }
+  if (adapterId === 'antsword.v2.php' && placeholderCount > 0) {
+    throw new Error('AntSword v2 adapter owns its password parameter and does not use command placeholders');
+  }
+  const commandMode = value.commandMode === undefined
+    ? 'auto'
+    : isWebShellCommandMode(value.commandMode) ? value.commandMode : undefined;
+  if (!commandMode) throw new Error('WebShell commandMode must be auto, os, or php_eval');
+  if (commandMode === 'php_eval' && `${url}${bodyTemplate ?? ''}`.includes('{{command_base64}}')) {
+    throw new Error('WebShell php_eval commandMode requires {{command}} because Hexestra owns the PHP-to-OS adapter');
+  }
+  const headers = normalizeHeaders(value.headers);
+  if (!headers) throw new Error('WebShell headers must be an array of at most 50 valid name/value entries without line breaks');
+  const responseExtract = value.responseExtract === undefined
+    ? 'body'
+    : isResponseExtract(value.responseExtract) ? value.responseExtract : undefined;
+  if (!responseExtract) throw new Error('WebShell responseExtract must be body, between, or regex');
+  const responseStart = bounded(value.responseStart, 1_000);
+  const responseEnd = bounded(value.responseEnd, 1_000);
+  const responseRegex = bounded(value.responseRegex, 2_000);
+  if (responseExtract === 'between' && (!responseStart || !responseEnd)) {
+    throw new Error('WebShell responseStart and responseEnd are required for between extraction');
+  }
+  if (responseExtract === 'regex') {
+    if (!responseRegex) throw new Error('WebShell responseRegex is required for regex extraction');
+    try {
+      new RegExp(responseRegex, 's');
+    } catch {
+      throw new Error('WebShell responseRegex is invalid');
+    }
+  }
+  const responseEncoding = value.responseEncoding === undefined
+    ? 'auto'
+    : isResponseEncoding(value.responseEncoding) ? value.responseEncoding : undefined;
+  if (!responseEncoding) throw new Error('WebShell responseEncoding must be auto, utf-8, or gb18030');
+  const antsword = adapterId === 'antsword.v2.php' ? normalizeAntSword(value.antsword) : undefined;
+  if (adapterId === 'antsword.v2.php' && !antsword) {
+    throw new Error('AntSword v2 PHP settings require a passwordParameter and encoder');
+  }
+  if (adapterId === 'antsword.v2.php' && (method !== 'POST' || bodyKind !== 'form')) {
+    throw new Error('AntSword v2 PHP adapter requires POST form requests');
+  }
+  return {
+    adapterId,
+    runtime,
+    url,
+    method,
+    headers,
+    bodyKind,
+    bodyTemplate,
+    commandMode,
+    responseExtract,
+    responseStart,
+    responseEnd,
+    responseRegex,
+    responseEncoding,
+    allowInvalidTls: value.allowInvalidTls === true,
+    antsword,
+  };
+}
+
+function normalizeAntSword(value: unknown): WebShellProfileOptions['antsword'] | undefined {
+  if (!isRecord(value)) return undefined;
+  const passwordParameter = bounded(value.passwordParameter, 200);
+  const encoder = value.encoder === 'raw' || value.encoder === 'base64' || value.encoder === 'hex'
+    ? value.encoder
+    : undefined;
+  if (!passwordParameter || !/^[A-Za-z0-9_.-]+$/.test(passwordParameter) || !encoder) return undefined;
+  return { passwordParameter, encoder };
+}
+
+function normalizeHeaders(value: unknown): ShellHttpHeader[] | undefined {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 50) return undefined;
+  const headers: ShellHttpHeader[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) return undefined;
+    const name = bounded(item.name, 200);
+    const headerValue = bounded(item.value, 8_000);
+    if (!name || headerValue === undefined || /[\r\n]/.test(name) || /[\r\n]/.test(headerValue)) return undefined;
+    headers.push({ name, value: headerValue });
+  }
+  return headers;
+}
+
+function countCommandPlaceholders(value: string) {
+  return WEBSHELL_COMMAND_PLACEHOLDERS.reduce((count, marker) => count + value.split(marker).length - 1, 0);
+}
+
 function normalizeFingerprint(value: unknown) {
   if (typeof value !== 'string') return undefined;
   const normalized = value.replace(/^SHA256:/i, '').trim();
@@ -134,7 +276,7 @@ function isPort(value: unknown): value is number {
 }
 
 function isProfileKind(value: unknown): value is ShellProfile['kind'] {
-  return value === 'local' || value === 'wsl' || value === 'ssh';
+  return value === 'local' || value === 'wsl' || value === 'ssh' || value === 'webshell';
 }
 
 function isShellFlavor(value: unknown): value is ShellFlavor {
@@ -143,6 +285,26 @@ function isShellFlavor(value: unknown): value is ShellFlavor {
 
 function isAuthMethod(value: unknown): value is NonNullable<ShellProfile['authMethod']> {
   return value === 'password' || value === 'private_key' || value === 'keyboard_interactive';
+}
+
+function isWebShellBodyKind(value: unknown): value is WebShellProfileOptions['bodyKind'] {
+  return value === 'none' || value === 'form' || value === 'json' || value === 'raw';
+}
+
+function isWebShellCommandMode(value: unknown): value is WebShellProfileOptions['commandMode'] {
+  return value === 'auto' || value === 'os' || value === 'php_eval';
+}
+
+function isWebShellRuntime(value: unknown): value is NonNullable<WebShellProfileOptions['runtime']> {
+  return value === 'auto' || value === 'php' || value === 'jsp' || value === 'jspx' || value === 'aspx';
+}
+
+function isResponseExtract(value: unknown): value is WebShellProfileOptions['responseExtract'] {
+  return value === 'body' || value === 'between' || value === 'regex';
+}
+
+function isResponseEncoding(value: unknown): value is WebShellProfileOptions['responseEncoding'] {
+  return value === 'auto' || value === 'utf-8' || value === 'gb18030';
 }
 
 function validDate(value: unknown) {

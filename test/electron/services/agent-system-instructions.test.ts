@@ -26,6 +26,12 @@ describe('Agent system instructions', () => {
     expect(instructions).toContain('Never invoke or');
     expect(instructions).toContain('personal/user skill named "pentest"');
     expect(instructions).toContain('Use shell_profiles and shell_sessions');
+    expect(instructions).toContain('{{command_base64}}');
+    expect(instructions).toContain('commandMode=auto probes direct OS-command input and then PHP eval input');
+    expect(instructions).toContain('commandMode=php_eval with {{command}}');
+    expect(instructions).toContain('merely echoing');
+    expect(instructions).toContain('encoded request body');
+    expect(instructions).toContain('cannot produce valid command markers');
     expect(instructions).toContain('Infrastructure SSH profiles are jump routes');
     expect(instructions).toContain('complete output are written to plaintext');
     expect(instructions).toContain('bypass reverse-');

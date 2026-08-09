@@ -61,7 +61,7 @@ export interface ProjectWorkspaceState {
 }
 
 export interface ProjectState {
-  version: 6;
+  version: 7;
   agent: {
     model: string | null;
     lastError: string | null;
@@ -93,7 +93,7 @@ export function createDefaultProjectState(): ProjectState {
     createdAt: new Date(0).toISOString(),
   });
   return {
-    version: 6,
+    version: 7,
     agent: {
       model: null,
       lastError: null,
@@ -140,7 +140,7 @@ export function createDefaultWorkspace(): ProjectWorkspaceState {
 
 export function normalizeProjectState(value: unknown): ProjectState {
   const defaults = createDefaultProjectState();
-  if (!isRecord(value) || (value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6)) return defaults;
+  if (!isRecord(value) || (value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6 && value.version !== 7)) return defaults;
   const agent = isRecord(value.agent) ? value.agent : {};
   const preferences = isRecord(value.preferences) ? value.preferences : {};
   const traffic = isRecord(value.traffic) ? value.traffic : {};
@@ -158,7 +158,7 @@ export function normalizeProjectState(value: unknown): ProjectState {
     : safeBranches[0].id;
 
   return {
-    version: 6,
+    version: 7,
     agent: {
       model: nullableString(agent.model),
       lastError: nullableString(agent.lastError),

@@ -22,7 +22,7 @@ const INVOKE_CHANNELS = new Set([
   'records:delete', 'records:export',
   'files:list', 'files:read', 'files:write',
   'terminal:create', 'terminal:write', 'terminal:resize', 'terminal:close', 'terminal:list', 'terminal:info', 'terminal:set-context',
-  'shell:profile:list', 'shell:profile:save', 'shell:profile:delete',
+  'shell:profile:list', 'shell:profile:save', 'shell:profile:delete', 'shell:profile:health', 'shell:profile:verify',
   'shell:credential:save', 'shell:credential:delete', 'shell:credential:status', 'shell:interfaces',
   'shell:session:connect', 'shell:session:attach', 'shell:session:list', 'shell:session:read',
   'shell:session:write', 'shell:session:resize', 'shell:session:interrupt', 'shell:session:takeover', 'shell:session:disconnect',

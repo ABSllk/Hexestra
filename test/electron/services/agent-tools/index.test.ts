@@ -17,6 +17,7 @@ const expectedToolNames = [
   'shell_profile_trust_host', 'shell_connect', 'shell_listener_create', 'shell_listener_start',
   'shell_listener_stop', 'shell_reverse_bind', 'shell_execute', 'shell_send_input',
   'shell_interrupt', 'shell_disconnect', 'shell_save_evidence',
+  'shell_profile_status', 'shell_profile_verify',
   'traffic_capture_status', 'traffic_capture_set', 'traffic_list', 'traffic_search',
   'traffic_read', 'traffic_forward', 'traffic_drop', 'traffic_replay', 'traffic_save_evidence',
   'burp_capabilities', 'burp_scanner_issues', 'burp_open_repeater', 'burp_send_intruder',

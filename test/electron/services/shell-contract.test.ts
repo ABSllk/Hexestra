@@ -6,8 +6,12 @@ import {
   normalizeListener,
   normalizeReadLimits,
   normalizeShellProjectState,
+  validateWebShellOptions,
 } from '@electron/services/shell-contract';
-import { isLoopbackShellPeer } from '@electron/contracts/shell';
+import {
+  WEBSHELL_COMMAND_BASE64_PLACEHOLDER,
+  isLoopbackShellPeer,
+} from '@electron/contracts/shell';
 
 describe('shell contract', () => {
   it('normalizes profiles and rejects invalid SSH or wildcard listeners', () => {
@@ -29,6 +33,51 @@ describe('shell contract', () => {
     expect(state.listeners.map((item) => item.id)).toEqual(['listener-good']);
     expect(normalizeListener({ id: 'wild', bindAddress: '::', port: 1 })).toEqual([]);
     expect(isWildcardAddress('[::]')).toBe(true);
+  });
+
+  it('normalizes a structured WebShell profile and rejects unsafe templates', () => {
+    const webshell = {
+      id: 'profile-web', name: 'WebShell', kind: 'webshell', assetRole: 'target', shellFlavor: 'auto',
+      webshell: {
+        url: 'https://example.test/run?cmd={{command}}', method: 'GET', headers: [{ name: 'Cookie', value: 'sid=plain' }],
+        bodyKind: 'none', responseExtract: 'body', responseEncoding: 'utf-8', allowInvalidTls: false,
+      },
+    };
+    expect(normalizeShellProjectState({ profiles: [webshell] }).profiles[0]).toMatchObject({
+      kind: 'webshell', webshell: { url: webshell.webshell.url, headers: webshell.webshell.headers, commandMode: 'auto' },
+    });
+    expect(normalizeShellProjectState({ profiles: [{ ...webshell, webshell: { ...webshell.webshell, url: 'file:///tmp?cmd={{command}}' } }] }).profiles).toEqual([]);
+    expect(normalizeShellProjectState({ profiles: [{ ...webshell, webshell: { ...webshell.webshell, url: 'https://example.test?cmd={{command}}&x={{command}}' } }] }).profiles).toEqual([]);
+    expect(() => validateWebShellOptions({ ...webshell.webshell, url: 'https://example.test?cmd={command}' }))
+      .toThrow('exactly one supported placeholder ({{command}} or {{command_base64}})');
+    expect(() => validateWebShellOptions({
+      ...webshell.webshell,
+      url: 'https://example.test/run',
+      method: 'POST',
+      bodyKind: 'form',
+      bodyTemplate: `x=decode('${WEBSHELL_COMMAND_BASE64_PLACEHOLDER}')`,
+    })).not.toThrow();
+    expect(() => validateWebShellOptions({
+      ...webshell.webshell,
+      url: 'https://example.test/run?cmd={{command}}',
+      method: 'POST',
+      bodyKind: 'form',
+      bodyTemplate: `x=decode('${WEBSHELL_COMMAND_BASE64_PLACEHOLDER}')`,
+    })).toThrow('exactly one supported placeholder');
+    expect(() => validateWebShellOptions({
+      ...webshell.webshell,
+      url: 'https://example.test/run',
+      method: 'POST',
+      bodyKind: 'json',
+    })).toThrow('bodyTemplate is required when bodyKind is json');
+    expect(() => validateWebShellOptions({
+      ...webshell.webshell,
+      url: 'https://example.test/run',
+      method: 'POST',
+      bodyKind: 'form',
+      bodyTemplate: `x=decode('${WEBSHELL_COMMAND_BASE64_PLACEHOLDER}')`,
+      commandMode: 'php_eval',
+    })).toThrow('php_eval commandMode requires {{command}}');
   });
 
   it('owns the session transition table and revision-related bounds', () => {

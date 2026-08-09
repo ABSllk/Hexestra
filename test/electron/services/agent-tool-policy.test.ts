@@ -15,6 +15,7 @@ describe('Agent tool policy', () => {
     expect(isReadOnlyHexestraTool('report_list')).toBe(true);
     expect(isReadOnlyHexestraTool('task_list')).toBe(true);
     expect(isReadOnlyHexestraTool('traffic_capture_status')).toBe(true);
+    expect(isReadOnlyHexestraTool('shell_profile_status')).toBe(true);
   });
 
   it('keeps graph, task, and Finding mutations state-changing', () => {

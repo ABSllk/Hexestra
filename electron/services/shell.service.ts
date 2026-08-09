@@ -21,12 +21,20 @@ import {
   type ShellOutputEvent,
   type ShellProfile,
   type ShellSession,
+  type WebShellCommandMode,
+  type WebShellSystemInfo,
 } from '../contracts/shell';
 import { sessionService } from './session.service';
 import { terminatePtyProcessTree } from './terminal.service';
 import { shellVault } from './shell-vault';
 import { ShellAuditRepository } from './shell-audit.repository';
 import { buildShellConnectCommand, listShellConnectTemplates } from './shell-connect-builder';
+import {
+  type WebShellCommandResult,
+  type WebShellRuntime,
+} from './webshell.transport';
+import { getWebShellAdapter, type WebShellAdapter } from './webshell-adapter';
+import { WebShellHealthRepository } from './webshell-health.repository';
 import {
   assertSessionTransition,
   assertShellId,
@@ -36,6 +44,7 @@ import {
   normalizeListener,
   normalizeReadLimits,
   normalizeShellProfile,
+  validateWebShellOptions,
 } from './shell-contract';
 
 const MAX_TRANSCRIPT_BYTES = 2 * 1024 * 1024;
@@ -55,6 +64,7 @@ interface ActiveCommand {
   idleTimer?: ReturnType<typeof setTimeout>;
   resolve: (result: ShellCommandResult) => void;
   approvalMode: ShellCommandAudit['approvalMode'];
+  webshellAbort?: AbortController;
 }
 
 interface InternalSession {
@@ -65,6 +75,7 @@ interface InternalSession {
   sshClient?: Client;
   jumpClient?: Client;
   sshChannel?: ClientChannel;
+  webshell?: WebShellRuntime;
   activeCommand?: ActiveCommand;
   previewBytes: number;
 }
@@ -77,9 +88,18 @@ interface InternalListener {
   error?: string;
 }
 
+interface WebShellResolution {
+  profileFingerprint: string;
+  flavor: Exclude<ShellSession['shellFlavor'], 'auto' | 'raw'>;
+  commandMode: Exclude<WebShellCommandMode, 'auto'>;
+  adapterId: NonNullable<ShellSession['webshellRuntime']>['adapterId'];
+}
+
 export class ShellService {
   private readonly sessions = new Map<string, InternalSession>();
   private readonly listeners = new Map<string, InternalListener>();
+  private readonly webshellResolutions = new Map<string, WebShellResolution>();
+  private readonly webshellHealthRepositories = new Map<string, WebShellHealthRepository>();
 
   constructor(registerHandlers = true) {
     if (registerHandlers) this.registerHandlers();
@@ -92,6 +112,10 @@ export class ShellService {
     ));
     ipcMain.handle(SHELL_IPC.PROFILE_DELETE, (_event, projectId: string, profileId: string) => (
       this.deleteProfile(projectId, profileId)
+    ));
+    ipcMain.handle(SHELL_IPC.PROFILE_HEALTH, (_event, projectId: string) => this.listProfileHealth(projectId));
+    ipcMain.handle(SHELL_IPC.PROFILE_VERIFY, (_event, projectId: string, profileId: string) => (
+      this.verifyProfile(projectId, profileId)
     ));
     ipcMain.handle(SHELL_IPC.CREDENTIAL_SAVE, (_event, projectId: string, input, credentialId?: string) => (
       shellVault.save(projectId, input, credentialId)
@@ -177,6 +201,39 @@ export class ShellService {
     return shellVault.list(projectId);
   }
 
+  listProfileHealth(projectId: string) {
+    const repository = this.healthRepository(projectId);
+    return this.listProfiles(projectId)
+      .filter((profile) => profile.kind === 'webshell')
+      .map((profile) => repository.get(profile.id) ?? {
+        profileId: profile.id,
+        status: 'unknown' as const,
+        consecutiveFailures: 0,
+      });
+  }
+
+  async verifyProfile(projectId: string, profileId: string) {
+    const profile = this.listProfiles(projectId).find((candidate) => candidate.id === profileId);
+    if (!profile || profile.kind !== 'webshell') throw new Error('WebShell profile not found');
+    const verificationOwner = createShellId('verify');
+    let verificationError: unknown;
+    try {
+      await this.connect(projectId, profileId, undefined, verificationOwner, true);
+    } catch (error) {
+      verificationError = error;
+    } finally {
+      for (const session of [...this.sessions.values()]) {
+        if (session.value.projectId === projectId && session.value.ownerTabId === verificationOwner) {
+          this.disconnect(projectId, session.value.id);
+        }
+      }
+    }
+    const health = this.healthRepository(projectId).get(profileId);
+    if (health) return health;
+    if (verificationError) throw verificationError;
+    throw new Error('WebShell verification completed without a health record');
+  }
+
   saveProfile(projectId: string, input: Partial<ShellProfile>) {
     const state = sessionService.getProjectState(projectId);
     const existing = typeof input.id === 'string'
@@ -190,6 +247,12 @@ export class ShellService {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
+    if (candidate.kind === 'webshell') {
+      validateWebShellOptions(candidate.webshell);
+      if (candidate.shellFlavor === 'raw') {
+        throw new Error('WebShell profiles require auto, posix, powershell, or cmd flavor');
+      }
+    }
     const normalized = normalizeShellProfile(candidate)[0];
     if (!normalized) throw new Error('Invalid shell profile');
     if (normalized.jumpProfileId === normalized.id) throw new Error('SSH profile cannot jump through itself');
@@ -203,6 +266,8 @@ export class ShellService {
         listeners: state.shells.listeners,
       },
     });
+    this.webshellResolutions.delete(webShellResolutionKey(projectId, normalized.id));
+    if (existing?.kind === 'webshell') this.healthRepository(projectId).delete(normalized.id);
     this.emitChanged({ projectId, profiles: true });
     return normalized;
   }
@@ -219,6 +284,8 @@ export class ShellService {
     const profiles = state.shells.profiles.filter((profile) => profile.id !== profileId);
     if (profiles.length === state.shells.profiles.length) return false;
     sessionService.updateProjectState(projectId, { shells: { profiles, listeners: state.shells.listeners } });
+    this.webshellResolutions.delete(webShellResolutionKey(projectId, profileId));
+    this.healthRepository(projectId).delete(profileId);
     this.emitChanged({ projectId, profiles: true });
     return true;
   }
@@ -366,7 +433,13 @@ export class ShellService {
     return true;
   }
 
-  async connect(projectId: string, profileId: string, ownerWindowId?: number, ownerTabId?: string) {
+  async connect(
+    projectId: string,
+    profileId: string,
+    ownerWindowId?: number,
+    ownerTabId?: string,
+    refreshWebShellSystemInfo = false,
+  ) {
     const profile = this.listProfiles(projectId).find((item) => item.id === profileId);
     if (!profile) throw new Error('Shell profile not found');
     const existing = [...this.sessions.values()].find((item) => (
@@ -381,6 +454,7 @@ export class ShellService {
     this.emitChanged({ projectId, sessionId: internal.value.id });
     try {
       if (profile.kind === 'ssh') await this.connectSsh(internal, profile);
+      else if (profile.kind === 'webshell') await this.connectWebShell(internal, profile, refreshWebShellSystemInfo);
       else this.connectPty(internal, profile);
       return this.publicSession(internal);
     } catch (error) {
@@ -419,6 +493,10 @@ export class ShellService {
     if (session.value.state === 'agent_locked') throw new Error('Agent owns the session input; take over before typing');
     if (session.value.state !== 'ready') throw new Error('Shell session is not ready');
     if (typeof data !== 'string' || Buffer.byteLength(data, 'utf8') > 1024 * 1024) throw new Error('Invalid shell input');
+    if (session.webshell) {
+      this.writeWebShellInput(session, data);
+      return true;
+    }
     this.writeTransport(session, data);
     return true;
   }
@@ -431,6 +509,7 @@ export class ShellService {
     if (typeof data !== 'string' || !data || Buffer.byteLength(data, 'utf8') > 64 * 1024) {
       throw new Error('Invalid interactive shell input');
     }
+    if (session.webshell) throw new Error('WebShell sessions do not support interactive follow-up input');
     this.writeTransport(session, data);
     return true;
   }
@@ -447,6 +526,10 @@ export class ShellService {
   interrupt(projectId: string, sessionId: string) {
     const session = this.requireSession(projectId, sessionId);
     if (session.value.state !== 'ready' && session.value.state !== 'agent_locked') return false;
+    if (session.webshell) {
+      this.interruptWebShell(session, 'interrupted');
+      return true;
+    }
     this.writeTransport(session, '\x03');
     if (session.activeCommand) this.completeCommand(session, 'interrupted');
     return true;
@@ -455,6 +538,10 @@ export class ShellService {
   takeover(projectId: string, sessionId: string) {
     const session = this.requireSession(projectId, sessionId);
     if (!session.activeCommand) return this.publicSession(session);
+    if (session.webshell) {
+      this.interruptWebShell(session, 'interrupted');
+      return this.publicSession(session);
+    }
     this.writeTransport(session, '\x03');
     this.completeCommand(session, 'interrupted');
     return this.publicSession(session);
@@ -462,7 +549,14 @@ export class ShellService {
 
   disconnect(projectId: string, sessionId: string) {
     const session = this.requireSession(projectId, sessionId);
-    if (session.activeCommand) this.completeCommand(session, 'disconnected');
+    if (session.activeCommand && session.webshell) {
+      session.webshell.activeAbort?.abort();
+      this.completeWebShellCommand(session, {
+        output: '[WebShell session disconnected; remote process may continue]',
+        cwd: session.webshell.cwd,
+      }, 'disconnected');
+    } else if (session.activeCommand) this.completeCommand(session, 'disconnected');
+    session.webshell?.activeAbort?.abort();
     this.closeTransport(session);
     if (session.value.state !== 'closed') this.transition(session, 'closed');
     this.sessions.delete(sessionId);
@@ -505,6 +599,7 @@ export class ShellService {
       this.assertSessionAsset(request.projectId, session, assetId);
     }
     const timeoutMs = normalizeCommandTimeout(request.timeoutMs);
+    if (session.webshell) return this.executeWebShellAgent(session, request, approvalMode, timeoutMs);
     const commandId = createShellId('audit');
     const nonce = session.value.shellFlavor === 'raw' ? undefined : cryptoNonce();
     return new Promise<ShellCommandResult>((resolve) => {
@@ -516,7 +611,7 @@ export class ShellService {
       const active: ActiveCommand = {
         id: commandId,
         nonce,
-        marker: nonce ? new RegExp(`__HEXESTRA_${nonce}__:(-?\\d+)`) : undefined,
+        marker: nonce ? new RegExp(`${nonce}:(-?\\d+)`) : undefined,
         output: '',
         pendingDisplay: '',
         startedAt: new Date().toISOString(),
@@ -577,12 +672,20 @@ export class ShellService {
     for (const session of [...this.sessions.values()]) {
       if (session.value.projectId === projectId) this.disconnect(projectId, session.value.id);
     }
+    for (const key of this.webshellResolutions.keys()) {
+      if (key.startsWith(`${projectId}:`)) this.webshellResolutions.delete(key);
+    }
+    this.webshellHealthRepositories.get(projectId)?.close();
+    this.webshellHealthRepositories.delete(projectId);
   }
 
   destroyAll() {
     for (const listener of this.listeners.values()) listener.server.close();
     this.listeners.clear();
     for (const session of [...this.sessions.values()]) this.disconnect(session.value.projectId, session.value.id);
+    this.webshellResolutions.clear();
+    for (const repository of this.webshellHealthRepositories.values()) repository.close();
+    this.webshellHealthRepositories.clear();
   }
 
   private createInternalSession(projectId: string, profile: ShellProfile, ownerWindowId?: number, ownerTabId?: string): InternalSession {
@@ -599,10 +702,12 @@ export class ShellService {
         assetId: profile.assetRole === 'target' ? profile.assetId : undefined,
         shellFlavor: profile.shellFlavor,
         capabilities: {
-          resize: true,
+          resize: profile.kind !== 'webshell',
           interrupt: true,
-          exitCode: profile.shellFlavor !== 'auto' && profile.shellFlavor !== 'raw',
-          agentExecute: profile.assetRole === 'target' || profile.kind !== 'ssh',
+          exitCode: profile.kind !== 'webshell' && profile.shellFlavor !== 'auto' && profile.shellFlavor !== 'raw',
+          agentExecute: profile.kind === 'webshell'
+            ? profile.assetRole === 'target'
+            : profile.assetRole === 'target' || profile.kind !== 'ssh',
         },
         ownerWindowId,
         ownerTabId,
@@ -635,6 +740,373 @@ export class ShellService {
     pty.onExit(() => this.handleDisconnect(session));
     this.transition(session, 'ready');
     this.emitChanged({ projectId: session.value.projectId, sessionId: session.value.id });
+  }
+
+  private async connectWebShell(session: InternalSession, profile: ShellProfile, refreshSystemInfo = false) {
+    if (!profile.webshell) throw new Error('WebShell request template is missing');
+    const adapter = getWebShellAdapter(profile.webshell);
+    const startedAt = Date.now();
+    const cacheKey = webShellResolutionKey(session.value.projectId, profile.id);
+    const cached = this.webshellResolutions.get(cacheKey);
+    const profileFingerprint = webShellProfileFingerprint(profile);
+    const preferred = cached?.profileFingerprint === profileFingerprint && cached.adapterId === adapter.id ? cached : undefined;
+    const configuredFlavors = profile.shellFlavor === 'auto'
+      ? (['posix', 'powershell', 'cmd'] as const)
+      : profile.shellFlavor === 'raw'
+        ? []
+        : [profile.shellFlavor];
+    const flavors = preferred && configuredFlavors.includes(preferred.flavor)
+      ? [preferred.flavor, ...configuredFlavors.filter((flavor) => flavor !== preferred.flavor)]
+      : configuredFlavors;
+    if (flavors.length === 0) throw new Error('WebShell requires POSIX, PowerShell, cmd, or auto flavor');
+    let lastError: unknown = new Error('WebShell probe failed');
+    for (const flavor of flavors) {
+      try {
+        const probe = await adapter.probe(profile.webshell, flavor, 20_000, preferred?.commandMode);
+        session.webshell = {
+          flavor,
+          commandMode: probe.commandMode,
+          resolved: probe.resolved,
+          cwd: probe.cwd,
+          inputBuffer: '',
+          history: [],
+          historyIndex: 0,
+        };
+        session.value.shellFlavor = flavor;
+        session.value.webshellCommandMode = probe.commandMode;
+        session.value.webshellRuntime = probe.resolved;
+        this.webshellResolutions.set(cacheKey, {
+          profileFingerprint,
+          flavor,
+          commandMode: probe.commandMode,
+          adapterId: adapter.id,
+        });
+        const repository = this.healthRepository(session.value.projectId);
+        const existing = repository.get(profile.id);
+        const systemInfo = refreshSystemInfo || !existing?.systemInfo
+          ? await this.collectWebShellSystemInfo(adapter, profile.webshell, probe.resolved, probe.cwd)
+          : undefined;
+        repository.record({
+          profileId: profile.id,
+          success: true,
+          checkedAt: new Date().toISOString(),
+          latencyMs: Date.now() - startedAt,
+          resolved: probe.resolved,
+          systemInfo,
+        });
+        session.value.capabilities.exitCode = true;
+        this.transition(session, 'ready');
+        this.appendTranscript(session, webShellPrompt(session.webshell));
+        this.emitOutput(session, webShellPrompt(session.webshell));
+        this.emitChanged({ projectId: session.value.projectId, sessionId: session.value.id });
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    const message = `WebShell probe failed: ${errorMessage(lastError)}`;
+    this.healthRepository(session.value.projectId).record({
+      profileId: profile.id,
+      success: false,
+      checkedAt: new Date().toISOString(),
+      latencyMs: Date.now() - startedAt,
+      error: message,
+    });
+    throw new Error(message);
+  }
+
+  private async collectWebShellSystemInfo(
+    adapter: WebShellAdapter,
+    options: NonNullable<ShellProfile['webshell']>,
+    runtime: NonNullable<ShellSession['webshellRuntime']>,
+    cwd: string,
+  ): Promise<WebShellSystemInfo | undefined> {
+    try {
+      return await adapter.collectSystemInfo(options, runtime, cwd, new AbortController().signal, 20_000);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private writeWebShellInput(session: InternalSession, data: string) {
+    const runtime = session.webshell;
+    const profile = session.value.profileId
+      ? this.listProfiles(session.value.projectId).find((item) => item.id === session.value.profileId)
+      : undefined;
+    if (!runtime || !profile?.webshell) throw new Error('WebShell transport is unavailable');
+    let remaining = data;
+    while (remaining) {
+      if (remaining.startsWith('\x1b[A')) {
+        remaining = remaining.slice(3);
+        this.changeWebShellHistory(session, -1);
+        continue;
+      }
+      if (remaining.startsWith('\x1b[B')) {
+        remaining = remaining.slice(3);
+        this.changeWebShellHistory(session, 1);
+        continue;
+      }
+      const character = remaining[0];
+      remaining = remaining.slice(1);
+      if (character === '\x03') {
+        if (runtime.activeAbort || session.activeCommand) this.interruptWebShell(session, 'interrupted');
+        else {
+          runtime.inputBuffer = '';
+          this.emitOutput(session, `^C\r\n${webShellPrompt(runtime)}`);
+          this.appendTranscript(session, `^C\r\n${webShellPrompt(runtime)}`);
+        }
+        continue;
+      }
+      if (character === '\x7f' || character === '\b') {
+        if (runtime.inputBuffer) {
+          runtime.inputBuffer = runtime.inputBuffer.slice(0, -1);
+          this.emitOutput(session, '\b \b');
+        }
+        continue;
+      }
+      if (character === '\r' || character === '\n') {
+        const command = runtime.inputBuffer.trim();
+        runtime.inputBuffer = '';
+        runtime.historyIndex = runtime.history.length;
+        this.emitOutput(session, '\r\n');
+        this.appendTranscript(session, '\r\n');
+        if (!command) {
+          const prompt = webShellPrompt(runtime);
+          this.emitOutput(session, prompt);
+          this.appendTranscript(session, prompt);
+        } else if (Buffer.byteLength(command, 'utf8') > 64 * 1024) {
+          const message = '[WebShell command exceeds 64 KiB]';
+          this.emitOutput(session, `${message}\r\n${webShellPrompt(runtime)}`);
+          this.appendTranscript(session, `${message}\r\n${webShellPrompt(runtime)}`);
+        } else if (runtime.activeAbort || session.activeCommand) {
+          const message = '[WebShell command is still running]';
+          this.emitOutput(session, `${message}\r\n${webShellPrompt(runtime)}`);
+          this.appendTranscript(session, `${message}\r\n${webShellPrompt(runtime)}`);
+        } else {
+          runtime.history = [...runtime.history.filter((item) => item !== command), command].slice(-100);
+          runtime.historyIndex = runtime.history.length;
+          void this.executeWebShellHuman(session, profile.webshell, command);
+        }
+        continue;
+      }
+      if (character >= ' ' && character !== '\x7f') {
+        if (Buffer.byteLength(`${runtime.inputBuffer}${character}`, 'utf8') > 64 * 1024) {
+          runtime.inputBuffer = '';
+          const message = '[WebShell command exceeds 64 KiB]';
+          this.emitOutput(session, `\r\n${message}\r\n${webShellPrompt(runtime)}`);
+          this.appendTranscript(session, `\r\n${message}\r\n${webShellPrompt(runtime)}`);
+          continue;
+        }
+        runtime.inputBuffer += character;
+        this.emitOutput(session, character);
+        this.appendTranscript(session, character);
+      }
+    }
+  }
+
+  private changeWebShellHistory(session: InternalSession, direction: -1 | 1) {
+    const runtime = session.webshell;
+    if (!runtime) return;
+    runtime.historyIndex = Math.max(0, Math.min(runtime.history.length, runtime.historyIndex + direction));
+    runtime.inputBuffer = runtime.history[runtime.historyIndex] ?? '';
+    const line = `\r\x1b[2K${webShellPrompt(runtime)}${runtime.inputBuffer}`;
+    this.emitOutput(session, line);
+    this.appendTranscript(session, line);
+  }
+
+  private async executeWebShellHuman(session: InternalSession, options: NonNullable<ShellProfile['webshell']>, command: string) {
+    const runtime = session.webshell;
+    if (!runtime) return;
+    const controller = new AbortController();
+    runtime.activeAbort = controller;
+    runtime.activeHumanCommand = command;
+    const adapter = getWebShellAdapter(options);
+    const startedAt = Date.now();
+    try {
+      const result = await adapter.execute(options, runtime.resolved, command, runtime.cwd, controller.signal, 300_000);
+      if (runtime.activeAbort !== controller) return;
+      runtime.cwd = result.cwd;
+      if (session.value.profileId) this.healthRepository(session.value.projectId).record({
+        profileId: session.value.profileId,
+        success: true,
+        checkedAt: new Date().toISOString(),
+        latencyMs: Date.now() - startedAt,
+        resolved: runtime.resolved,
+      });
+      this.emitWebShellResult(session, result.output);
+    } catch (error) {
+      if (runtime.activeAbort !== controller) return;
+      if (session.value.profileId) this.healthRepository(session.value.projectId).record({
+        profileId: session.value.profileId,
+        success: false,
+        checkedAt: new Date().toISOString(),
+        latencyMs: Date.now() - startedAt,
+        resolved: runtime.resolved,
+        error: errorMessage(error),
+      });
+      this.emitWebShellResult(session, `[WebShell request failed: ${errorMessage(error)}]`);
+    } finally {
+      if (runtime.activeAbort === controller) {
+        runtime.activeAbort = undefined;
+        runtime.activeHumanCommand = undefined;
+      }
+    }
+  }
+
+  private executeWebShellAgent(
+    session: InternalSession,
+    request: ShellCommandRequest,
+    approvalMode: ShellCommandAudit['approvalMode'],
+    timeoutMs: number,
+  ): Promise<ShellCommandResult> {
+    const runtime = session.webshell;
+    const options = session.value.profileId
+      ? this.listProfiles(session.value.projectId).find((item) => item.id === session.value.profileId)?.webshell
+      : undefined;
+    if (!runtime || !options) throw new Error('WebShell transport is unavailable');
+    const adapter = getWebShellAdapter(options);
+    const startedAt = Date.now();
+    if (runtime.activeAbort || session.activeCommand) throw new Error('WebShell command is already running');
+    const commandId = createShellId('audit');
+    const controller = new AbortController();
+    return new Promise<ShellCommandResult>((resolve) => {
+      const timeout = setTimeout(() => {
+        controller.abort();
+        if (session.value.profileId) this.healthRepository(session.value.projectId).record({
+          profileId: session.value.profileId,
+          success: false,
+          checkedAt: new Date().toISOString(),
+          latencyMs: Date.now() - startedAt,
+          resolved: runtime.resolved,
+          error: 'WebShell request timed out',
+        });
+        this.completeWebShellCommand(session, {
+          output: '[WebShell request timed out; remote process may continue]',
+          exitCode: undefined,
+          cwd: runtime.cwd,
+        }, 'timeout');
+      }, timeoutMs);
+      timeout.unref?.();
+      const active: ActiveCommand = {
+        id: commandId,
+        output: '',
+        pendingDisplay: '',
+        startedAt: new Date().toISOString(),
+        command: request.command,
+        timeout,
+        resolve,
+        approvalMode,
+        webshellAbort: controller,
+      };
+      session.activeCommand = active;
+      runtime.activeAbort = controller;
+      runtime.activeHumanCommand = undefined;
+      session.value.agentLease = {
+        id: createShellId('lease'),
+        commandId,
+        revision: session.value.revision + 1,
+        startedAt: active.startedAt,
+        timeoutMs,
+      };
+      this.transition(session, 'agent_locked');
+      this.emitChanged({ projectId: request.projectId, sessionId: request.sessionId });
+      void adapter.execute(options, runtime.resolved, request.command, runtime.cwd, controller.signal, timeoutMs)
+        .then((result) => {
+          if (session.activeCommand !== active) return;
+          runtime.cwd = result.cwd;
+          if (session.value.profileId) this.healthRepository(session.value.projectId).record({
+            profileId: session.value.profileId,
+            success: true,
+            checkedAt: new Date().toISOString(),
+            latencyMs: Date.now() - startedAt,
+            resolved: runtime.resolved,
+          });
+          this.completeWebShellCommand(session, result, 'completed');
+        })
+        .catch((error) => {
+          if (session.activeCommand !== active) return;
+          if (session.value.profileId) this.healthRepository(session.value.projectId).record({
+            profileId: session.value.profileId,
+            success: false,
+            checkedAt: new Date().toISOString(),
+            latencyMs: Date.now() - startedAt,
+            resolved: runtime.resolved,
+            error: errorMessage(error),
+          });
+          this.completeWebShellCommand(session, {
+            output: `[WebShell request failed: ${errorMessage(error)}]`,
+            exitCode: undefined,
+            cwd: runtime.cwd,
+          }, controller.signal.aborted ? 'unknown' : 'unknown');
+        });
+    });
+  }
+
+  private interruptWebShell(session: InternalSession, outcome: ShellCommandResult['outcome']) {
+    const runtime = session.webshell;
+    if (!runtime) return;
+    runtime.activeAbort?.abort();
+    if (session.activeCommand) {
+      this.completeWebShellCommand(session, {
+        output: '[WebShell request aborted; remote process may continue]',
+        exitCode: undefined,
+        cwd: runtime.cwd,
+      }, outcome);
+      return;
+    }
+    runtime.activeAbort = undefined;
+    runtime.activeHumanCommand = undefined;
+    this.emitWebShellResult(session, '^C');
+  }
+
+  private completeWebShellCommand(session: InternalSession, result: WebShellCommandResult, outcome: ShellCommandResult['outcome']) {
+    const active = session.activeCommand;
+    if (!active) return;
+    clearTimeout(active.timeout);
+    const runtime = session.webshell;
+    if (runtime && runtime.activeAbort === active.webshellAbort) runtime.activeAbort = undefined;
+    runtime && (runtime.activeHumanCommand = undefined);
+    const output = result.output;
+    this.emitWebShellResult(session, output);
+    const completedAt = new Date().toISOString();
+    const commandResult: ShellCommandResult = {
+      id: active.id,
+      projectId: session.value.projectId,
+      sessionId: session.value.id,
+      command: active.command,
+      startedAt: active.startedAt,
+      completedAt,
+      outcome,
+      exitCode: outcome === 'completed' ? result.exitCode : undefined,
+      output,
+      truncated: false,
+    };
+    this.auditRepository(session.value.projectId).save({
+      ...commandResult,
+      assetId: session.value.assetId,
+      profileId: session.value.profileId,
+      actor: 'agent',
+      approvalMode: active.approvalMode,
+    });
+    session.activeCommand = undefined;
+    session.value.agentLease = undefined;
+    if (session.value.state === 'agent_locked') this.transition(session, 'ready');
+    this.emitChanged({ projectId: session.value.projectId, sessionId: session.value.id });
+    active.resolve(commandResult);
+  }
+
+  private emitWebShellResult(session: InternalSession, output: string) {
+    const runtime = session.webshell;
+    if (!runtime) return;
+    session.value.lastActivityAt = new Date().toISOString();
+    // WebShell responses are plain text and commonly contain LF-only lines.
+    // xterm treats LF as a vertical move without returning to column zero, so
+    // normalize display output while preserving the logical command result.
+    const terminalOutput = output.replace(/\r?\n/g, '\r\n');
+    const suffix = terminalOutput && !/[\r\n]$/.test(terminalOutput) ? '\r\n' : '';
+    const display = `${terminalOutput}${suffix}${webShellPrompt(runtime)}`;
+    this.appendTranscript(session, display);
+    this.emitOutput(session, display);
   }
 
   private async connectSsh(session: InternalSession, profile: ShellProfile) {
@@ -836,7 +1308,7 @@ export class ShellService {
       completedAt,
       outcome,
       exitCode: Number.isInteger(exitCode) ? exitCode : undefined,
-      output: stripInternalMarkers(command.output),
+      output: stripInternalMarker(command.output, command.nonce),
       truncated: false,
     };
     const audit: ShellCommandAudit = {
@@ -887,6 +1359,11 @@ export class ShellService {
   }
 
   private closeTransport(session: InternalSession) {
+    if (session.webshell) {
+      session.webshell.activeAbort?.abort();
+      session.webshell.activeAbort = undefined;
+      session.webshell.activeHumanCommand = undefined;
+    }
     if (session.pty) terminatePtyProcessTree(session.pty);
     session.sshChannel?.close();
     session.sshClient?.end();
@@ -955,6 +1432,14 @@ export class ShellService {
   private auditRepository(projectId: string) {
     return new ShellAuditRepository(sessionService.getSessionPath(projectId));
   }
+
+  private healthRepository(projectId: string) {
+    const existing = this.webshellHealthRepositories.get(projectId);
+    if (existing) return existing;
+    const repository = new WebShellHealthRepository(sessionService.getSessionPath(projectId));
+    this.webshellHealthRepositories.set(projectId, repository);
+    return repository;
+  }
 }
 
 function ptyCommand(profile: ShellProfile) {
@@ -974,19 +1459,34 @@ function ptyCommand(profile: ShellProfile) {
 function wrapCommand(command: string, flavor: ShellSession['shellFlavor'], nonce?: string) {
   const normalized = command.replace(/\r?\n/g, ' ');
   if (!nonce || flavor === 'raw' || flavor === 'auto') return `${normalized}\r`;
+  const statusVariable = `r_${nonce}`;
   if (flavor === 'powershell') {
-    return `& { ${normalized} }; $__hexestra_ec = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } elseif ($?) { 0 } else { 1 }; Write-Output \"__HEXESTRA_${nonce}__:$__hexestra_ec\"\r`;
+    return `& { ${normalized} }; $${statusVariable} = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } elseif ($?) { 0 } else { 1 }; Write-Output \"${nonce}:$${statusVariable}\"\r`;
   }
-  if (flavor === 'cmd') return `${normalized} & echo __HEXESTRA_${nonce}__:%ERRORLEVEL%\r`;
-  return `{ ${normalized}; }; __hexestra_ec=$?; printf '\\n__HEXESTRA_${nonce}__:%s\\n' \"$__hexestra_ec\"\n`;
+  if (flavor === 'cmd') return `${normalized} & echo ${nonce}:%ERRORLEVEL%\r`;
+  return `{ ${normalized}; }; ${statusVariable}=$?; printf '\\n${nonce}:%s\\n' \"$${statusVariable}\"\n`;
 }
 
-function stripInternalMarkers(value: string) {
-  return value.replace(/__HEXESTRA_[A-Fa-f0-9]+__:-?\d+\r?\n?/g, '');
+function stripInternalMarker(value: string, nonce?: string) {
+  return nonce ? value.replace(new RegExp(`${nonce}:-?\\d+\\r?\\n?`, 'g'), '') : value;
 }
 
 function cryptoNonce() {
   return crypto.randomBytes(12).toString('hex');
+}
+
+function webShellPrompt(runtime: WebShellRuntime) {
+  if (runtime.flavor === 'powershell') return `PS ${runtime.cwd}> `;
+  if (runtime.flavor === 'cmd') return `${runtime.cwd}> `;
+  return `${runtime.cwd}$ `;
+}
+
+function webShellResolutionKey(projectId: string, profileId: string) {
+  return `${projectId}:${profileId}`;
+}
+
+function webShellProfileFingerprint(profile: ShellProfile) {
+  return JSON.stringify({ shellFlavor: profile.shellFlavor, webshell: profile.webshell });
 }
 
 function isFinal(state: ShellSession['state']) {

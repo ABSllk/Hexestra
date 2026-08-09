@@ -266,6 +266,9 @@ export const en = {
   'shell.listener': 'Listener',
   'shell.noProfiles': 'No saved connections',
   'shell.noListeners': 'No reverse listeners',
+  'shell.deleteSession': 'Delete session',
+  'shell.deleteSessionTitle': 'Delete this session?',
+  'shell.deleteSessionDescription': 'The connection will be disconnected and removed from the session list. Command audits are retained, and an in-flight remote command may continue.',
   'status.ready': 'Ready',
 } as const;
 
@@ -539,5 +542,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'shell.listener': '监听器',
   'shell.noProfiles': '暂无保存的连接',
   'shell.noListeners': '暂无反向连接监听器',
+  'shell.deleteSession': '删除会话',
+  'shell.deleteSessionTitle': '删除此会话？',
+  'shell.deleteSessionDescription': '连接将断开并从会话列表中移除。命令审计记录会保留，正在运行的远程命令可能继续执行。',
   'status.ready': '就绪',
 };

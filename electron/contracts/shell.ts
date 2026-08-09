@@ -2,6 +2,8 @@ export const SHELL_IPC = {
   PROFILE_LIST: 'shell:profile:list',
   PROFILE_SAVE: 'shell:profile:save',
   PROFILE_DELETE: 'shell:profile:delete',
+  PROFILE_HEALTH: 'shell:profile:health',
+  PROFILE_VERIFY: 'shell:profile:verify',
   CREDENTIAL_SAVE: 'shell:credential:save',
   CREDENTIAL_DELETE: 'shell:credential:delete',
   CREDENTIAL_STATUS: 'shell:credential:status',
@@ -40,15 +42,92 @@ export function isLoopbackShellPeer(value?: string) {
   return normalized === '::1' || normalized === '0:0:0:0:0:0:0:1' || normalized.startsWith('127.');
 }
 
-export type ShellProfileKind = 'local' | 'wsl' | 'ssh';
+export type ShellProfileKind = 'local' | 'wsl' | 'ssh' | 'webshell';
 export type ShellFlavor = 'auto' | 'posix' | 'powershell' | 'cmd' | 'raw';
 export type ShellAuthMethod = 'password' | 'private_key' | 'keyboard_interactive';
 export type ShellAssetRole = 'target' | 'infrastructure';
+
+export type WebShellMethod = 'GET' | 'POST';
+export type WebShellBodyKind = 'none' | 'form' | 'json' | 'raw';
+export type WebShellCommandMode = 'auto' | 'os' | 'php_eval';
+export type WebShellAdapterId = 'generic' | 'antsword.v2.php';
+export type WebShellRuntimeKind = 'auto' | 'php' | 'jsp' | 'jspx' | 'aspx';
+export type WebShellPayloadEncoder = 'raw' | 'base64' | 'hex';
+export type WebShellResponseExtract = 'body' | 'between' | 'regex';
+export type WebShellResponseEncoding = 'auto' | 'utf-8' | 'gb18030';
+
+export const WEBSHELL_COMMAND_PLACEHOLDER = '{{command}}';
+export const WEBSHELL_COMMAND_BASE64_PLACEHOLDER = '{{command_base64}}';
+export const WEBSHELL_COMMAND_PLACEHOLDERS = [
+  WEBSHELL_COMMAND_PLACEHOLDER,
+  WEBSHELL_COMMAND_BASE64_PLACEHOLDER,
+] as const;
+
+export interface ShellHttpHeader {
+  name: string;
+  value: string;
+}
+
+export interface WebShellProfileOptions {
+  adapterId?: WebShellAdapterId;
+  runtime?: WebShellRuntimeKind;
+  url: string;
+  method: WebShellMethod;
+  headers: ShellHttpHeader[];
+  bodyKind: WebShellBodyKind;
+  bodyTemplate?: string;
+  commandMode?: WebShellCommandMode;
+  responseExtract: WebShellResponseExtract;
+  responseStart?: string;
+  responseEnd?: string;
+  responseRegex?: string;
+  responseEncoding: WebShellResponseEncoding;
+  allowInvalidTls: boolean;
+  antsword?: {
+    passwordParameter: string;
+    encoder: WebShellPayloadEncoder;
+  };
+}
+
+export interface WebShellResolvedRuntime {
+  adapterId: WebShellAdapterId;
+  runtime: WebShellRuntimeKind;
+  protocolVersion?: string;
+  commandMode?: Exclude<WebShellCommandMode, 'auto'>;
+  shellFlavor: Exclude<ShellFlavor, 'auto' | 'raw'>;
+}
+
+export type WebShellHealthStatus = 'unknown' | 'healthy' | 'degraded' | 'unreachable' | 'stale';
+
+export interface WebShellSystemInfo {
+  os?: string;
+  hostname?: string;
+  user?: string;
+  cwd?: string;
+  runtimeVersion?: string;
+}
+
+export interface WebShellProfileHealth {
+  profileId: string;
+  status: WebShellHealthStatus;
+  adapterId?: WebShellAdapterId;
+  runtime?: WebShellRuntimeKind;
+  shellFlavor?: Exclude<ShellFlavor, 'auto' | 'raw'>;
+  commandMode?: Exclude<WebShellCommandMode, 'auto'>;
+  lastCheckedAt?: string;
+  lastSuccessAt?: string;
+  latencyMs?: number;
+  successRate?: number;
+  consecutiveFailures: number;
+  lastError?: string;
+  systemInfo?: WebShellSystemInfo;
+}
 
 export interface ShellProfile {
   id: string;
   name: string;
   kind: ShellProfileKind;
+  webshell?: WebShellProfileOptions;
   assetId?: string;
   assetRole: ShellAssetRole;
   shellFlavor: ShellFlavor;
@@ -124,6 +203,8 @@ export interface ShellSession {
   assetId?: string;
   peer?: ShellPeer;
   shellFlavor: ShellFlavor;
+  webshellCommandMode?: Exclude<WebShellCommandMode, 'auto'>;
+  webshellRuntime?: WebShellResolvedRuntime;
   capabilities: ShellSessionCapabilities;
   ownerWindowId?: number;
   ownerTabId?: string;
