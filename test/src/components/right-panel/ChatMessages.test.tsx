@@ -45,6 +45,68 @@ describe('ChatMessages conversation branches', () => {
     expect(branchFromMessage).toHaveBeenCalledWith('user-1', 'Scan the edited target');
   });
 
+  it('wraps an unbroken user message inside a narrow chat panel', () => {
+    const longToken = 'https://example.test/' + 'a'.repeat(160);
+    useChatStore.setState({
+      messages: [{
+        id: 'user-long',
+        role: 'user',
+        content: longToken,
+        timestamp: '2026-07-31T00:00:00.000Z',
+        status: 'complete',
+      }],
+    });
+
+    render(<ChatMessages />);
+
+    const bubble = screen.getByText(longToken);
+    expect(bubble).toHaveClass('min-w-0', 'max-w-full', '[overflow-wrap:anywhere]');
+    expect(bubble.parentElement).toHaveClass('min-w-0', 'max-w-[90%]');
+  });
+
+  it('keeps following streaming output after restoring a saved bottom position', () => {
+    let nextFrameId = 0;
+    let scrollHeight = 1_000;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      const id = ++nextFrameId;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
+      frames.delete(id);
+    });
+    const flushFrames = () => {
+      const callbacks = [...frames.values()];
+      frames.clear();
+      callbacks.forEach((callback) => callback(0));
+    };
+    useChatStore.setState({ chatScrollTop: 900 });
+
+    const { container } = render(<ChatMessages />);
+    const scroller = container.firstElementChild as HTMLDivElement;
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+    });
+    act(flushFrames);
+    expect(scroller.scrollTop).toBe(900);
+
+    scrollHeight = 1_100;
+    act(() => {
+      useChatStore.getState().appendMessage({
+        id: 'assistant-live',
+        role: 'assistant',
+        content: 'streamed output',
+        timestamp: '2026-07-31T00:00:01.000Z',
+        status: 'streaming',
+      });
+    });
+    act(flushFrames);
+
+    expect(scroller.scrollTop).toBe(1_100);
+  });
+
   it('stops following live output while the operator is reading older messages', () => {
     let nextFrameId = 0;
     const frames = new Map<number, FrameRequestCallback>();

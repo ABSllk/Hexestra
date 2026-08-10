@@ -1,9 +1,11 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useChatStore } from '@/stores';
 import { agentContextRefKey, type AgentContextRef } from '@/types';
 import { AgentTimelineMessage } from './AgentTimelineMessage';
+
+const LIVE_FOLLOW_THRESHOLD_PX = 64;
 
 export function ChatMessages() {
   const messages = useChatStore((s) => s.messages);
@@ -16,45 +18,66 @@ export function ChatMessages() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const followOutputRef = useRef(chatScrollTop <= 0);
-  const lastScrollTopRef = useRef(chatScrollTop);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const initialScrollTopRef = useRef(chatScrollTop);
+  const followOutputRef = useRef(true);
   const restoredScrollRef = useRef(false);
+  const followFrameRef = useRef<number | null>(null);
 
-  useEffect(() => {
+  const scheduleLiveFollow = useCallback(() => {
     const scroller = scrollRef.current;
     if (!scroller) return;
-    const frame = window.requestAnimationFrame(() => {
+
+    if (followFrameRef.current !== null) {
+      window.cancelAnimationFrame(followFrameRef.current);
+    }
+    followFrameRef.current = window.requestAnimationFrame(() => {
+      followFrameRef.current = null;
       if (!restoredScrollRef.current) {
-        scroller.scrollTop = chatScrollTop;
+        scroller.scrollTop = initialScrollTopRef.current > 0
+          ? initialScrollTopRef.current
+          : scroller.scrollHeight;
         restoredScrollRef.current = true;
+        followOutputRef.current = distanceFromBottom(scroller) <= LIVE_FOLLOW_THRESHOLD_PX;
       } else if (followOutputRef.current) {
         scroller.scrollTop = scroller.scrollHeight;
       }
     });
-    return () => window.cancelAnimationFrame(frame);
-  }, [messages]);
+  }, []);
+
+  useEffect(() => {
+    scheduleLiveFollow();
+  }, [messages, scheduleLiveFollow]);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(scheduleLiveFollow);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [scheduleLiveFollow]);
+
+  useEffect(() => () => {
+    if (followFrameRef.current !== null) {
+      window.cancelAnimationFrame(followFrameRef.current);
+    }
+  }, []);
 
   return (
     <div
-      className="h-full overflow-y-auto"
+      className="h-full overflow-x-hidden overflow-y-auto"
       onWheel={(event) => {
         if (event.deltaY < 0) followOutputRef.current = false;
       }}
       onScroll={(event) => {
         const scroller = event.currentTarget;
-        const isScrollingUp = scroller.scrollTop < lastScrollTopRef.current;
-        const isAtBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 1;
-        if (isScrollingUp || !isAtBottom) {
-          followOutputRef.current = false;
-        } else {
-          followOutputRef.current = true;
-        }
-        lastScrollTopRef.current = scroller.scrollTop;
+        followOutputRef.current = distanceFromBottom(scroller) <= LIVE_FOLLOW_THRESHOLD_PX;
         setChatScrollTop(scroller.scrollTop);
       }}
       ref={scrollRef}
     >
-      <div className="space-y-3 px-3 py-2">
+      <div className="space-y-3 px-3 py-2" ref={contentRef}>
       {messages.map((message) => (
         <Fragment key={message.id}>
           {message.role === 'assistant' && message.activities?.length ? (
@@ -62,7 +85,7 @@ export function ChatMessages() {
           ) : (
         <div
           className={cn(
-            'group flex max-w-[90%] flex-col text-[13px]',
+            'group flex min-w-0 max-w-[90%] flex-col text-[13px]',
             message.role === 'user'
               ? 'ml-auto items-end'
               : message.role === 'system'
@@ -96,7 +119,7 @@ export function ChatMessages() {
 
           <div
             className={cn(
-              'break-words whitespace-pre-wrap rounded-lg px-3 py-2',
+              'min-w-0 max-w-full whitespace-pre-wrap rounded-lg px-3 py-2 [overflow-wrap:anywhere]',
               message.role === 'user'
                 ? 'bg-accent-blue/20 text-text-primary'
                 : message.role === 'system'
@@ -137,9 +160,9 @@ export function ChatMessages() {
           ) : null}
 
           {message.hasToolRequest && message.toolRequest && (
-            <div className="mt-1 flex items-start gap-1.5 rounded border border-severity-medium/30 bg-severity-medium/20 px-2 py-1 text-2xs text-severity-medium">
+            <div className="mt-1 flex min-w-0 max-w-full items-start gap-1.5 rounded border border-severity-medium/30 bg-severity-medium/20 px-2 py-1 text-2xs text-severity-medium">
               <Icon name="tool" size={12} className="mt-0.5" />
-              <span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">
                 {message.toolRequest.kind === 'ask_user_question'
                   ? `Question: ${message.toolRequest.questions.map(({ question }) => question).join(' · ')}`
                   : `Tool: ${message.toolRequest.toolName} · ${message.toolRequest.description}`}
@@ -151,7 +174,7 @@ export function ChatMessages() {
             <span className="mt-0.5 text-2xs text-severity-critical">Failed to send</span>
           )}
           {editingMessageId === message.id && (
-            <div className="mt-2 w-full min-w-[280px] rounded-lg border border-accent-blue/25 bg-panel p-2 shadow-xl">
+            <div className="mt-2 w-full min-w-0 max-w-full rounded-lg border border-accent-blue/25 bg-panel p-2 shadow-xl">
               <textarea
                 aria-label="Edited message"
                 autoFocus
@@ -191,6 +214,10 @@ export function ChatMessages() {
       </div>
     </div>
   );
+}
+
+function distanceFromBottom(scroller: HTMLDivElement) {
+  return Math.max(0, scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight);
 }
 
 function messageContextLabel(ref: AgentContextRef) {
