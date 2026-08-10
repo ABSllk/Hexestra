@@ -11,6 +11,7 @@ release/
 release-*/
 coverage/
 artifacts/
+tmp/
 .ui-test/
 *.pyc
 

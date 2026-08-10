@@ -52,6 +52,7 @@ const LOCAL_ROOT_ENTRIES = new Set([
   'dist-electron',
   'node_modules',
   'release',
+  'tmp',
 ]);
 
 const LOCAL_VERSIONED_RELEASE_DIRECTORY_PATTERN =
@@ -80,6 +81,7 @@ const REQUIRED_IGNORE_RULES = new Set([
   'node_modules/',
   'release/',
   'release-*/',
+  'tmp/',
   'resources/burp-bridge/*.jar',
   'resources/mitmproxy/bin/',
   '*.pyc',

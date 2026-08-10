@@ -272,6 +272,10 @@ textarea:focus-visible {
     background: rgb(var(--color-severity-critical) / 0.18);
   }
 
+  .ui-input {
+    @apply rounded-md border border-border-subtle bg-panel px-2 py-1.5 text-text-primary placeholder:text-text-muted;
+  }
+
   .ui-icon-button {
     @apply inline-flex h-7 min-h-7 min-w-7 items-center justify-center rounded-md border border-transparent text-text-muted transition-colors;
   }
