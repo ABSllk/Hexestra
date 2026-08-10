@@ -13,6 +13,7 @@ export interface TrafficSidecarOptions {
   userDataPath: string;
   profile: ProxyProfile;
   trustedServerCaPath?: string;
+  upstreamProxyUrl?: string;
   mitmdumpPath?: string | null;
   onFlow: (flow: TrafficFlow) => void;
   onExit: (error: string) => void;
@@ -59,6 +60,7 @@ export class TrafficSidecar {
       projectId: options.projectId,
       addonPath,
       trustedServerCaPath: options.trustedServerCaPath,
+      upstreamProxyUrl: options.upstreamProxyUrl,
     });
     const child = spawn(executable, args, {
       cwd: options.projectPath,
@@ -203,6 +205,7 @@ export function buildMitmdumpArgs(options: {
   projectId: string;
   addonPath: string;
   trustedServerCaPath?: string;
+  upstreamProxyUrl?: string;
 }) {
   const args = [
     '--listen-host', '127.0.0.1', '--listen-port', String(options.proxyPort),
@@ -216,6 +219,7 @@ export function buildMitmdumpArgs(options: {
     '--set', 'hexestra_burp_enabled=false',
     '--scripts', options.addonPath,
   ];
+  if (options.upstreamProxyUrl) args.unshift('--mode', `upstream:${options.upstreamProxyUrl}`);
   if (options.trustedServerCaPath) {
     args.push('--set', `ssl_verify_upstream_trusted_ca=${options.trustedServerCaPath}`);
   }

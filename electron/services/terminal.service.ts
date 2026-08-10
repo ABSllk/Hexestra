@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { spawn as spawnPty, type IPty } from '@lydell/node-pty';
 import { v4 as uuid } from 'uuid';
 import { sessionService } from './session.service';
+import { projectProxyEnvironment } from './project-egress';
 
 interface PtySession {
   id: string;
@@ -157,7 +158,7 @@ export class TerminalService {
       rows: 40,
       cwd,
       env: {
-        ...process.env,
+        ...(engagementId ? projectProxyEnvironment(engagementId, process.env) : process.env),
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
         ELECTRON_RUN_AS_NODE: undefined, // Prevent Electron from being forced to node mode

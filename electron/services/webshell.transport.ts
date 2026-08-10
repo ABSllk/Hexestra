@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import http from 'http';
 import https from 'https';
+import tls from 'tls';
 import type {
   ShellFlavor,
   WebShellCommandMode,
@@ -10,6 +11,7 @@ import type {
   WebShellResolvedRuntime,
   WebShellSystemInfo,
 } from '../contracts/shell';
+import { getProjectEgressRoute, openProjectConnectTunnel } from './project-egress';
 import {
   WEBSHELL_COMMAND_BASE64_PLACEHOLDER,
   WEBSHELL_COMMAND_PLACEHOLDER,
@@ -133,11 +135,12 @@ export async function executeWebShellCommand(
   signal: AbortSignal,
   timeoutMs: number,
   payloadEncoder: WebShellPayloadEncoder = 'raw',
+  projectId?: string,
 ): Promise<WebShellCommandResult> {
   const nonce = createWebShellProtocolNonce();
   const wrapped = buildWebShellCommand(flavor, command, cwd, nonce);
   const request = buildRequest(options, encodeWebShellPayload(buildWebShellPayload(commandMode, wrapped), payloadEncoder));
-  const response = await requestHttp(request, signal, timeoutMs, options.allowInvalidTls, options.responseEncoding);
+  const response = await requestHttp(request, signal, timeoutMs, options.allowInvalidTls, options.responseEncoding, projectId);
   const logicalBody = extractWebShellResponse(response.body, options);
   return parseWebShellCommand(logicalBody, nonce);
 }
@@ -148,6 +151,7 @@ export async function probeWebShell(
   timeoutMs: number,
   preferredMode?: Exclude<WebShellCommandMode, 'auto'>,
   payloadEncoder: WebShellPayloadEncoder = 'raw',
+  projectId?: string,
 ): Promise<{ flavor: Exclude<ShellFlavor, 'auto' | 'raw'>; commandMode: Exclude<WebShellCommandMode, 'auto'>; cwd: string }> {
   const configured = options.commandMode ?? 'auto';
   const supportedModes: Array<Exclude<WebShellCommandMode, 'auto'>> = configured === 'auto'
@@ -164,7 +168,7 @@ export async function probeWebShell(
     const wrapped = buildWebShellCommand(flavor, probe, flavor === 'powershell' ? 'C:\\' : flavor === 'cmd' ? 'C:\\' : '/', nonce);
     const request = buildRequest(options, encodeWebShellPayload(buildWebShellPayload(commandMode, wrapped), payloadEncoder));
     try {
-      const response = await requestHttp(request, new AbortController().signal, timeoutMs, options.allowInvalidTls, options.responseEncoding);
+      const response = await requestHttp(request, new AbortController().signal, timeoutMs, options.allowInvalidTls, options.responseEncoding, projectId);
       const logicalBody = extractWebShellResponse(response.body, options);
       const result = parseWebShellCommand(logicalBody, nonce);
       if (!result.output.includes(challenge)) throw new Error('WebShell probe marker was not returned');
@@ -265,6 +269,7 @@ function requestHttp(
   timeoutMs: number,
   allowInvalidTls: boolean,
   responseEncoding: WebShellResponseEncoding,
+  projectId?: string,
 ): Promise<WebShellHttpResponse> {
   return new Promise((resolve, reject) => {
     let parsed: URL;
@@ -277,6 +282,11 @@ function requestHttp(
       settled = true;
       error ? reject(error) : resolve(value!);
     };
+    const route = projectId ? getProjectEgressRoute(projectId) : undefined;
+    if (route?.mode === 'blocked') { reject(new Error(route.error || 'Project proxy is blocked')); return; }
+    const createConnection = projectId && route?.mode === 'proxy'
+      ? proxiedConnection(projectId, parsed, allowInvalidTls)
+      : undefined;
     const req = transport.request({
       protocol: parsed.protocol,
       hostname: parsed.hostname,
@@ -288,6 +298,7 @@ function requestHttp(
         ...(request.body ? { 'Content-Length': Buffer.byteLength(request.body, 'utf8') } : {}),
       },
       ...(parsed.protocol === 'https:' ? { rejectUnauthorized: !allowInvalidTls, servername: parsed.hostname } : {}),
+      ...(createConnection ? { createConnection } : {}),
     }, (response) => {
       if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400) {
         response.resume();
@@ -327,6 +338,20 @@ function requestHttp(
     if (request.body) req.write(request.body);
     req.end();
   });
+}
+
+function proxiedConnection(projectId: string, parsed: URL, allowInvalidTls: boolean) {
+  return (_options: http.ClientRequestArgs, callback: (error: Error | null, socket: import('stream').Duplex) => void): import('stream').Duplex | null | undefined => {
+    const port = Number(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80);
+    void openProjectConnectTunnel(projectId, parsed.hostname, port).then((socket) => {
+      if (!socket) return callback(new Error('Project proxy route changed before connection'), undefined as never);
+      if (parsed.protocol === 'http:') return callback(null, socket);
+      const secure = tls.connect({ socket, servername: parsed.hostname, rejectUnauthorized: !allowInvalidTls });
+      secure.once('secureConnect', () => callback(null, secure));
+      secure.once('error', (error) => callback(error, undefined as never));
+    }, (error) => callback(error instanceof Error ? error : new Error(String(error)), undefined as never));
+    return undefined;
+  };
 }
 
 function replaceCommand(template: string, command: string, mode: 'encoded' | 'json' | 'raw') {

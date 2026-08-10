@@ -4,7 +4,7 @@ import type {
   ClaudeSkillListResult,
   ClaudeSkillScope,
 } from '@electron/contracts/claude-capabilities';
-import { DismissibleNotice, Icon, useConfirmDialog } from '@/components/shared';
+import { Button, DismissibleNotice, Icon, useConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useSessionStore } from '@/stores';
 import { useI18n } from '@/i18n';
@@ -179,23 +179,22 @@ export function SkillsSettings() {
     : false, [content, document, name, scope]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-panel">
-      <header className="flex items-center justify-between border-b border-border-subtle px-6 py-4">
+    <div className="flex h-full min-h-0 flex-col bg-canvas">
+      <header className="flex items-start justify-between gap-4 border-b border-border-subtle px-6 py-5">
         <div>
-          <div className="flex items-center gap-2">
-            <Icon name="sparkles" size={17} className="text-accent-blue" />
-            <h1 className="text-sm font-semibold text-text-primary">{t('skills.title')}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-lg font-semibold text-text-primary">{t('skills.title')}</h1>
             {result && <span className="rounded bg-panel px-1.5 py-0.5 font-mono text-[11px] text-text-muted">{result.runtimeLabel}</span>}
           </div>
-          <p className="mt-1 text-[11px] text-text-muted">{t('skills.description')}</p>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-text-muted">{t('skills.description')}</p>
         </div>
-        <button onClick={create} className="rounded border border-accent-blue/30 bg-accent-blue/10 px-3 py-1.5 text-xs text-accent-blue hover:bg-accent-blue/20">
+        <Button tone="primary" leadingIcon="plus" onClick={create}>
           New Skill
-        </button>
+        </Button>
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-[250px_1fr]">
-        <aside className="min-h-0 overflow-y-auto border-r border-border-subtle bg-canvas/30 p-3">
+        <aside className="min-h-0 overflow-y-auto border-r border-border-subtle bg-panel/35 p-3">
           {!result && <p className="p-3 text-xs text-text-muted">{t('skills.loading')}</p>}
           {result?.items.length === 0 && <EmptyList text="No personal or project Skills found." />}
           <div className="space-y-1">
@@ -230,7 +229,7 @@ export function SkillsSettings() {
               </div>
             </div>
           ) : (
-            <div className="mx-auto max-w-3xl">
+            <div className="mx-auto max-w-4xl rounded-lg border border-border-subtle bg-panel/55 p-4">
               <div className="mb-4 grid grid-cols-[1fr_150px] gap-3">
                 <label>
                   <span className="mb-1 block text-[11px] font-medium text-text-secondary">Skill name</span>

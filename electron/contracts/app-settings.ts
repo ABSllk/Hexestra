@@ -8,14 +8,16 @@ export type AppLanguage = 'en' | 'zh-CN';
 export type AppThemePreference = 'system' | 'dark' | 'light';
 
 export interface AppSettings {
-  version: 3;
+  version: 4;
   language: AppLanguage;
   theme: AppThemePreference;
   mitmdumpPath: string | null;
+  mihomoPath: string | null;
 }
 
 export interface AppSettingsPatch {
   language?: AppLanguage;
   theme?: AppThemePreference;
   mitmdumpPath?: string | null;
+  mihomoPath?: string | null;
 }

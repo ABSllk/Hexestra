@@ -58,6 +58,7 @@ Hexestra 将分散的渗透测试环节整合进同一个项目。Agent 可以�
 - 将原始输出依次整理为 Evidence、Finding、Vulnerability 和 Report
 - 使用非破坏性对话分支保留原始推理路径，同时共享项目的权威状态
 - 可选接入 Burp Bridge 和 Burp MCP，不改变原有 Burp 工作流
+- 可选的项目级 Mihomo 多跳出口，节点加密保存并对受控路由执行 fail-closed
 
 ## 快速开始
 
@@ -68,6 +69,7 @@ Hexestra 将分散的渗透测试环节整合进同一个项目。Agent 可以�
 - 当前平台的标准 Electron 桌面运行库；Ubuntu 需要常见的 X11/GTK 运行库
 - 打包版已内置 mitmproxy；从源码运行时可单独提供
 - 可选的 Burp Suite；构建 Bridge 需要 JDK 17
+- 可选的用户提供 [Mihomo](https://github.com/MetaCubeX/mihomo/releases)，用于项目级多跳出口（v1.19.29 是已测试的推荐版本）
 
 ### 安装 Claude Code
 
@@ -136,6 +138,18 @@ mitmdump --version
 ```
 
 Release 已内置 mitmdump 运行时，因此 Traffic Capture 无需单独安装 mitmproxy。
+
+### 配置项目级 Mihomo 出口
+
+从上游发布页下载 Mihomo，然后在 **设置 > 代理** 中选择可执行文件。v1.19.29 是已测试的推荐参考版本；可执行文件能够运行即可接受，实际兼容性由配置校验和 Controller 启动结果决定。Mihomo 是由用户提供的外部 [GPLv3](https://raw.githubusercontent.com/MetaCubeX/mihomo/Meta/LICENSE) 运行时；Hexestra 不下载或随安装包分发它。
+
+代理范围仅限当前活动项目：不会启用 TUN，也不会修改系统代理。Browser、Traffic/Replay、最外层 SSH 或 jump-host 连接以及 WebShell 请求会使用受控链路。Local/WSL Terminal 会注入 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 和 `WSLENV`；忽略这些变量并直接创建裸 socket 的程序可能绕过 Terminal 边界。Claude API 流量和远端 Shell 命令产生的二次出站不在 v1 控制范围。
+
+代理开启后，缺少节点、链无效、Runtime 停止/崩溃或重载失败都会阻断受控出口，不会回退直连。真实两跳验收可运行：
+
+```bash
+HEXESTRA_MIHOMO_PATH=/path/to/mihomo npm run test:proxy-smoke
+```
 
 ### 配置 Burp Suite Bridge
 

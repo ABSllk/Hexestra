@@ -33,28 +33,28 @@ describe('AppSettingsService', () => {
   afterEach(() => fs.rmSync(mocks.root, { recursive: true, force: true }));
 
   it('normalizes unsupported or legacy values to English and system theme', () => {
-    expect(normalizeAppSettings(null)).toEqual({ version: 3, language: 'en', theme: 'system', mitmdumpPath: null });
-    expect(normalizeAppSettings({ version: 99, language: 'fr', theme: 'sepia' })).toEqual({ version: 3, language: 'en', theme: 'system', mitmdumpPath: null });
-    expect(normalizeAppSettings({ version: 1, language: 'zh-CN' })).toEqual({ version: 3, language: 'zh-CN', theme: 'system', mitmdumpPath: null });
+    expect(normalizeAppSettings(null)).toEqual({ version: 4, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null });
+    expect(normalizeAppSettings({ version: 99, language: 'fr', theme: 'sepia' })).toEqual({ version: 4, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null });
+    expect(normalizeAppSettings({ version: 1, language: 'zh-CN' })).toEqual({ version: 4, language: 'zh-CN', theme: 'system', mitmdumpPath: null, mihomoPath: null });
   });
 
   it('migrates and bounds an optional mitmdump path', () => {
     expect(normalizeAppSettings({ version: 1, language: 'en', mitmdumpPath: '  /usr/local/bin/mitmdump  ' }))
-      .toEqual({ version: 3, language: 'en', theme: 'system', mitmdumpPath: '/usr/local/bin/mitmdump' });
+      .toEqual({ version: 4, language: 'en', theme: 'system', mitmdumpPath: '/usr/local/bin/mitmdump', mihomoPath: null });
   });
 
   it('writes normalized legacy settings back to the profile during migration', () => {
     fs.writeFileSync(path.join(mocks.root, 'app-settings.json'), JSON.stringify({ version: 2, language: 'zh-CN', mitmdumpPath: '/tmp/mitmdump' }), 'utf8');
-    expect(new AppSettingsService().get()).toEqual({ version: 3, language: 'zh-CN', theme: 'system', mitmdumpPath: '/tmp/mitmdump' });
-    expect(JSON.parse(fs.readFileSync(path.join(mocks.root, 'app-settings.json'), 'utf8'))).toEqual({ version: 3, language: 'zh-CN', theme: 'system', mitmdumpPath: '/tmp/mitmdump' });
+    expect(new AppSettingsService().get()).toEqual({ version: 4, language: 'zh-CN', theme: 'system', mitmdumpPath: '/tmp/mitmdump', mihomoPath: null });
+    expect(JSON.parse(fs.readFileSync(path.join(mocks.root, 'app-settings.json'), 'utf8'))).toEqual({ version: 4, language: 'zh-CN', theme: 'system', mitmdumpPath: '/tmp/mitmdump', mihomoPath: null });
   });
 
   it('persists the selected language and theme and restores them in a new service instance', () => {
     const service = new AppSettingsService();
-    expect(service.update({ language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump' })).toEqual({ version: 3, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump' });
+    expect(service.update({ language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo' })).toEqual({ version: 4, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo' });
     expect(mocks.nativeTheme.themeSource).toBe('light');
-    expect(JSON.parse(fs.readFileSync(path.join(mocks.root, 'app-settings.json'), 'utf8'))).toEqual({ version: 3, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump' });
-    expect(new AppSettingsService().get()).toEqual({ version: 3, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump' });
+    expect(JSON.parse(fs.readFileSync(path.join(mocks.root, 'app-settings.json'), 'utf8'))).toEqual({ version: 4, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo' });
+    expect(new AppSettingsService().get()).toEqual({ version: 4, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo' });
   });
 
   it('applies the resolved native background to open windows', () => {

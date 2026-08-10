@@ -38,6 +38,7 @@ import { BurpProvider } from './burp-provider';
 import { BurpMirrorClient } from './burp-mirror-client';
 import { sessionService } from './session.service';
 import { appSettingsService } from './app-settings.service';
+import { getProjectEgressRoute, onProjectEgressRoute } from './project-egress';
 
 interface ProjectTrafficRuntime {
   sidecar: TrafficSidecar;
@@ -51,6 +52,7 @@ interface ProjectTrafficRuntime {
   mirrorCapabilities: string[];
   mirrorError?: string;
   mirrorDrain?: Promise<void>;
+  upstreamProxyUrl?: string;
 }
 
 export class TrafficService {
@@ -78,6 +80,7 @@ export class TrafficService {
     ipcMain.handle(TRAFFIC_IPC.BURP_CONNECT, (_event, projectId: string) => this.connectBurp(projectId));
     ipcMain.handle(TRAFFIC_IPC.BURP_DISCONNECT, (_event, projectId: string) => this.disconnectBurp(projectId));
     ipcMain.handle(TRAFFIC_IPC.BURP_CALL, (_event, projectId: string, request: BurpCallRequest) => this.callBurp(projectId, request));
+    onProjectEgressRoute((route) => { void this.reconcileEgressRoute(route.projectId); });
   }
 
   getProfile(projectId: string): TrafficProfileState {
@@ -389,6 +392,10 @@ export class TrafficService {
     this.replayRepositories.clear();
   }
 
+  interruptProjectFlows(projectId: string, reason = 'Proxy chain changed before the Flow completed') {
+    this.markIncompleteFlowsFailed(projectId, reason);
+  }
+
   private async restart(projectId: string, profile: ProxyProfile) {
     const current = this.runtimes.get(projectId);
     if (current) {
@@ -402,6 +409,7 @@ export class TrafficService {
       profile,
       state: 'starting',
       mirrorCapabilities: [],
+      upstreamProxyUrl: this.upstreamProxyUrl(projectId),
     };
     this.runtimes.set(projectId, runtime);
     this.emit({ projectId, profile: true });
@@ -412,6 +420,7 @@ export class TrafficService {
         userDataPath: app.getPath('userData'),
         mitmdumpPath: appSettingsService.get().mitmdumpPath,
         profile,
+        upstreamProxyUrl: runtime.upstreamProxyUrl,
         onFlow: (flow) => this.ingest(projectId, flow),
         onExit: (error) => {
           runtime.state = 'error';
@@ -441,6 +450,28 @@ export class TrafficService {
     } finally {
       this.emit({ projectId, profile: true });
     }
+  }
+
+  private upstreamProxyUrl(projectId: string) {
+    const route = getProjectEgressRoute(projectId);
+    if (route.mode === 'blocked') throw new Error(route.error || 'Project proxy is blocked');
+    return route.mode === 'proxy' ? `http://127.0.0.1:${route.mixedPort}` : undefined;
+  }
+
+  private async reconcileEgressRoute(projectId: string) {
+    const route = getProjectEgressRoute(projectId);
+    const runtime = this.runtimes.get(projectId);
+    if (route.mode === 'blocked') {
+      if (runtime) await this.stop(projectId, false);
+      return;
+    }
+    const expected = route.mode === 'proxy' ? `http://127.0.0.1:${route.mixedPort}` : undefined;
+    if (!this.persistedProfile(projectId).enabled) return;
+    if (!runtime) {
+      await this.start(projectId).catch(() => undefined);
+      return;
+    }
+    if (runtime.upstreamProxyUrl !== expected) await this.restart(projectId, runtime.profile).catch(() => undefined);
   }
 
   private async configureBurpIntegration(projectId: string, runtime: ProjectTrafficRuntime, retryFailed: boolean) {

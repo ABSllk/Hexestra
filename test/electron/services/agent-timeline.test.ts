@@ -144,6 +144,43 @@ describe('AgentTimelineBuilder', () => {
     expect(tool.outputSummary).toBe('1 line of output');
   });
 
+  it('redacts proxy node credentials from persisted and renderer-facing tool activities', () => {
+    const timeline = new AgentTimelineBuilder('turn-proxy-secret');
+    timeline.consume(sdkMessage({
+      type: 'assistant',
+      uuid: 'assistant-proxy-secret',
+      message: {
+        content: [{
+          type: 'tool_use',
+          id: 'proxy-node-import',
+          name: 'mcp__hexestra__proxy_node_import',
+          input: {
+            source: 'uri', name: 'Exit',
+            value: 'vmess://this-secret-must-not-be-persisted',
+          },
+        }],
+      },
+    }));
+    timeline.consume(sdkMessage({
+      type: 'assistant',
+      uuid: 'assistant-proxy-batch-secret',
+      message: {
+        content: [{
+          type: 'tool_use',
+          id: 'proxy-nodes-import',
+          name: 'mcp__hexestra__proxy_nodes_import',
+          input: { value: 'trojan://batch-secret-must-not-be-persisted@192.0.2.1:443' },
+        }],
+      },
+    }));
+
+    const snapshot = timeline.snapshot();
+    expect(snapshot[0].input).toEqual({ source: 'uri', name: 'Exit', value: '[REDACTED]' });
+    expect(snapshot[1].input).toEqual({ value: '[REDACTED]' });
+    expect(JSON.stringify(snapshot)).not.toContain('this-secret-must-not-be-persisted');
+    expect(JSON.stringify(snapshot)).not.toContain('batch-secret-must-not-be-persisted');
+  });
+
   it('projects local slash-command output and manual compaction confirmation', () => {
     const timeline = new AgentTimelineBuilder('turn-command');
 

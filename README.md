@@ -58,6 +58,7 @@ These screenshots use the fictional Northstar Demo Lab, reserved `example.test` 
 - Structured progression from raw output to Evidence, Finding, Vulnerability, and Report
 - Non-destructive conversation branches that preserve the original reasoning path and canonical project state
 - Optional Burp Bridge and Burp MCP integration without replacing the normal Burp workflow
+- Optional per-project Mihomo multi-hop egress with encrypted nodes and fail-closed managed routing
 
 ## Quick start
 
@@ -68,6 +69,7 @@ These screenshots use the fictional Northstar Demo Lab, reserved `example.test` 
 - Standard Electron desktop libraries; Ubuntu needs the usual X11/GTK runtime libraries
 - mitmproxy is bundled in packaged builds; source runs may provide it separately
 - Optional Burp Suite and JDK 17 for the Bridge
+- Optional user-provided [Mihomo](https://github.com/MetaCubeX/mihomo/releases) for project-level multi-hop egress (v1.19.29 is tested and recommended, but not required)
 
 ### Install Claude Code
 
@@ -137,6 +139,18 @@ mitmdump --version
 ```
 
 Packaged builds include a mitmdump runtime, so Traffic Capture works without a separate mitmproxy installation.
+
+### Configure project-level Mihomo egress
+
+Download Mihomo from the upstream releases, then select its executable under **Settings > Proxy**. v1.19.29 is the tested and recommended reference version, but Hexestra does not enforce an exact version: a runnable binary is accepted and compatibility is determined by configuration validation and Controller startup. Mihomo is an external, user-provided [GPLv3](https://raw.githubusercontent.com/MetaCubeX/mihomo/Meta/LICENSE) runtime; Hexestra does not download or redistribute it.
+
+Proxy enforcement is isolated to the active project: no TUN or system proxy is enabled. Browser, Traffic/Replay, outer SSH or jump-host connections, and WebShell requests use the managed route. Local and WSL terminals receive `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, and `WSLENV`; programs that ignore these variables and open raw sockets can bypass the terminal boundary. Claude API traffic and secondary egress created by commands on a remote shell are outside v1.
+
+When enforcement is on, a missing node, invalid chain, stopped/crashed runtime, or failed reload blocks managed egress instead of falling back to a direct connection. Run the real two-hop acceptance smoke with:
+
+```bash
+HEXESTRA_MIHOMO_PATH=/path/to/mihomo npm run test:proxy-smoke
+```
 
 ### Configure the Burp Suite Bridge
 

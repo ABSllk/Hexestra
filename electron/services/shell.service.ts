@@ -35,6 +35,7 @@ import {
 } from './webshell.transport';
 import { getWebShellAdapter, type WebShellAdapter } from './webshell-adapter';
 import { WebShellHealthRepository } from './webshell-health.repository';
+import { openProjectConnectTunnel, projectProxyEnvironment } from './project-egress';
 import {
   assertSessionTransition,
   assertShellId,
@@ -679,6 +680,12 @@ export class ShellService {
     this.webshellHealthRepositories.delete(projectId);
   }
 
+  disconnectProjectSessions(projectId: string) {
+    for (const session of [...this.sessions.values()]) {
+      if (session.value.projectId === projectId) this.disconnect(projectId, session.value.id);
+    }
+  }
+
   destroyAll() {
     for (const listener of this.listeners.values()) listener.server.close();
     this.listeners.clear();
@@ -728,7 +735,7 @@ export class ShellService {
       rows: 40,
       cwd,
       env: {
-        ...process.env,
+        ...projectProxyEnvironment(session.value.projectId, process.env),
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
         ELECTRON_RUN_AS_NODE: undefined,
@@ -762,7 +769,7 @@ export class ShellService {
     let lastError: unknown = new Error('WebShell probe failed');
     for (const flavor of flavors) {
       try {
-        const probe = await adapter.probe(profile.webshell, flavor, 20_000, preferred?.commandMode);
+        const probe = await adapter.probe(profile.webshell, flavor, 20_000, preferred?.commandMode, session.value.projectId);
         session.webshell = {
           flavor,
           commandMode: probe.commandMode,
@@ -784,7 +791,7 @@ export class ShellService {
         const repository = this.healthRepository(session.value.projectId);
         const existing = repository.get(profile.id);
         const systemInfo = refreshSystemInfo || !existing?.systemInfo
-          ? await this.collectWebShellSystemInfo(adapter, profile.webshell, probe.resolved, probe.cwd)
+          ? await this.collectWebShellSystemInfo(adapter, profile.webshell, probe.resolved, probe.cwd, session.value.projectId)
           : undefined;
         repository.record({
           profileId: profile.id,
@@ -820,9 +827,10 @@ export class ShellService {
     options: NonNullable<ShellProfile['webshell']>,
     runtime: NonNullable<ShellSession['webshellRuntime']>,
     cwd: string,
+    projectId: string,
   ): Promise<WebShellSystemInfo | undefined> {
     try {
-      return await adapter.collectSystemInfo(options, runtime, cwd, new AbortController().signal, 20_000);
+      return await adapter.collectSystemInfo(options, runtime, cwd, new AbortController().signal, 20_000, projectId);
     } catch {
       return undefined;
     }
@@ -923,7 +931,7 @@ export class ShellService {
     const adapter = getWebShellAdapter(options);
     const startedAt = Date.now();
     try {
-      const result = await adapter.execute(options, runtime.resolved, command, runtime.cwd, controller.signal, 300_000);
+      const result = await adapter.execute(options, runtime.resolved, command, runtime.cwd, controller.signal, 300_000, session.value.projectId);
       if (runtime.activeAbort !== controller) return;
       runtime.cwd = result.cwd;
       if (session.value.profileId) this.healthRepository(session.value.projectId).record({
@@ -1010,7 +1018,7 @@ export class ShellService {
       };
       this.transition(session, 'agent_locked');
       this.emitChanged({ projectId: request.projectId, sessionId: request.sessionId });
-      void adapter.execute(options, runtime.resolved, request.command, runtime.cwd, controller.signal, timeoutMs)
+      void adapter.execute(options, runtime.resolved, request.command, runtime.cwd, controller.signal, timeoutMs, request.projectId)
         .then((result) => {
           if (session.activeCommand !== active) return;
           runtime.cwd = result.cwd;
@@ -1120,13 +1128,16 @@ export class ShellService {
     if (profile.jumpProfileId) {
       const jump = configuredJump;
       if (!jump || jump.kind !== 'ssh') throw new Error('SSH jump profile not found');
-      const jumpClient = await this.openSshClient(session.value.projectId, jump);
+      const jumpSocket = await openProjectConnectTunnel(session.value.projectId, jump.host!, jump.port!);
+      const jumpClient = await this.openSshClient(session.value.projectId, jump, jumpSocket);
       session.jumpClient = jumpClient;
       socket = await new Promise<ClientChannel>((resolve, reject) => {
         jumpClient.forwardOut('127.0.0.1', 0, profile.host!, profile.port!, (error, channel) => (
           error ? reject(error) : resolve(channel)
         ));
       });
+    } else {
+      socket = await openProjectConnectTunnel(session.value.projectId, profile.host!, profile.port!);
     }
     const client = await this.openSshClient(session.value.projectId, profile, socket);
     session.sshClient = client;

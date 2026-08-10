@@ -7,6 +7,23 @@ import {
 } from '@electron/services/project-state';
 
 describe('project state', () => {
+  it('migrates legacy projects with proxy enforcement disabled and normalizes v8 chains', () => {
+    expect(normalizeProjectState({ version: 7 }).proxy).toEqual({ enabled: false, activeChainId: null, chains: [] });
+    const state = normalizeProjectState({
+      version: 8,
+      proxy: {
+        enabled: true,
+        activeChainId: 'chain-1',
+        chains: [
+          { id: 'chain-1', name: 'Two hop', nodeIds: ['node-1', 'node-2'] },
+          { id: 'bad', name: 'Repeated', nodeIds: ['node-1', 'node-1'] },
+        ],
+      },
+    });
+    expect(state.version).toBe(8);
+    expect(state.proxy).toEqual({ enabled: true, activeChainId: 'chain-1', chains: [{ id: 'chain-1', name: 'Two hop', nodeIds: ['node-1', 'node-2'] }] });
+  });
+
   it('gives invalid persisted input a complete isolated default state', () => {
     expect(normalizeProjectState({})).toEqual(createDefaultProjectState());
     expect(createDefaultProjectState().workspace).toMatchObject({
@@ -206,7 +223,7 @@ describe('project state', () => {
       },
     });
 
-    expect(migrated.version).toBe(7);
+    expect(migrated.version).toBe(8);
     expect(migrated.shells).toEqual({ profiles: [], listeners: [] });
     expect(migrated.workspace.tabs[0].data).toEqual({ managedShell: true, shellProfileId: 'profile-1' });
   });
@@ -238,7 +255,7 @@ describe('project state', () => {
       workspace: { tabs: [] },
     });
 
-    expect(migrated.version).toBe(7);
+    expect(migrated.version).toBe(8);
     expect(migrated.agent.branches[0].subagentRuns[0]).toMatchObject({
       id: 'run-1',
       status: 'interrupted',

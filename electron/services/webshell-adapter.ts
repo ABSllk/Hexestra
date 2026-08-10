@@ -32,6 +32,7 @@ export interface WebShellAdapter {
     flavor: ConcreteFlavor,
     timeoutMs: number,
     preferredMode?: ConcreteMode,
+    projectId?: string,
   ): Promise<WebShellAdapterProbe>;
   execute(
     options: WebShellProfileOptions,
@@ -40,6 +41,7 @@ export interface WebShellAdapter {
     cwd: string,
     signal: AbortSignal,
     timeoutMs: number,
+    projectId?: string,
   ): Promise<WebShellCommandResult>;
   collectSystemInfo(
     options: WebShellProfileOptions,
@@ -47,14 +49,15 @@ export interface WebShellAdapter {
     cwd: string,
     signal: AbortSignal,
     timeoutMs: number,
+    projectId?: string,
   ): Promise<WebShellSystemInfo>;
 }
 
 class GenericWebShellAdapter implements WebShellAdapter {
   readonly id = 'generic' as const;
 
-  async probe(options: WebShellProfileOptions, flavor: ConcreteFlavor, timeoutMs: number, preferredMode?: ConcreteMode) {
-    const result = await probeWebShell(options, flavor, timeoutMs, preferredMode);
+  async probe(options: WebShellProfileOptions, flavor: ConcreteFlavor, timeoutMs: number, preferredMode?: ConcreteMode, projectId?: string) {
+    const result = await probeWithProject(options, flavor, timeoutMs, preferredMode, 'raw', projectId);
     return {
       ...result,
       resolved: {
@@ -73,9 +76,10 @@ class GenericWebShellAdapter implements WebShellAdapter {
     cwd: string,
     signal: AbortSignal,
     timeoutMs: number,
+    projectId?: string,
   ) {
     if (!runtime.commandMode) throw new Error('Generic WebShell command mode is unresolved');
-    return executeWebShellCommand(options, runtime.commandMode, runtime.shellFlavor, command, cwd, signal, timeoutMs);
+    return executeWithProject(options, runtime.commandMode, runtime.shellFlavor, command, cwd, signal, timeoutMs, 'raw', projectId);
   }
 
   async collectSystemInfo(
@@ -84,10 +88,11 @@ class GenericWebShellAdapter implements WebShellAdapter {
     cwd: string,
     signal: AbortSignal,
     timeoutMs: number,
+    projectId?: string,
   ) {
     if (!runtime.commandMode) throw new Error('Generic WebShell command mode is unresolved');
     const nonce = createWebShellProtocolNonce();
-    const result = await executeWebShellCommand(
+    const result = await executeWithProject(
       options,
       runtime.commandMode,
       runtime.shellFlavor,
@@ -95,6 +100,8 @@ class GenericWebShellAdapter implements WebShellAdapter {
       cwd,
       signal,
       timeoutMs,
+      'raw',
+      projectId,
     );
     return parseSystemInfoOutput(result.output, nonce);
   }
@@ -103,9 +110,9 @@ class GenericWebShellAdapter implements WebShellAdapter {
 class AntSwordV2PhpAdapter implements WebShellAdapter {
   readonly id = 'antsword.v2.php' as const;
 
-  async probe(options: WebShellProfileOptions, flavor: ConcreteFlavor, timeoutMs: number) {
+  async probe(options: WebShellProfileOptions, flavor: ConcreteFlavor, timeoutMs: number, _preferredMode?: ConcreteMode, projectId?: string) {
     const materialized = this.materialize(options);
-    const result = await probeWebShell(materialized, flavor, timeoutMs, 'php_eval', options.antsword!.encoder);
+    const result = await probeWithProject(materialized, flavor, timeoutMs, 'php_eval', options.antsword!.encoder, projectId);
     return {
       ...result,
       resolved: {
@@ -125,9 +132,10 @@ class AntSwordV2PhpAdapter implements WebShellAdapter {
     cwd: string,
     signal: AbortSignal,
     timeoutMs: number,
+    projectId?: string,
   ) {
     const materialized = this.materialize(options);
-    return executeWebShellCommand(
+    return executeWithProject(
       materialized,
       'php_eval',
       runtime.shellFlavor,
@@ -136,6 +144,7 @@ class AntSwordV2PhpAdapter implements WebShellAdapter {
       signal,
       timeoutMs,
       options.antsword!.encoder,
+      projectId,
     );
   }
 
@@ -145,10 +154,11 @@ class AntSwordV2PhpAdapter implements WebShellAdapter {
     cwd: string,
     signal: AbortSignal,
     timeoutMs: number,
+    projectId?: string,
   ) {
     const materialized = this.materialize(options);
     const nonce = createWebShellProtocolNonce();
-    const result = await executeWebShellCommand(
+    const result = await executeWithProject(
       materialized,
       'php_eval',
       runtime.shellFlavor,
@@ -157,6 +167,7 @@ class AntSwordV2PhpAdapter implements WebShellAdapter {
       signal,
       timeoutMs,
       options.antsword!.encoder,
+      projectId,
     );
     return parseSystemInfoOutput(result.output, nonce);
   }
@@ -171,6 +182,35 @@ class AntSwordV2PhpAdapter implements WebShellAdapter {
       commandMode: 'php_eval',
     };
   }
+}
+
+function probeWithProject(
+  options: WebShellProfileOptions,
+  flavor: ConcreteFlavor,
+  timeoutMs: number,
+  preferredMode: ConcreteMode | undefined,
+  encoder: import('../contracts/shell').WebShellPayloadEncoder,
+  projectId?: string,
+) {
+  if (projectId) return probeWebShell(options, flavor, timeoutMs, preferredMode, encoder, projectId);
+  if (encoder !== 'raw') return probeWebShell(options, flavor, timeoutMs, preferredMode, encoder);
+  return probeWebShell(options, flavor, timeoutMs, preferredMode);
+}
+
+function executeWithProject(
+  options: WebShellProfileOptions,
+  mode: ConcreteMode,
+  flavor: ConcreteFlavor,
+  command: string,
+  cwd: string,
+  signal: AbortSignal,
+  timeoutMs: number,
+  encoder: import('../contracts/shell').WebShellPayloadEncoder,
+  projectId?: string,
+) {
+  if (projectId) return executeWebShellCommand(options, mode, flavor, command, cwd, signal, timeoutMs, encoder, projectId);
+  if (encoder !== 'raw') return executeWebShellCommand(options, mode, flavor, command, cwd, signal, timeoutMs, encoder);
+  return executeWebShellCommand(options, mode, flavor, command, cwd, signal, timeoutMs);
 }
 
 const adapters = new Map<WebShellAdapterId, WebShellAdapter>([

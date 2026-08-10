@@ -45,6 +45,7 @@ import {
   shouldDestroyBrowserRuntime,
 } from './browser-policy';
 import { buildBrowserContextMenuModel, type BrowserContextMenuCommand } from './browser-context-menu';
+import { getProjectEgressRoute, onProjectEgressRoute } from './project-egress';
 
 const DEFAULT_BROWSER_URL = 'https://example.com/';
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/;
@@ -78,6 +79,12 @@ class BrowserService {
     ipcMain.handle(BROWSER_IPC.FOCUS, (event, request: unknown) => this.focus(event, request));
     ipcMain.handle(BROWSER_IPC.GET_STATE, (event, request: unknown) => this.getState(event, request));
     ipcMain.handle(BROWSER_IPC.READ, (event, request: unknown) => this.read(event, request));
+    onProjectEgressRoute((route) => {
+      const partition = browserProjectPartition(route.projectId);
+      const browserSession = session.fromPartition(partition, { cache: true });
+      this.configureSession(partition, browserSession);
+      void this.applyProjectProxy(route.projectId, browserSession);
+    });
   }
 
   private async ensure(event: IpcMainInvokeEvent, value: unknown): Promise<BrowserState> {
@@ -160,6 +167,11 @@ class BrowserService {
     const browserSession = session.fromPartition(partition, { cache: true });
     this.configureSession(partition, browserSession);
     await this.applyProjectProxy(projectId, browserSession);
+  }
+
+  async closeProjectConnections(projectId: string) {
+    const browserSession = session.fromPartition(browserProjectPartition(projectId), { cache: true });
+    await browserSession.closeAllConnections();
   }
 
   private setLayout(event: IpcMainInvokeEvent, value: unknown): BrowserState {
@@ -563,7 +575,9 @@ class BrowserService {
   }
 
   private async applyProjectProxy(projectId: string, browserSession: Session) {
-    const port = this.projectProxyPorts.get(projectId);
+    const capturePort = this.projectProxyPorts.get(projectId);
+    const egress = getProjectEgressRoute(projectId);
+    const port = capturePort ?? (egress.mode === 'proxy' ? egress.mixedPort : egress.mode === 'blocked' ? 9 : null);
     if (port) {
       await browserSession.setProxy({
         mode: 'fixed_servers',

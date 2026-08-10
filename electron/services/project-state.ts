@@ -15,6 +15,7 @@ import type {
   AgentPermissionMode,
 } from '../contracts/agent-runtime';
 import { CLAUDE_BACKEND_ID } from '../contracts/agent-runtime';
+import type { EgressProjectProxyState } from '../contracts/egress-proxy';
 
 export type ProjectPermissionMode = AgentPermissionMode;
 export type ProjectAutonomyLevel = 'low' | 'medium' | 'high';
@@ -61,7 +62,7 @@ export interface ProjectWorkspaceState {
 }
 
 export interface ProjectState {
-  version: 7;
+  version: 8;
   agent: {
     model: string | null;
     lastError: string | null;
@@ -73,6 +74,7 @@ export interface ProjectState {
     autonomyLevel: ProjectAutonomyLevel;
   };
   traffic: ProxyProfile;
+  proxy: EgressProjectProxyState;
   shells: ShellProjectState;
   workspace: ProjectWorkspaceState;
 }
@@ -81,6 +83,7 @@ export type ProjectStatePatch = {
   agent?: Partial<ProjectState['agent']>;
   preferences?: Partial<ProjectState['preferences']>;
   traffic?: Partial<ProxyProfile>;
+  proxy?: Partial<EgressProjectProxyState>;
   shells?: Partial<ShellProjectState>;
   workspace?: Partial<ProjectWorkspaceState>;
 };
@@ -93,7 +96,7 @@ export function createDefaultProjectState(): ProjectState {
     createdAt: new Date(0).toISOString(),
   });
   return {
-    version: 7,
+    version: 8,
     agent: {
       model: null,
       lastError: null,
@@ -105,6 +108,7 @@ export function createDefaultProjectState(): ProjectState {
       autonomyLevel: 'medium',
     },
     traffic: structuredClone(DEFAULT_PROXY_PROFILE),
+    proxy: { enabled: false, activeChainId: null, chains: [] },
     shells: normalizeShellProjectState(undefined),
     workspace: createDefaultWorkspace(),
   };
@@ -140,10 +144,11 @@ export function createDefaultWorkspace(): ProjectWorkspaceState {
 
 export function normalizeProjectState(value: unknown): ProjectState {
   const defaults = createDefaultProjectState();
-  if (!isRecord(value) || (value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6 && value.version !== 7)) return defaults;
+  if (!isRecord(value) || (value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8)) return defaults;
   const agent = isRecord(value.agent) ? value.agent : {};
   const preferences = isRecord(value.preferences) ? value.preferences : {};
   const traffic = isRecord(value.traffic) ? value.traffic : {};
+  const proxy = isRecord(value.proxy) ? value.proxy : {};
   const shells = isRecord(value.shells) ? value.shells : {};
   const workspace = isRecord(value.workspace) ? value.workspace : {};
   const branches = Array.isArray(agent.branches)
@@ -158,7 +163,7 @@ export function normalizeProjectState(value: unknown): ProjectState {
     : safeBranches[0].id;
 
   return {
-    version: 7,
+    version: 8,
     agent: {
       model: nullableString(agent.model),
       lastError: nullableString(agent.lastError),
@@ -174,6 +179,7 @@ export function normalizeProjectState(value: unknown): ProjectState {
         : defaults.preferences.autonomyLevel,
     },
     traffic: normalizeProjectTrafficProfile(traffic),
+    proxy: normalizeProjectProxyState(proxy),
     shells: normalizeShellProjectState(shells),
     workspace: normalizeWorkspace(workspace),
   };
@@ -185,9 +191,35 @@ export function mergeProjectState(current: ProjectState, patch: ProjectStatePatc
     agent: { ...current.agent, ...patch.agent },
     preferences: { ...current.preferences, ...patch.preferences },
     traffic: { ...current.traffic, ...patch.traffic },
+    proxy: { ...current.proxy, ...patch.proxy },
     shells: { ...current.shells, ...patch.shells },
     workspace: { ...current.workspace, ...patch.workspace },
   });
+}
+
+function normalizeProjectProxyState(value: Record<string, unknown>): EgressProjectProxyState {
+  const chains = Array.isArray(value.chains)
+    ? value.chains.flatMap((candidate) => {
+      if (!isRecord(candidate) || !isIdentifier(candidate.id)) return [];
+      const nodeIds = Array.isArray(candidate.nodeIds)
+        ? candidate.nodeIds.filter(isIdentifier).slice(0, 8)
+        : [];
+      if (nodeIds.length === 0 || new Set(nodeIds).size !== nodeIds.length) return [];
+      return [{
+        id: candidate.id,
+        name: typeof candidate.name === 'string' && candidate.name.trim()
+          ? candidate.name.trim().slice(0, 100)
+          : 'Proxy chain',
+        nodeIds,
+      }];
+    }).slice(0, 50)
+    : [];
+  const requested = typeof value.activeChainId === 'string' ? value.activeChainId : null;
+  return {
+    enabled: value.enabled === true,
+    activeChainId: requested && chains.some((chain) => chain.id === requested) ? requested : null,
+    chains,
+  };
 }
 
 function normalizeWorkspace(value: Record<string, unknown>): ProjectWorkspaceState {

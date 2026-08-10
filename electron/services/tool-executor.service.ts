@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { spawn, type ChildProcess } from 'child_process';
 import { v4 as uuid } from 'uuid';
+import { projectProxyEnvironment } from './project-egress';
 
 interface ToolRun {
   id: string;
@@ -45,8 +46,8 @@ class ToolExecutor {
       return this.inventory;
     });
 
-    ipcMain.handle('tools:run', async (_event, tool: string, args: string[], cwd?: string) => {
-      return this.execute(tool, args, cwd);
+    ipcMain.handle('tools:run', async (_event, tool: string, args: string[], cwd?: string, projectId?: string) => {
+      return this.execute(tool, args, cwd, projectId);
     });
 
     ipcMain.handle('tools:kill', async (_event, runId: string) => {
@@ -62,7 +63,7 @@ class ToolExecutor {
     });
   }
 
-  execute(tool: string, args: string[], cwd?: string): string {
+  execute(tool: string, args: string[], cwd?: string, projectId?: string): string {
     const id = `run-${uuid().slice(0, 8)}`;
     console.log(`[Tool] Starting ${tool} ${args.join(' ')} (${id})`);
 
@@ -70,7 +71,7 @@ class ToolExecutor {
       cwd: cwd || process.cwd(),
       shell: false,
       env: {
-        ...process.env,
+        ...(projectId ? projectProxyEnvironment(projectId, process.env) : process.env),
         ELECTRON_RUN_AS_NODE: undefined,
       },
     });

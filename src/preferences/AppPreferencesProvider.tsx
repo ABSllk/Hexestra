@@ -9,10 +9,11 @@ import {
 export type ResolvedTheme = 'dark' | 'light';
 
 const DEFAULT_SETTINGS: AppSettings = {
-  version: 3,
+  version: 4,
   language: 'en',
   theme: 'system',
   mitmdumpPath: null,
+  mihomoPath: null,
 };
 
 interface AppPreferencesValue {
@@ -118,11 +119,14 @@ export function normalizeRendererSettings(value: unknown): AppSettings {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return DEFAULT_SETTINGS;
   const record = value as Record<string, unknown>;
   return {
-    version: 3,
+    version: 4,
     language: record.language === 'zh-CN' ? 'zh-CN' : 'en',
     theme: isThemePreference(record.theme) ? record.theme : 'system',
     mitmdumpPath: typeof record.mitmdumpPath === 'string' && record.mitmdumpPath.trim()
       ? record.mitmdumpPath.trim()
+      : null,
+    mihomoPath: typeof record.mihomoPath === 'string' && record.mihomoPath.trim()
+      ? record.mihomoPath.trim()
       : null,
   };
 }

@@ -42,5 +42,13 @@ describe('traffic sidecar resolver', () => {
       profile: DEFAULT_PROXY_PROFILE,
     });
     expect(trustedTarget).toContain('ssl_verify_upstream_trusted_ca=C:\\fixture-ca.pem');
+
+    const projectEgress = buildMitmdumpArgs({
+      ...common,
+      upstreamProxyUrl: 'http://127.0.0.1:62000',
+      profile: DEFAULT_PROXY_PROFILE,
+    });
+    expect(projectEgress.slice(0, 2)).toEqual(['--mode', 'upstream:http://127.0.0.1:62000']);
+    expect(projectEgress).toContain('hexestra_burp_enabled=false');
   });
 });

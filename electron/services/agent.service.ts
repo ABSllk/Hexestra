@@ -44,6 +44,7 @@ import {
   type AgentCommandsChangedPayload,
 } from '../agent-command-contract';
 import { createHexestraAgentTools } from './agent-tools';
+import { sanitizeAgentToolInputForDisplay } from './agent-tool-policy';
 import { ClaudeAgentAdapter } from './agent-adapters/claude-agent-adapter';
 import { AgentAdapterRegistry } from './agent-adapters/registry';
 import {
@@ -190,7 +191,6 @@ class AgentService {
       return this.sendMessage(event.sender, normalized);
     });
 
-    ipcMain.handle('agent:attachments:pick', async (_event, picker: AgentAttachmentPicker) => {
     ipcMain.handle('agent:commands:list', async (_event, sessionId?: string | null) => {
       return this.listCommands(sessionId ?? undefined);
     });
@@ -199,6 +199,7 @@ class AgentService {
       return this.claudeAdapter.listMcpServerStatuses(this.discoveryInput(sessionId ?? undefined));
     });
 
+    ipcMain.handle('agent:attachments:pick', async (_event, picker: AgentAttachmentPicker) => {
       if (picker !== 'files' && picker !== 'images') throw new Error('Invalid attachment picker');
       const result = await dialog.showOpenDialog({
         title: picker === 'images' ? 'Attach images to Claude' : 'Attach files to Claude',
@@ -279,7 +280,6 @@ class AgentService {
     ipcMain.handle('agent:status', (_event, sessionId?: string) => this.getStatus(sessionId));
   }
 
-  private async activateProject(sessionId: string) {
   private async listCommands(sessionId?: string) {
     const stored = sessionId ? sessionService.getProjectState(sessionId).agent : null;
     const backendId = stored?.branches.find((branch) => branch.id === stored.activeBranchId)?.backendId
@@ -300,6 +300,7 @@ class AgentService {
     };
   }
 
+  private async activateProject(sessionId: string) {
     const previousSessionId = this.activeSessionId;
     if (this.activeSessionId !== sessionId && this.abortController) {
       this.abortController.abort();
@@ -557,13 +558,13 @@ class AgentService {
     if (!available) {
       throw new Error(adapter.status().lastError ?? `Agent backend is unavailable: ${adapter.id}`);
     }
-
     const command = adapter.capabilities.slashCommands
       ? normalizeAgentSlashCommand(request.content)
       : null;
     if (command && ((request.attachments?.length ?? 0) > 0 || contextRefs.length > 0)) {
       throw new Error('Slash commands cannot include attachments or staged context');
     }
+
     const currentFingerprint = adapter.fingerprint();
     if (this.connectionFingerprint !== currentFingerprint) {
       this.backendSessionId = null;
@@ -641,8 +642,8 @@ class AgentService {
     try {
       const runInput = {
         prompt,
-        systemInstructions: buildSystemInstructions(),
         command: command ?? undefined,
+        systemInstructions: buildSystemInstructions(),
         signal: this.abortController.signal,
         attachments: request.attachments ?? [],
         cwd: queryCwd,
@@ -738,7 +739,6 @@ class AgentService {
     return createHexestraAgentTools({ sender, sessionId, selectedTargetId, permissionMode });
   }
 
-  private createInteractionHandler(
   private emitCommandsChanged(
     sender: WebContents,
     sessionId: string | null,
@@ -748,6 +748,7 @@ class AgentService {
     if (!sender.isDestroyed()) sender.send('agent:commands-changed', payload);
   }
 
+  private createInteractionHandler(
     sender: WebContents,
     autonomyLevel: AutonomyLevel,
     permissionMode: SupportedAgentMode,
@@ -782,6 +783,7 @@ class AgentService {
       }
 
       const requestId = `permission-${++this.requestCounter}`;
+      const displayInput = sanitizeAgentToolInputForDisplay(toolName, input);
       this.setState('awaiting_approval');
       sender.send('agent:tool-request', {
         sessionId: this.activeSessionId,
@@ -790,8 +792,8 @@ class AgentService {
           id: requestId,
           toolUseId,
           toolName,
-          input,
-          description: describeToolUse(toolName, input),
+          input: displayInput,
+          description: describeToolUse(toolName, displayInput),
           riskLevel: request.riskLevel ?? 'write',
           createdAt: new Date().toISOString(),
           ...subagentContext,

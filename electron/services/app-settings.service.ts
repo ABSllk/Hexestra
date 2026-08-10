@@ -9,7 +9,7 @@ import {
   type AppThemePreference,
 } from '../contracts/app-settings';
 
-const DEFAULT_SETTINGS: AppSettings = { version: 3, language: 'en', theme: 'system', mitmdumpPath: null };
+const DEFAULT_SETTINGS: AppSettings = { version: 4, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null };
 
 export class AppSettingsService {
   private cached: AppSettings | null = null;
@@ -58,7 +58,7 @@ export class AppSettingsService {
 
   update(value: unknown): AppSettings {
     const patch = parsePatch(value);
-    const next: AppSettings = { ...this.get(), ...patch, version: 3 };
+    const next: AppSettings = { ...this.get(), ...patch, version: 4 };
     this.persist(next);
     this.cached = next;
     nativeTheme.themeSource = next.theme;
@@ -104,21 +104,22 @@ export class AppSettingsService {
 
 export function normalizeAppSettings(value: unknown): AppSettings {
   if (!value || typeof value !== 'object') return { ...DEFAULT_SETTINGS };
-  const record = value as { language?: unknown; theme?: unknown; mitmdumpPath?: unknown };
+  const record = value as { language?: unknown; theme?: unknown; mitmdumpPath?: unknown; mihomoPath?: unknown };
   const mitmdumpPath = typeof record.mitmdumpPath === 'string' && record.mitmdumpPath.trim()
     ? record.mitmdumpPath.trim().slice(0, 2_000)
     : null;
   return {
-    version: 3,
+    version: 4,
     language: isAppLanguage(record.language) ? record.language : 'en',
     theme: isAppThemePreference(record.theme) ? record.theme : 'system',
     mitmdumpPath,
+    mihomoPath: normalizeExecutablePath(record.mihomoPath),
   };
 }
 
 function parsePatch(value: unknown): AppSettingsPatch {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid app settings');
-  const record = value as { language?: unknown; theme?: unknown; mitmdumpPath?: unknown };
+  const record = value as { language?: unknown; theme?: unknown; mitmdumpPath?: unknown; mihomoPath?: unknown };
   const patch: AppSettingsPatch = {};
   if (record.language !== undefined) {
     if (!isAppLanguage(record.language)) throw new Error('Unsupported interface language');
@@ -136,7 +137,17 @@ function parsePatch(value: unknown): AppSettingsPatch {
       ? record.mitmdumpPath.trim().slice(0, 2_000)
       : null;
   }
+  if (record.mihomoPath !== undefined) {
+    if (record.mihomoPath !== null && typeof record.mihomoPath !== 'string') {
+      throw new Error('Invalid Mihomo executable path');
+    }
+    patch.mihomoPath = normalizeExecutablePath(record.mihomoPath);
+  }
   return patch;
+}
+
+function normalizeExecutablePath(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim().slice(0, 2_000) : null;
 }
 
 function isAppLanguage(value: unknown): value is AppLanguage {

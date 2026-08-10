@@ -1,5 +1,14 @@
 # Changelog / 更新日志
 
+## Unreleased / 未发布
+
+### Added / 新增
+
+- 新增项目级 Mihomo 多跳出口代理、safeStorage 加密节点库、可视化链编辑器、状态栏与 Agent 编排工具；v1.19.29 为已测试推荐版本而非版本限制，代理故障时保持 fail-closed。
+  Added project-scoped Mihomo multi-hop egress, a safeStorage-encrypted node vault, visual chain editor, status bar, and Agent orchestration tools. v1.19.29 is tested and recommended rather than enforced, while proxy failures remain fail-closed.
+- Browser、Traffic/Replay、SSH、WebShell 与 Local/WSL Terminal 现可共享项目 mixed 入口；不修改系统代理或启用 TUN。
+  Browser, Traffic/Replay, SSH, WebShell, and Local/WSL Terminal can now share the project mixed ingress without changing the system proxy or enabling TUN.
+
 ## [0.3.0] - 2026-08-09
 
 ### Added / 新增

@@ -7,6 +7,7 @@ export type IconName =
   | 'bot'
   | 'browser'
   | 'check'
+  | 'chevron-left'
   | 'chevron-right'
   | 'circle'
   | 'close'
@@ -17,6 +18,7 @@ export type IconName =
   | 'file'
   | 'fit'
   | 'folder'
+  | 'grip'
   | 'home'
   | 'image'
   | 'layers'
@@ -105,6 +107,7 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   check: <path d="m5 12 4 4L19 6" />,
+  'chevron-left': <path d="m15 18-6-6 6-6" />,
   'chevron-right': <path d="m9 18 6-6-6-6" />,
   circle: <circle cx="12" cy="12" r="7" />,
   close: (
@@ -150,6 +153,16 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
   folder: (
     <>
       <path d="M3 6h7l2 2h9v11H3V6Z" />
+    </>
+  ),
+  grip: (
+    <>
+      <circle cx="9" cy="6" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="6" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="12" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="18" r=".75" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="18" r=".75" fill="currentColor" stroke="none" />
     </>
   ),
   home: (

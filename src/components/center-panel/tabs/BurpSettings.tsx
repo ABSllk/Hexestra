@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { DismissibleNotice, Icon } from '@/components/shared';
+import { DismissibleNotice, Surface } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useSessionStore } from '@/stores';
 import {
@@ -85,14 +85,11 @@ export function BurpSettings() {
   const bridgeReady = profileState.burpStatus.bridgeReachable === true;
 
   return (
-    <div className="h-full overflow-y-auto bg-panel">
-      <div className="mx-auto max-w-3xl px-8 py-7">
-        <header className="mb-7 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
+    <div className="h-full overflow-y-auto bg-canvas">
+      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6">
+        <header className="mb-6 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
           <div>
-            <div className="mb-1 flex items-center gap-2">
-              <Icon name="activity" size={18} className="text-accent-blue" />
-              <h1 className="text-lg font-semibold text-text-primary">{t('burp.title')}</h1>
-            </div>
+            <h1 className="text-lg font-semibold text-text-primary">{t('burp.title')}</h1>
             <p className="max-w-xl text-xs leading-5 text-text-muted">
               {t('burp.description')}
             </p>
@@ -100,12 +97,12 @@ export function BurpSettings() {
           <span className="rounded border border-border-subtle bg-panel px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted">{t('burp.project')}</span>
         </header>
 
-        <section className="mb-6 grid grid-cols-[180px_1fr] gap-6">
-          <div>
-            <h2 className="text-xs font-semibold text-text-secondary">Hexestra Bridge</h2>
+        <section className="mb-6">
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold text-text-primary">Hexestra Bridge</h2>
             <p className="mt-1 text-[11px] leading-4 text-text-muted">{t('burp.bridgeHelp')}</p>
           </div>
-          <div className="space-y-4">
+          <Surface className="space-y-4 p-4">
             <Field label="Bridge port" hint="Loopback only">
               <input aria-label="Burp Bridge port" type="number" min={1} max={65535} className="settings-input font-mono" value={draft.bridgePort} onChange={(event) => setDraft({ ...draft, bridgePort: Number(event.target.value) })} />
             </Field>
@@ -116,28 +113,32 @@ export function BurpSettings() {
               Mirrored exchanges appear in Burp <span className="text-text-secondary">Target → Site map</span> and optionally <span className="text-text-secondary">Organizer</span>.
               Burp does not provide an API for inserting synthetic entries into <span className="text-text-secondary">Proxy → HTTP history</span>.
             </div>
-          </div>
+          </Surface>
         </section>
 
-        <section className="mb-6 grid grid-cols-[180px_1fr] gap-6">
-          <div>
-            <h2 className="text-xs font-semibold text-text-secondary">{t('burp.mcpTools')}</h2>
+        <section className="mb-6">
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold text-text-primary">{t('burp.mcpTools')}</h2>
             <p className="mt-1 text-[11px] leading-4 text-text-muted">{t('burp.mcpHelp')}</p>
           </div>
-          <Field label="MCP SSE endpoint" hint="Failure does not stop capture or mirroring">
-            <input aria-label="Burp MCP SSE endpoint" className="settings-input font-mono" value={draft.mcpUrl} onChange={(event) => setDraft({ ...draft, mcpUrl: event.target.value })} />
-          </Field>
+          <Surface className="p-4">
+            <Field label="MCP SSE endpoint" hint="Failure does not stop capture or mirroring">
+              <input aria-label="Burp MCP SSE endpoint" className="settings-input font-mono" value={draft.mcpUrl} onChange={(event) => setDraft({ ...draft, mcpUrl: event.target.value })} />
+            </Field>
+          </Surface>
         </section>
 
-        <section className="mb-5 rounded border border-border-subtle bg-panel/35 p-3" aria-label="Burp integration status">
-          <div className="mb-2 flex items-center gap-2">
-            <span className={cn('h-2 w-2 rounded-full', bridgeReady ? 'bg-accent-green' : enabled ? 'bg-severity-medium' : 'bg-text-muted')} />
-            <span className="text-xs font-semibold text-text-secondary">{bridgeReady ? t('burp.connected') : enabled ? t('burp.offline') : t('burp.disconnected')}</span>
-            <span className="ml-auto font-mono text-[11px] text-text-muted">{profileState.mirrorStatus.synced} synced · {profileState.mirrorStatus.pending} pending · {profileState.mirrorStatus.failed} failed</span>
-          </div>
-          <p className="text-[11px] leading-4 text-text-muted">
-            {profileState.burpStatus.mcpReachable ? `${profileState.burpStatus.edition} MCP · ${profileState.burpStatus.tools.length} tools` : 'MCP tools unavailable'}
-          </p>
+        <section className="mb-5" aria-label="Burp integration status">
+          <Surface className="p-4">
+            <div className="mb-2 flex items-center gap-2">
+              <span className={cn('h-2 w-2 rounded-full', bridgeReady ? 'bg-accent-green' : enabled ? 'bg-severity-medium' : 'bg-text-muted')} />
+              <span className="text-xs font-semibold text-text-secondary">{bridgeReady ? t('burp.connected') : enabled ? t('burp.offline') : t('burp.disconnected')}</span>
+              <span className="ml-auto font-mono text-[11px] text-text-muted">{profileState.mirrorStatus.synced} synced · {profileState.mirrorStatus.pending} pending · {profileState.mirrorStatus.failed} failed</span>
+            </div>
+            <p className="text-[11px] leading-4 text-text-muted">
+              {profileState.burpStatus.mcpReachable ? `${profileState.burpStatus.edition} MCP · ${profileState.burpStatus.tools.length} tools` : 'MCP tools unavailable'}
+            </p>
+          </Surface>
         </section>
 
         {error && <DismissibleNotice tone="error" className="mb-4 text-xs" onDismiss={() => setError(null)}>{error}</DismissibleNotice>}

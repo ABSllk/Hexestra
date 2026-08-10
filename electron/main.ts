@@ -16,6 +16,7 @@ import { appSettingsService } from './services/app-settings.service';
 import { dialogOverlayService } from './services/dialog-overlay.service';
 import { getPlatformCapabilities } from './contracts/platform';
 import { mitmproxyRuntimeService } from './services/mitmproxy-runtime.service';
+import { egressProxyService } from './services/egress-proxy.service';
 
 console.log('[Hexestra] Starting Electron main process...');
 console.log('[Hexestra] ELECTRON_RUN_AS_NODE =', process.env.ELECTRON_RUN_AS_NODE);
@@ -122,7 +123,7 @@ app.on('window-all-closed', () => {
   console.log('[Hexestra] All windows closed. Quitting.');
   terminalService.destroyAll();
   shellService.destroyAll();
-  void trafficService.close().finally(() => {
+  void egressProxyService.close().then(() => trafficService.close()).finally(() => {
     sessionService.close();
     app.quit();
   });
@@ -169,3 +170,4 @@ void shellService;
 void appSettingsService;
 void dialogOverlayService;
 void mitmproxyRuntimeService;
+void egressProxyService;

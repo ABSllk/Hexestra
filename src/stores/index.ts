@@ -4,3 +4,4 @@ export { useNetMapStore } from './useNetMapStore';
 export { useChatStore } from './useChatStore';
 export { useTabStore } from './useTabStore';
 export { usePentestTreeStore } from './usePentestTreeStore';
+export { useEgressProxyStore } from './useEgressProxyStore';

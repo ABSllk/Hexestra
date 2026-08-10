@@ -1,5 +1,6 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentActivity } from '../contracts/agent-runtime';
+import { sanitizeAgentToolInputForDisplay } from './agent-tool-policy';
 export type { AgentActivity } from '../contracts/agent-runtime';
 export type AgentActivityStatus = AgentActivity['status'];
 
@@ -56,9 +57,9 @@ export class AgentTimelineBuilder {
         return this.consumeToolProgress(message);
       case 'tool_use_summary':
         return this.consumeToolSummary(message.preceding_tool_use_ids, message.summary);
-      default:
       case 'system':
         return this.consumeSystemMessage(message);
+      default:
         return false;
     }
   }
@@ -99,7 +100,6 @@ export class AgentTimelineBuilder {
     }));
   }
 
-  private consumeStreamEvent(event: StreamEvent) {
   private consumeSystemMessage(message: Extract<SDKMessage, { type: 'system' }>) {
     if (message.subtype === 'local_command_output') {
       return this.addText(message.content);
@@ -110,6 +110,7 @@ export class AgentTimelineBuilder {
     return false;
   }
 
+  private consumeStreamEvent(event: StreamEvent) {
     if (event.type === 'message_start') {
       this.streamBlocks.clear();
       this.partialToolInputs.clear();
@@ -147,7 +148,10 @@ export class AgentTimelineBuilder {
         const partial = this.partialToolInputs.get(activity.id);
         if (partial) {
           try {
-            activity.input = sanitizeToolInput(JSON.parse(partial) as Record<string, unknown>);
+            activity.input = sanitizeToolInput(
+              activity.toolName ?? 'Tool',
+              JSON.parse(partial) as Record<string, unknown>,
+            );
           } catch {
             // The complete assistant message will provide canonical tool input.
           }
@@ -278,7 +282,7 @@ export class AgentTimelineBuilder {
         status: 'running',
         toolUseId: block.id,
         toolName: block.name ?? 'Tool',
-        input: sanitizeToolInput(block.input ?? {}),
+        input: sanitizeToolInput(block.name ?? 'Tool', block.input ?? {}),
       };
       this.refreshToolPresentation(activity);
       return activity;
@@ -318,7 +322,9 @@ export class AgentTimelineBuilder {
     } else if (activity.kind === 'tool') {
       activity.toolUseId = block.id ?? activity.toolUseId;
       activity.toolName = block.name ?? activity.toolName ?? 'Tool';
-      activity.input = block.input ? sanitizeToolInput(block.input) : activity.input;
+      activity.input = block.input
+        ? sanitizeToolInput(activity.toolName, block.input)
+        : activity.input;
       activity.status = 'running';
       this.refreshToolPresentation(activity);
     }
@@ -457,8 +463,8 @@ function summarizeToolOutput(output: string, isError: boolean) {
   return `${lines} ${lines === 1 ? 'line' : 'lines'} of output`;
 }
 
-function sanitizeToolInput(input: Record<string, unknown>) {
-  return sanitizeObject(input, 0);
+function sanitizeToolInput(toolName: string, input: Record<string, unknown>) {
+  return sanitizeObject(sanitizeAgentToolInputForDisplay(toolName, input), 0);
 }
 
 function sanitizeObject(input: Record<string, unknown>, depth: number): Record<string, unknown> {

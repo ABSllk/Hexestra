@@ -6,6 +6,7 @@ vi.mock('@electron/services/browser.service', () => ({ browserService: {} }));
 vi.mock('@electron/services/session.service', () => ({ sessionService: {} }));
 vi.mock('@electron/services/shell.service', () => ({ shellService: {} }));
 vi.mock('@electron/services/traffic.service', () => ({ trafficService: {} }));
+vi.mock('@electron/services/egress-proxy.service', () => ({ egressProxyService: {} }));
 vi.mock('@electron/services/sync-targets.service', () => ({ syncTargetsService: {} }));
 
 const expectedToolNames = [
@@ -21,6 +22,10 @@ const expectedToolNames = [
   'traffic_capture_status', 'traffic_capture_set', 'traffic_list', 'traffic_search',
   'traffic_read', 'traffic_forward', 'traffic_drop', 'traffic_replay', 'traffic_save_evidence',
   'burp_capabilities', 'burp_scanner_issues', 'burp_open_repeater', 'burp_send_intruder',
+  'proxy_status', 'proxy_nodes_list', 'proxy_node_import', 'proxy_nodes_import', 'proxy_node_update',
+  'proxy_node_delete', 'proxy_nodes_test', 'proxy_chains_list', 'proxy_chain_test',
+  'proxy_chain_save', 'proxy_chain_delete', 'proxy_chain_activate', 'proxy_enforcement_set',
+  'proxy_runtime_start', 'proxy_runtime_stop',
   'target_list', 'scope_update', 'asset_register', 'target_update_summary',
   'asset_update_summary', 'evidence_list', 'evidence_upsert', 'finding_list', 'finding_upsert',
   'vulnerability_list', 'vulnerability_upsert', 'report_list', 'report_upsert', 'task_list',
@@ -37,4 +42,5 @@ describe('Hexestra Agent tool factories', () => {
     expect(tools.map(({ name }) => name)).toEqual(expectedToolNames);
     expect(new Set(tools.map(({ name }) => name)).size).toBe(tools.length);
   });
+
 });

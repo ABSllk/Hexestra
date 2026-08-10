@@ -47,6 +47,10 @@ const INVOKE_CHANNELS = new Set([
   'traffic:decide', 'traffic:replay', 'traffic:save-evidence', 'traffic:start', 'traffic:stop',
   'traffic:replay-session:open', 'traffic:replay-session:read', 'traffic:replay-session:update', 'traffic:replay-session:clear',
   'traffic:burp:connect', 'traffic:burp:disconnect', 'traffic:burp:call',
+  'egress-proxy:runtime:diagnose', 'egress-proxy:runtime:choose', 'egress-proxy:runtime:start', 'egress-proxy:runtime:stop',
+  'egress-proxy:status', 'egress-proxy:exit:refresh', 'egress-proxy:enforcement:set',
+  'egress-proxy:nodes:list', 'egress-proxy:nodes:import', 'egress-proxy:nodes:import-batch', 'egress-proxy:nodes:update', 'egress-proxy:nodes:delete', 'egress-proxy:nodes:test',
+  'egress-proxy:chains:list', 'egress-proxy:chains:save', 'egress-proxy:chains:delete', 'egress-proxy:chains:activate', 'egress-proxy:chains:test',
   'clipboard:read-text', 'clipboard:write-text',
 ]);
 
@@ -59,6 +63,7 @@ const EVENT_CHANNELS = new Set([
   'browser:context-action', 'browser:open-tab',
   'traffic:changed',
   'agent:commands-changed',
+  'egress-proxy:changed',
   'shell:output', 'shell:changed',
   'menu:open-folder', 'menu:create-project-folder',
   'app:settings:changed', 'dialog:requested',

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isManagedRecordFileMutation, isReadOnlyHexestraTool } from '@electron/services/agent-tool-policy';
+import {
+  isManagedRecordFileMutation,
+  isReadOnlyHexestraTool,
+  sanitizeAgentToolInputForDisplay,
+} from '@electron/services/agent-tool-policy';
 
 describe('Agent tool policy', () => {
   it('classifies Hexestra list operations as read-only', () => {
@@ -16,6 +20,9 @@ describe('Agent tool policy', () => {
     expect(isReadOnlyHexestraTool('task_list')).toBe(true);
     expect(isReadOnlyHexestraTool('traffic_capture_status')).toBe(true);
     expect(isReadOnlyHexestraTool('shell_profile_status')).toBe(true);
+    expect(isReadOnlyHexestraTool('proxy_status')).toBe(true);
+    expect(isReadOnlyHexestraTool('proxy_nodes_list')).toBe(true);
+    expect(isReadOnlyHexestraTool('proxy_chains_list')).toBe(true);
   });
 
   it('keeps graph, task, and Finding mutations state-changing', () => {
@@ -32,6 +39,34 @@ describe('Agent tool policy', () => {
     expect(isReadOnlyHexestraTool('task_update_status')).toBe(false);
     expect(isReadOnlyHexestraTool('scope_update')).toBe(false);
     expect(isReadOnlyHexestraTool('traffic_capture_set')).toBe(false);
+    expect(isReadOnlyHexestraTool('proxy_chain_test')).toBe(false);
+    expect(isReadOnlyHexestraTool('proxy_chain_activate')).toBe(false);
+    expect(isReadOnlyHexestraTool('proxy_node_import')).toBe(false);
+    expect(isReadOnlyHexestraTool('proxy_nodes_import')).toBe(false);
+    expect(isReadOnlyHexestraTool('proxy_node_update')).toBe(false);
+    expect(isReadOnlyHexestraTool('proxy_node_delete')).toBe(false);
+    expect(isReadOnlyHexestraTool('proxy_nodes_test')).toBe(false);
+    expect(isReadOnlyHexestraTool('proxy_chain_delete')).toBe(false);
+    expect(isReadOnlyHexestraTool('proxy_enforcement_set')).toBe(false);
+    expect(isReadOnlyHexestraTool('proxy_runtime_stop')).toBe(false);
+  });
+
+  it('redacts write-only proxy node values before approval display', () => {
+    const input = {
+      nodeId: 'node-1', source: 'form', name: 'Exit',
+      value: { type: 'trojan', password: 'renderer-must-not-see-this' },
+      unexpected: 'also-hide-unrecognized-fields',
+    };
+    const displayed = sanitizeAgentToolInputForDisplay('mcp__hexestra__proxy_node_update', input);
+
+    expect(displayed).toEqual({
+      nodeId: 'node-1', source: 'form', name: 'Exit', value: '[REDACTED]',
+    });
+    expect(input.value.password).toBe('renderer-must-not-see-this');
+
+    expect(sanitizeAgentToolInputForDisplay('mcp__hexestra__proxy_nodes_import', {
+      value: 'trojan://batch-secret@192.0.2.1:443',
+    })).toEqual({ value: '[REDACTED]' });
   });
 
   it('blocks direct file-tool writes to managed security records', () => {

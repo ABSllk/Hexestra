@@ -9,13 +9,14 @@ import type {
 import type { PlatformCapabilities } from '@electron/contracts/platform';
 import type { MitmproxyRuntimeDiagnostic } from '@electron/services/mitmproxy-runtime';
 import { TRAFFIC_IPC } from '@electron/contracts/traffic';
-import { DismissibleNotice, Icon } from '@/components/shared';
+import { DismissibleNotice, Icon, Surface } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useChatStore } from '@/stores';
 import { useTabStore, type SettingsPage } from '@/stores/useTabStore';
 import { BurpSettings } from './BurpSettings';
 import { SkillsSettings } from './SkillsSettings';
 import { McpSettings } from './McpSettings';
+import { ProxySettings } from './ProxySettings';
 import { useAppPreferences, useI18n } from '@/i18n';
 
 const SOURCES: Array<{ id: ClaudeSettingSource; label: string; detail: string }> = [
@@ -47,6 +48,7 @@ export function SettingsTab() {
         <SettingsPageButton active={page === 'general'} icon="settings" label={t('settings.general')} onClick={() => selectPage('general')} />
         <SettingsPageButton active={page === 'connection'} icon="terminal" label={t('settings.connection')} onClick={() => selectPage('connection')} />
         <SettingsPageButton active={page === 'traffic'} icon="activity" label={t('settings.trafficRuntime')} onClick={() => selectPage('traffic')} />
+        <SettingsPageButton active={page === 'proxy'} icon="network" label={t('settings.proxy')} onClick={() => selectPage('proxy')} />
         <SettingsPageButton active={page === 'burp'} icon="activity" label={t('settings.burp')} onClick={() => selectPage('burp')} />
         <SettingsPageButton active={page === 'skills'} icon="sparkles" label={t('settings.skills')} onClick={() => selectPage('skills')} />
         <SettingsPageButton active={page === 'mcp'} icon="server" label={t('settings.mcp')} onClick={() => selectPage('mcp')} />
@@ -55,6 +57,7 @@ export function SettingsTab() {
         {page === 'general' && <GeneralSettings />}
         {page === 'connection' && <ConnectionSettings />}
         {page === 'traffic' && <TrafficRuntimeSettings />}
+        {page === 'proxy' && <ProxySettings />}
         {page === 'burp' && <BurpSettings />}
         {page === 'skills' && <SkillsSettings />}
         {page === 'mcp' && <McpSettings />}
@@ -159,14 +162,11 @@ function ConnectionSettings() {
   const dirty = JSON.stringify(settings) !== JSON.stringify(saved);
 
   return (
-    <div className="h-full overflow-y-auto bg-panel">
-      <div className="mx-auto max-w-3xl px-8 py-7">
-        <header className="mb-7 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
+    <div className="h-full overflow-y-auto bg-canvas">
+      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6">
+        <header className="mb-6 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
           <div>
-            <div className="mb-1 flex items-center gap-2">
-              <Icon name="settings" size={18} className="text-accent-blue" />
-              <h1 className="text-lg font-semibold text-text-primary">{t('settings.agentConnection')}</h1>
-            </div>
+            <h1 className="text-lg font-semibold text-text-primary">{t('settings.agentConnection')}</h1>
             <p className="max-w-xl text-xs leading-5 text-text-muted">
               {t('settings.agentConnectionDescription')}
             </p>
@@ -338,11 +338,11 @@ function TrafficRuntimeSettings() {
 
   const tone = status?.status === 'ready' ? 'text-accent-green' : 'text-severity-critical';
   return (
-    <div className="h-full overflow-y-auto bg-panel">
-      <div className="mx-auto max-w-3xl px-8 py-7">
-        <header className="mb-7 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
+    <div className="h-full overflow-y-auto bg-canvas">
+      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6">
+        <header className="mb-6 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
           <div>
-            <div className="mb-1 flex items-center gap-2"><Icon name="activity" size={18} className="text-accent-blue" /><h1 className="text-lg font-semibold text-text-primary">{t('settings.trafficRuntime')}</h1></div>
+            <h1 className="text-lg font-semibold text-text-primary">{t('settings.trafficRuntime')}</h1>
             <p className="max-w-xl text-xs leading-5 text-text-muted">{t('settings.trafficRuntimeDescription')}</p>
           </div>
           <span className="rounded border border-border-subtle bg-panel px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted">{t('settings.global')}</span>
@@ -369,14 +369,11 @@ function GeneralSettings() {
   const { themePreference, setTheme } = useAppPreferences();
   const [error, setError] = useState<string | null>(null);
   return (
-    <div className="h-full overflow-y-auto bg-panel">
-      <div className="mx-auto max-w-3xl px-8 py-7">
-        <header className="mb-7 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
+    <div className="h-full overflow-y-auto bg-canvas">
+      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6">
+        <header className="mb-6 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
           <div>
-            <div className="mb-1 flex items-center gap-2">
-              <Icon name="settings" size={18} className="text-accent-blue" />
-              <h1 className="text-lg font-semibold text-text-primary">{t('settings.interface')}</h1>
-            </div>
+            <h1 className="text-lg font-semibold text-text-primary">{t('settings.interface')}</h1>
             <p className="max-w-xl text-xs leading-5 text-text-muted">{t('settings.interfaceDescription')}</p>
           </div>
           <span className="rounded border border-border-subtle bg-panel px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted">{t('settings.global')}</span>
@@ -423,7 +420,7 @@ function GeneralSettings() {
   );
 }
 
-function SettingsPageButton({ active, icon, label, onClick }: { active: boolean; icon: 'settings' | 'terminal' | 'activity' | 'sparkles' | 'server'; label: string; onClick: () => void }) {
+function SettingsPageButton({ active, icon, label, onClick }: { active: boolean; icon: 'settings' | 'terminal' | 'activity' | 'network' | 'sparkles' | 'server'; label: string; onClick: () => void }) {
   return (
     <button
       aria-pressed={active}
@@ -443,7 +440,7 @@ function SettingsPageButton({ active, icon, label, onClick }: { active: boolean;
 }
 
 function isSettingsPage(value: unknown): value is SettingsPage {
-  return value === 'general' || value === 'connection' || value === 'traffic' || value === 'burp' || value === 'skills' || value === 'mcp';
+  return value === 'general' || value === 'connection' || value === 'traffic' || value === 'proxy' || value === 'burp' || value === 'skills' || value === 'mcp';
 }
 
 function normalizeSettingsPayload(value: AgentSettingsContainer | AgentConnectionSettings): AgentSettingsContainer {
@@ -457,12 +454,14 @@ function normalizeSettingsPayload(value: AgentSettingsContainer | AgentConnectio
 
 function SettingsSection({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
-    <section className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-[180px_1fr] md:gap-6">
-      <div>
-        <h2 className="text-xs font-semibold text-text-secondary">{title}</h2>
+    <section className="mb-6">
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
         <p className="mt-1 text-[11px] leading-4 text-text-muted">{description}</p>
       </div>
-      <div className="space-y-4">{children}</div>
+      <Surface className="p-4">
+        <div className="space-y-4">{children}</div>
+      </Surface>
     </section>
   );
 }
