@@ -38,6 +38,11 @@ import {
   readAgentAttachment,
 } from './agent-attachment';
 import { normalizeAgentContextRefs, type AgentContextRef } from '../agent-context-contract';
+import {
+  normalizeAgentSlashCommand,
+  type AgentSlashCommandDescriptor,
+  type AgentCommandsChangedPayload,
+} from '../agent-command-contract';
 import { createHexestraAgentTools } from './agent-tools';
 import { ClaudeAgentAdapter } from './agent-adapters/claude-agent-adapter';
 import { AgentAdapterRegistry } from './agent-adapters/registry';
@@ -186,6 +191,14 @@ class AgentService {
     });
 
     ipcMain.handle('agent:attachments:pick', async (_event, picker: AgentAttachmentPicker) => {
+    ipcMain.handle('agent:commands:list', async (_event, sessionId?: string | null) => {
+      return this.listCommands(sessionId ?? undefined);
+    });
+
+    ipcMain.handle('claude:mcp:status', async (_event, sessionId?: string | null) => {
+      return this.claudeAdapter.listMcpServerStatuses(this.discoveryInput(sessionId ?? undefined));
+    });
+
       if (picker !== 'files' && picker !== 'images') throw new Error('Invalid attachment picker');
       const result = await dialog.showOpenDialog({
         title: picker === 'images' ? 'Attach images to Claude' : 'Attach files to Claude',
@@ -267,6 +280,26 @@ class AgentService {
   }
 
   private async activateProject(sessionId: string) {
+  private async listCommands(sessionId?: string) {
+    const stored = sessionId ? sessionService.getProjectState(sessionId).agent : null;
+    const backendId = stored?.branches.find((branch) => branch.id === stored.activeBranchId)?.backendId
+      ?? this.branches.find((branch) => branch.id === this.activeBranchId)?.backendId
+      ?? CLAUDE_BACKEND_ID;
+    const adapter = this.adapterRegistry.require(backendId);
+    if (!adapter.capabilities.slashCommands || !adapter.listCommands) return [];
+    return adapter.listCommands(this.discoveryInput(sessionId));
+  }
+
+  private discoveryInput(sessionId?: string) {
+    const sessionPath = sessionId ? sessionService.getSessionPath(sessionId) : null;
+    const cwd = sessionPath && fs.existsSync(sessionPath) ? sessionPath : process.cwd();
+    return {
+      cwd,
+      additionalDirectories: sessionPath && fs.existsSync(sessionPath) ? [sessionPath] : undefined,
+      settingSources: agentSettingsService.getClaudeSettings().settingSources,
+    };
+  }
+
     const previousSessionId = this.activeSessionId;
     if (this.activeSessionId !== sessionId && this.abortController) {
       this.abortController.abort();
@@ -525,6 +558,12 @@ class AgentService {
       throw new Error(adapter.status().lastError ?? `Agent backend is unavailable: ${adapter.id}`);
     }
 
+    const command = adapter.capabilities.slashCommands
+      ? normalizeAgentSlashCommand(request.content)
+      : null;
+    if (command && ((request.attachments?.length ?? 0) > 0 || contextRefs.length > 0)) {
+      throw new Error('Slash commands cannot include attachments or staged context');
+    }
     const currentFingerprint = adapter.fingerprint();
     if (this.connectionFingerprint !== currentFingerprint) {
       this.backendSessionId = null;
@@ -579,7 +618,7 @@ class AgentService {
       permissionMode,
       request.selectedTarget?.status === 'out_of_scope',
     );
-    const projectKnowledge = request.session?.id
+    const projectKnowledge = !command && request.session?.id
       ? await buildAgentProjectKnowledge(request.session.id)
       : undefined;
     const prompt = buildAgentPrompt(request, projectKnowledge);
@@ -603,6 +642,7 @@ class AgentService {
       const runInput = {
         prompt,
         systemInstructions: buildSystemInstructions(),
+        command: command ?? undefined,
         signal: this.abortController.signal,
         attachments: request.attachments ?? [],
         cwd: queryCwd,
@@ -629,7 +669,9 @@ class AgentService {
         } else if (event.type === 'subagent_snapshot') {
           this.mergeSubagentRuns([event.run]);
           this.emitSubagentUpdates(sender, new Set([event.run.id]));
-        } else {
+        } else if (event.type === 'commands_changed') {
+          this.emitCommandsChanged(sender, request.session?.id ?? this.activeSessionId, event.commands);
+        } else if (event.type === 'turn_completed') {
           completedEvent = event;
           latestContent = event.content;
           latestActivities = event.activities;
@@ -697,6 +739,15 @@ class AgentService {
   }
 
   private createInteractionHandler(
+  private emitCommandsChanged(
+    sender: WebContents,
+    sessionId: string | null,
+    commands: AgentSlashCommandDescriptor[],
+  ) {
+    const payload: AgentCommandsChangedPayload = { sessionId, commands };
+    if (!sender.isDestroyed()) sender.send('agent:commands-changed', payload);
+  }
+
     sender: WebContents,
     autonomyLevel: AutonomyLevel,
     permissionMode: SupportedAgentMode,

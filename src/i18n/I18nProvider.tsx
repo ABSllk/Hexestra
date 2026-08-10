@@ -11,7 +11,7 @@ interface I18nValue {
 const I18nContext = createContext<I18nValue>({
   language: 'en',
   setLanguage: async () => undefined,
-  t: (key) => en[key],
+  t: (key, values) => interpolate(en[key], values),
 });
 
 export function I18nProvider({ children }: { children: ReactNode }) {

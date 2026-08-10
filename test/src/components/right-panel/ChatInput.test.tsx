@@ -32,8 +32,29 @@ describe('ChatInput composer', () => {
   const setPermissionMode = vi.fn();
   const setAutonomyLevel = vi.fn();
   const refreshStatus = vi.fn(async () => {});
+  let commandDiscoveryFails = false;
+  const eventHandlers = new Map<string, (...args: unknown[]) => void>();
   const invoke = vi.fn(async (channel: string) => {
     if (channel === 'agent:settings:get') return settings;
+    if (channel === 'agent:commands:list') {
+      if (commandDiscoveryFails) throw new Error('Runtime command discovery failed');
+      return [
+        { name: 'compact', description: 'Compact conversation', argumentHint: '[instructions]', aliases: [] },
+        { name: 'context', description: 'Show context usage', argumentHint: '', aliases: [] },
+        { name: 'cost', description: 'Show usage', argumentHint: '', aliases: ['usage'] },
+        { name: 'doctor', description: 'Check Claude Code health', argumentHint: '', aliases: [] },
+      ];
+    }
+    if (channel === 'claude:skills:list') return {
+      runtimeLabel: 'WSL · Ubuntu-24.04',
+      projectAvailable: true,
+      items: [{
+        id: 'project:enabled:recon-helper', name: 'recon-helper',
+        description: 'Run the project recon workflow', scope: 'project', enabled: true,
+        sourcePath: '/project/.claude/skills/recon-helper/SKILL.md',
+      }],
+      errors: [],
+    };
     if (channel === 'agent:attachments:pick') return [imageAttachment];
     if (channel === 'agent:settings:update') return { ...settings, backends: { claude: { ...settings.backends.claude, model: 'custom-model' } } };
     return undefined;
@@ -41,9 +62,19 @@ describe('ChatInput composer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    commandDiscoveryFails = false;
+    eventHandlers.clear();
     Object.defineProperty(window, 'hexestra', {
       configurable: true,
-      value: { invoke, on: vi.fn(() => vi.fn()), once: vi.fn(), send: vi.fn() },
+      value: {
+        invoke,
+        on: vi.fn((channel: string, callback: (...args: unknown[]) => void) => {
+          eventHandlers.set(channel, callback);
+          return () => eventHandlers.delete(channel);
+        }),
+        once: vi.fn(),
+        send: vi.fn(),
+      },
     });
     useChatStore.setState({
       sendMessage,
@@ -88,6 +119,75 @@ describe('ChatInput composer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
     await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('Inspect this screenshot', [imageAttachment]));
+  });
+
+  it('keeps attachments staged instead of silently dropping them for a slash command', async () => {
+    render(<ChatInput />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add files or images' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add images' }));
+    expect(await screen.findByText('screen.png')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Message AI assistant...'), { target: { value: '/compact' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    expect(await screen.findByText('Send slash commands without attachments or staged context.')).toBeInTheDocument();
+    expect(screen.getByText('screen.png')).toBeInTheDocument();
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('offers keyboard command completion and renders the selected command as a token', async () => {
+    render(<ChatInput />);
+    const composer = screen.getByRole('combobox');
+
+    fireEvent.change(composer, { target: { value: '/co' } });
+    expect(screen.getByRole('listbox', { name: 'Command suggestions' })).toHaveClass('bottom-full', 'mb-2');
+    expect(screen.getByRole('listbox', { name: 'Command suggestions' })).not.toHaveClass('bottom-[3.25rem]');
+    expect(screen.getByRole('option', { name: /\/compact/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /\/context/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /\/cost/ })).toBeInTheDocument();
+
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    expect(screen.getByRole('button', { name: 'Edit command /compact' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Command arguments…')).toHaveValue('');
+
+    fireEvent.keyDown(screen.getByPlaceholderText('Command arguments…'), { key: 'Enter' });
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('/compact', []));
+  });
+
+  it('uses the runtime command catalog, aliases, and argument hints', async () => {
+    render(<ChatInput />);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('agent:commands:list', null));
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '/doc' } });
+    expect(await screen.findByRole('option', { name: /\/doctor/ })).toHaveTextContent('Check Claude Code health');
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '/usa' } });
+    expect(await screen.findByRole('option', { name: /\/usage/ })).toHaveTextContent('Show usage');
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '/comp' } });
+    expect(await screen.findByRole('option', { name: /\/compact/ })).toHaveTextContent('[instructions]');
+  });
+
+  it('replaces the runtime catalog when Claude reports command changes', async () => {
+    render(<ChatInput />);
+    await waitFor(() => expect(eventHandlers.has('agent:commands-changed')).toBe(true));
+    eventHandlers.get('agent:commands-changed')?.({
+      sessionId: null,
+      commands: [{ name: 'review', description: 'Review changes', argumentHint: '[focus]', aliases: [] }],
+    });
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '/rev' } });
+    expect(await screen.findByRole('option', { name: /\/review/ })).toHaveTextContent('Review changes');
+    expect(screen.queryByRole('option', { name: /\/doctor/ })).not.toBeInTheDocument();
+  });
+
+  it('falls back to enabled Claude Skills when runtime discovery fails', async () => {
+    commandDiscoveryFails = true;
+    render(<ChatInput />);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('claude:skills:list', null));
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '/rec' } });
+    expect(screen.getByRole('option', { name: /\/recon-helper/ })).toHaveTextContent('Run the project recon workflow');
   });
 
   it('updates the global model from the collapsed model menu', async () => {

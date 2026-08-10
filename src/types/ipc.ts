@@ -33,6 +33,8 @@ export const IPC = {
   AGENT_NEW_CONVERSATION: 'agent:conversation:new',
   AGENT_MESSAGE: 'agent:message',
   AGENT_STATUS: 'agent:status',
+  AGENT_COMMANDS_LIST: 'agent:commands:list',
+  AGENT_COMMANDS_CHANGED: 'agent:commands-changed',
   AGENT_TOOL_REQUEST: 'agent:tool-request',
   AGENT_SUBAGENT_UPDATE: 'agent:subagent-update',
   AGENT_APPROVE_TOOL: 'agent:approve-tool',
@@ -48,6 +50,7 @@ export const IPC = {
   CLAUDE_SKILLS_TOGGLE: 'claude:skills:toggle',
   CLAUDE_SKILLS_DELETE: 'claude:skills:delete',
   CLAUDE_MCP_LIST: 'claude:mcp:list',
+  CLAUDE_MCP_STATUS: 'claude:mcp:status',
   CLAUDE_MCP_SAVE: 'claude:mcp:save',
   CLAUDE_MCP_DELETE: 'claude:mcp:delete',
 

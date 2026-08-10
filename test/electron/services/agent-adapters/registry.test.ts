@@ -11,6 +11,7 @@ function adapter(id: string): AgentAdapter {
       attachments: [],
       tools: false,
       interactiveQuestions: false,
+      slashCommands: false,
     },
     initialize: async () => true,
     fingerprint: () => `${id}:test`,

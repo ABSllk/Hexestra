@@ -38,6 +38,11 @@ export default {
           purple: 'rgb(var(--color-accent-purple) / <alpha-value>)',
           teal: 'rgb(var(--color-accent-teal) / <alpha-value>)',
         },
+        status: {
+          success: 'rgb(var(--color-accent-teal) / <alpha-value>)',
+          warning: 'rgb(var(--color-accent-yellow) / <alpha-value>)',
+          error: 'rgb(var(--color-accent-red) / <alpha-value>)',
+        },
         severity: {
           critical: 'rgb(var(--color-severity-critical) / <alpha-value>)',
           high: 'rgb(var(--color-severity-high) / <alpha-value>)',

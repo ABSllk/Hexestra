@@ -57,6 +57,8 @@ export class AgentTimelineBuilder {
       case 'tool_use_summary':
         return this.consumeToolSummary(message.preceding_tool_use_ids, message.summary);
       default:
+      case 'system':
+        return this.consumeSystemMessage(message);
         return false;
     }
   }
@@ -98,6 +100,16 @@ export class AgentTimelineBuilder {
   }
 
   private consumeStreamEvent(event: StreamEvent) {
+  private consumeSystemMessage(message: Extract<SDKMessage, { type: 'system' }>) {
+    if (message.subtype === 'local_command_output') {
+      return this.addText(message.content);
+    }
+    if (message.subtype === 'compact_boundary' && message.compact_metadata.trigger === 'manual') {
+      return this.addText('Conversation compacted.');
+    }
+    return false;
+  }
+
     if (event.type === 'message_start') {
       this.streamBlocks.clear();
       this.partialToolInputs.clear();

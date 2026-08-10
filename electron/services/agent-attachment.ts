@@ -77,7 +77,9 @@ export function readAgentAttachment(filePath: string): AgentAttachment {
 export function buildAgentSdkPrompt(
   prompt: string,
   attachments: AgentAttachment[] = [],
+  command?: string,
 ): string | AsyncIterable<SDKUserMessage> {
+  if (command) return command;
   const embedded = attachments.filter((attachment) => (
     (attachment.kind === 'image' || attachment.kind === 'pdf') && attachment.base64
   ));

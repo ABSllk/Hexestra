@@ -4,6 +4,7 @@ import type {
   AskUserQuestionAnswers,
 } from '../agent-interaction-contract';
 import type { AgentToolDefinition } from './agent-tools';
+import type { AgentSlashCommandDescriptor } from '../agent-command-contract';
 
 export const CLAUDE_BACKEND_ID = 'claude';
 
@@ -25,6 +26,7 @@ export interface AgentBackendCapabilities {
   attachments: Array<'text' | 'image' | 'pdf' | 'file'>;
   tools: boolean;
   interactiveQuestions: boolean;
+  slashCommands: boolean;
 }
 
 export interface AgentBackendRuntimeState {
@@ -78,6 +80,7 @@ export interface AgentInteractionHandler {
 
 export interface AgentRunInput {
   prompt: string;
+  command?: string;
   systemInstructions: string;
   signal: AbortSignal;
   attachments: AgentAttachment[];
@@ -90,6 +93,12 @@ export interface AgentRunInput {
   fork: boolean;
   settingSources?: string[];
   tools: AgentToolDefinition[];
+}
+
+export interface AgentCommandDiscoveryInput {
+  cwd: string;
+  additionalDirectories?: string[];
+  settingSources?: string[];
 }
 
 export interface AgentSessionEvent {
@@ -116,10 +125,16 @@ export interface AgentTurnCompletedEvent {
   backendMessageId?: string;
 }
 
+export interface AgentCommandsChangedEvent {
+  type: 'commands_changed';
+  commands: AgentSlashCommandDescriptor[];
+}
+
 export type AgentRunEvent =
   | AgentSessionEvent
   | AgentTurnSnapshotEvent
   | AgentSubagentSnapshotEvent
+  | AgentCommandsChangedEvent
   | AgentTurnCompletedEvent;
 
 export interface AgentAdapter {
@@ -128,6 +143,7 @@ export interface AgentAdapter {
   initialize(): Promise<boolean>;
   fingerprint(): string;
   status(): AgentBackendStatus;
+  listCommands?(input: AgentCommandDiscoveryInput): Promise<AgentSlashCommandDescriptor[]>;
   runTurn(
     input: AgentRunInput,
     interactions: AgentInteractionHandler,

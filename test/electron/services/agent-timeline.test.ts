@@ -143,6 +143,32 @@ describe('AgentTimelineBuilder', () => {
     expect(tool.output).toContain('output truncated by Hexestra');
     expect(tool.outputSummary).toBe('1 line of output');
   });
+
+  it('projects local slash-command output and manual compaction confirmation', () => {
+    const timeline = new AgentTimelineBuilder('turn-command');
+
+    expect(timeline.consume(sdkMessage({
+      type: 'system', subtype: 'local_command_output', content: 'Command output',
+      uuid: 'command-output', session_id: 'session-1',
+    }))).toBe(true);
+    expect(timeline.consume(sdkMessage({
+      type: 'system', subtype: 'compact_boundary',
+      compact_metadata: { trigger: 'manual', pre_tokens: 10_000, post_tokens: 2_000 },
+      uuid: 'compact-boundary', session_id: 'session-1',
+    }))).toBe(true);
+
+    expect(timeline.getText()).toBe('Command output\n\nConversation compacted.');
+  });
+
+  it('does not render automatic compaction as assistant text', () => {
+    const timeline = new AgentTimelineBuilder('turn-auto-compact');
+    expect(timeline.consume(sdkMessage({
+      type: 'system', subtype: 'compact_boundary',
+      compact_metadata: { trigger: 'auto', pre_tokens: 10_000, post_tokens: 2_000 },
+      uuid: 'compact-boundary', session_id: 'session-1',
+    }))).toBe(false);
+    expect(timeline.getText()).toBe('');
+  });
 });
 
 describe('summarizeToolCall', () => {

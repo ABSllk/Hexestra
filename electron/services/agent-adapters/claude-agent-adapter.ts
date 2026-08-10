@@ -5,6 +5,7 @@ import type {
   PermissionResult,
   PreToolUseHookInput,
   SDKMessage,
+  SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import {
   AgentBackendError,
@@ -12,10 +13,19 @@ import {
   type AgentAdapter,
   type AgentBackendCapabilities,
   type AgentBackendStatus,
+  type AgentCommandDiscoveryInput,
   type AgentInteractionHandler,
   type AgentRunEvent,
   type AgentRunInput,
 } from '../../contracts/agent-runtime';
+import {
+  normalizeAgentSlashCommands,
+  type AgentSlashCommandDescriptor,
+} from '../../agent-command-contract';
+import {
+  sanitizeClaudeMcpRuntimeError,
+  type ClaudeMcpRuntimeStatusResult,
+} from '../../contracts/claude-capabilities';
 import {
   buildAskUserQuestionUpdatedInput,
   parseAskUserQuestionInput,
@@ -39,6 +49,7 @@ import { isSubagentSpawnTool, isManagedRecordFileMutation } from '../agent-tool-
 type AgentSdk = typeof import('@anthropic-ai/claude-agent-sdk');
 
 const AGENT_CONTEXT_VERSION = 'hexestra-context-v7';
+const COMMAND_DISCOVERY_TIMEOUT_MS = 15_000;
 const CLAUDE_READ_ONLY_BUILTINS = new Set([
   'Read', 'Glob', 'Grep', 'LS', 'WebSearch', 'WebFetch', 'NotebookRead',
 ]);
@@ -49,6 +60,7 @@ const capabilities: AgentBackendCapabilities = {
   attachments: ['text', 'image', 'pdf', 'file'],
   tools: true,
   interactiveQuestions: true,
+  slashCommands: true,
 };
 
 export class ClaudeAgentAdapter implements AgentAdapter {
@@ -60,6 +72,8 @@ export class ClaudeAgentAdapter implements AgentAdapter {
   private authenticated: boolean | null = null;
   private model: string | null = null;
   private lastError: string | null = null;
+  private readonly commandCache = new Map<string, AgentSlashCommandDescriptor[]>();
+  private readonly commandRequests = new Map<string, Promise<AgentSlashCommandDescriptor[]>>();
 
   async initialize() {
     if (this.initialization) return this.initialization;
@@ -83,6 +97,71 @@ export class ClaudeAgentAdapter implements AgentAdapter {
         ? `WSL 路 ${settings.wslDistribution}`
         : 'Native',
     };
+  }
+
+  async listCommands(input: AgentCommandDiscoveryInput) {
+    const available = await this.initialize();
+    if (!available || !this.sdk) {
+      throw new AgentBackendError(
+        this.lastError ?? 'Claude Agent SDK is unavailable',
+        this.id,
+        'unavailable',
+      );
+    }
+
+    const cacheKey = this.commandCacheKey(input.cwd, input.additionalDirectories);
+    const cached = this.commandCache.get(cacheKey);
+    if (cached) return cached;
+    const pending = this.commandRequests.get(cacheKey);
+    if (pending) return pending;
+
+    const request = this.discoverCommands(input, cacheKey);
+    this.commandRequests.set(cacheKey, request);
+    try {
+      return await request;
+    } finally {
+      this.commandRequests.delete(cacheKey);
+    }
+  }
+
+  async listMcpServerStatuses(
+    input: AgentCommandDiscoveryInput,
+  ): Promise<ClaudeMcpRuntimeStatusResult> {
+    const available = await this.initialize();
+    if (!available || !this.sdk) {
+      throw new AgentBackendError(
+        this.lastError ?? 'Claude Agent SDK is unavailable',
+        this.id,
+        'unavailable',
+      );
+    }
+
+    const discovery = this.createDiscoveryQuery(input);
+    try {
+      let statuses = await discovery.query.mcpServerStatus();
+      const deadline = Date.now() + COMMAND_DISCOVERY_TIMEOUT_MS;
+      while (
+        statuses.some((item) => item.status === 'pending')
+        && Date.now() < deadline
+        && !discovery.abortController.signal.aborted
+      ) {
+        await wait(500);
+        if (discovery.abortController.signal.aborted) break;
+        statuses = await discovery.query.mcpServerStatus();
+      }
+      return {
+        checkedAt: new Date().toISOString(),
+        items: statuses.map((item) => ({
+          name: item.name,
+          status: item.status,
+          error: sanitizeClaudeMcpRuntimeError(item.error),
+          scope: item.scope?.trim().slice(0, 100) || null,
+          toolCount: item.tools?.length ?? 0,
+        })),
+      };
+    } finally {
+      discovery.close();
+    }
   }
 
   async *runTurn(
@@ -129,7 +208,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
 
     try {
       const query = this.sdk.query({
-        prompt: buildAgentSdkPrompt(input.prompt, input.attachments),
+        prompt: buildAgentSdkPrompt(input.prompt, input.attachments, input.command),
         options: {
           abortController,
           cwd: sdkCwd,
@@ -177,8 +256,25 @@ export class ClaudeAgentAdapter implements AgentAdapter {
         },
       });
 
+      try {
+        const commands = this.cacheCommands(
+          this.commandCacheKey(input.cwd, input.additionalDirectories),
+          await query.supportedCommands(),
+        );
+        yield { type: 'commands_changed', commands };
+      } catch (error) {
+        console.warn('[Agent] Could not read Claude slash commands:', toErrorMessage(error));
+      }
+
       for await (const message of query) {
         this.captureSessionMetadata(message);
+        if (message.type === 'system' && message.subtype === 'commands_changed') {
+          const commands = this.cacheCommands(
+            this.commandCacheKey(input.cwd, input.additionalDirectories),
+            message.commands,
+          );
+          yield { type: 'commands_changed', commands };
+        }
         if (message.type === 'system' && message.subtype === 'init') {
           yield {
             type: 'session',
@@ -274,6 +370,69 @@ export class ClaudeAgentAdapter implements AgentAdapter {
     }
   }
 
+  private async discoverCommands(input: AgentCommandDiscoveryInput, cacheKey: string) {
+    if (!this.sdk) throw new AgentBackendError('Claude Agent SDK is unavailable', this.id, 'unavailable');
+    const discovery = this.createDiscoveryQuery(input);
+    try {
+      const commands = await discovery.query.supportedCommands();
+      if (discovery.abortController.signal.aborted) {
+        throw new AgentBackendError('Timed out while discovering Claude slash commands', this.id, 'runtime');
+      }
+      return this.cacheCommands(cacheKey, commands);
+    } finally {
+      discovery.close();
+    }
+  }
+
+  private createDiscoveryQuery(input: AgentCommandDiscoveryInput) {
+    if (!this.sdk) throw new AgentBackendError('Claude Agent SDK is unavailable', this.id, 'unavailable');
+    const settings = agentSettingsService.getClaudeSettings();
+    const isWsl = settings.executionMode === 'wsl';
+    const sdkCwd = isWsl
+      ? windowsPathToWsl(input.cwd, settings.wslDistribution)
+      : input.cwd;
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), COMMAND_DISCOVERY_TIMEOUT_MS);
+    timeout.unref?.();
+    const query = this.sdk.query({
+      prompt: idlePrompt(abortController.signal),
+      options: {
+        abortController,
+        cwd: sdkCwd,
+        additionalDirectories: input.additionalDirectories,
+        pathToClaudeCodeExecutable: settings.claudeExecutable || undefined,
+        spawnClaudeCodeProcess: isWsl
+          ? (options) => spawnClaudeCodeInWsl(options, settings)
+          : undefined,
+        persistSession: false,
+        settingSources: requiredSettingSources(settings.settingSources),
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: undefined,
+        },
+      },
+    });
+    return {
+      query,
+      abortController,
+      close: () => {
+        clearTimeout(timeout);
+        abortController.abort();
+        query.close();
+      },
+    };
+  }
+
+  private cacheCommands(cacheKey: string, commands: unknown) {
+    const normalized = normalizeAgentSlashCommands(commands);
+    this.commandCache.set(cacheKey, normalized);
+    return normalized;
+  }
+
+  private commandCacheKey(cwd: string, additionalDirectories?: string[]) {
+    return JSON.stringify([this.fingerprint(), cwd, additionalDirectories ?? []]);
+  }
+
   private captureSessionMetadata(message: SDKMessage) {
     if (message.type !== 'system' || message.subtype !== 'init') return;
     this.model = message.model;
@@ -335,6 +494,13 @@ export class ClaudeAgentAdapter implements AgentAdapter {
   }
 }
 
+async function* idlePrompt(signal: AbortSignal): AsyncGenerator<SDKUserMessage, void> {
+  if (signal.aborted) return;
+  await new Promise<void>((resolve) => {
+    signal.addEventListener('abort', () => resolve(), { once: true });
+  });
+}
+
 function resolveClaudeToolRisk(toolName: string, definitions: AgentToolDefinition[]) {
   const neutralName = toolName.replace(/^mcp__hexestra__/, '');
   const definition = definitions.find((candidate) => candidate.name === neutralName);
@@ -365,4 +531,8 @@ function createManagedRecordGuard(): HookCallback {
 
 function toErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }

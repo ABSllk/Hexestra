@@ -38,4 +38,10 @@ describe('Agent attachments', () => {
       { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'YWJj' } },
     ]);
   });
+
+  it('passes a native slash command to Claude verbatim instead of wrapping it', () => {
+    const prompt = buildAgentSdkPrompt('wrapped workspace prompt', [], '/compact');
+
+    expect(prompt).toBe('/compact');
+  });
 });

@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentConnectionSettings, AgentSettingsContainer } from '@electron/contracts/agent-settings';
+import type { ClaudeSkillListResult } from '@electron/contracts/claude-capabilities';
+import {
+  normalizeAgentCommandsChangedPayload,
+  normalizeAgentSlashCommand,
+  normalizeAgentSlashCommands,
+  type AgentSlashCommandDescriptor,
+} from '@electron/agent-command-contract';
 import { Icon } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useChatStore } from '@/stores';
@@ -9,6 +16,13 @@ import { useI18n } from '@/i18n';
 
 type ComposerMenu = 'attachments' | 'mode' | 'model' | 'autonomy' | null;
 
+interface ComposerCommand {
+  name: string;
+  description: string;
+  argumentHint: string;
+  source: 'runtime' | 'builtin' | 'skill';
+}
+
 export function ChatInput() {
   const { t } = useI18n();
   const [attachments, setAttachments] = useState<AgentAttachment[]>([]);
@@ -16,6 +30,10 @@ export function ChatInput() {
   const [connectionSettings, setConnectionSettings] = useState<AgentSettingsContainer | null>(null);
   const [modelDraft, setModelDraft] = useState('');
   const [composerError, setComposerError] = useState<string | null>(null);
+  const [runtimeCommands, setRuntimeCommands] = useState<ComposerCommand[] | null>(null);
+  const [skillCommands, setSkillCommands] = useState<ComposerCommand[]>([]);
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+  const [dismissedCommandQuery, setDismissedCommandQuery] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const sendMessage = useChatStore((state) => state.sendMessage);
@@ -32,6 +50,17 @@ export function ChatInput() {
   const setAutonomyLevel = useChatStore((state) => state.setAutonomyLevel);
   const agentStatus = useChatStore((state) => state.agentStatus);
   const refreshStatus = useChatStore((state) => state.refreshStatus);
+  const activeProjectId = useChatStore((state) => state.activeProjectId);
+
+  const commands = commandCatalog(t, runtimeCommands, skillCommands);
+  const activeCommand = commandForText(text, commands);
+  const commandQuery = activeCommand ? null : slashCommandQuery(text);
+  const commandSuggestions = commandQuery === null
+    ? []
+    : commands.filter((command) => command.name.slice(1).toLowerCase().startsWith(commandQuery.toLowerCase()));
+  const showCommandSuggestions = commandSuggestions.length > 0
+    && dismissedCommandQuery !== commandQuery;
+  const visibleText = activeCommand ? commandArguments(text, activeCommand.name) : text;
 
   useEffect(() => {
     if (!window.hexestra) return;
@@ -46,6 +75,55 @@ export function ChatInput() {
       .catch((error) => active && setComposerError(String(error)));
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!window.hexestra) return;
+    let active = true;
+    let receivedLiveUpdate = false;
+    setRuntimeCommands(null);
+    const unsubscribe = window.hexestra.on('agent:commands-changed', (value: unknown) => {
+      const payload = normalizeAgentCommandsChangedPayload(value);
+      if (!active || !payload || payload.sessionId !== (activeProjectId ?? null)) return;
+      receivedLiveUpdate = true;
+      const commands = expandRuntimeCommands(payload.commands);
+      setRuntimeCommands(commands.length > 0 ? commands : null);
+    });
+    void window.hexestra.invoke<unknown>('agent:commands:list', activeProjectId)
+      .then((value) => {
+        if (!active || receivedLiveUpdate) return;
+        const commands = expandRuntimeCommands(normalizeAgentSlashCommands(value));
+        setRuntimeCommands(commands.length > 0 ? commands : null);
+      })
+      .catch(() => active && !receivedLiveUpdate && setRuntimeCommands(null));
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [activeProjectId, agentStatus.runtimeLabel, agentStatus.runtimeMode]);
+
+  useEffect(() => {
+    if (!window.hexestra) return;
+    let active = true;
+    void window.hexestra.invoke<ClaudeSkillListResult>('claude:skills:list', activeProjectId)
+      .then((result) => {
+        if (!active) return;
+        setSkillCommands(result.items
+          .filter((item) => item.enabled)
+          .map((item) => ({
+            name: `/${item.name}`,
+            description: item.description,
+            argumentHint: '',
+            source: 'skill' as const,
+          })));
+      })
+      .catch(() => active && setSkillCommands([]));
+    return () => { active = false; };
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    setActiveCommandIndex(0);
+    setDismissedCommandQuery(null);
+  }, [commandQuery]);
 
   useEffect(() => {
     if (!openMenu) return;
@@ -67,6 +145,10 @@ export function ChatInput() {
   const handleSend = useCallback(async () => {
     if ((!text.trim() && attachments.length === 0 && contextRefs.length === 0) || isProcessing) return;
     const content = text.trim() || 'Analyze the attached material in the context of this penetration-testing project.';
+    if (normalizeAgentSlashCommand(content) && (attachments.length > 0 || contextRefs.length > 0)) {
+      setComposerError(t('agent.commandContextError'));
+      return;
+    }
     const outgoingAttachments = attachments;
     setAttachments([]);
     setOpenMenu(null);
@@ -117,10 +199,43 @@ export function ChatInput() {
   };
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (showCommandSuggestions) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setActiveCommandIndex((current) => (current + 1) % commandSuggestions.length);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setActiveCommandIndex((current) => (current - 1 + commandSuggestions.length) % commandSuggestions.length);
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        chooseCommand(commandSuggestions[activeCommandIndex] ?? commandSuggestions[0]);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDismissedCommandQuery(commandQuery);
+        return;
+      }
+    }
+    if (activeCommand && event.key === 'Backspace' && !visibleText) {
+      event.preventDefault();
+      setText(activeCommand.name.slice(0, -1));
+      return;
+    }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void handleSend();
     }
+  };
+
+  const chooseCommand = (command: ComposerCommand) => {
+    setText(replaceSlashCommandToken(text, command.name));
+    setDismissedCommandQuery(null);
+    requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   const adjustHeight = () => {
@@ -172,19 +287,44 @@ export function ChatInput() {
           </div>
         )}
 
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(event) => {
-            setText(event.target.value);
-            adjustHeight();
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder={t('agent.placeholder')}
-          rows={2}
-          className="max-h-36 min-h-16 w-full resize-none bg-transparent px-4 pb-2 pt-3 font-sans text-xs leading-5 text-text-primary focus-visible:outline-none placeholder:text-text-muted select-none rounded-xl border-0"
-          disabled={isProcessing}
-        />
+        <div className="flex min-h-16 min-w-0 items-start gap-2 px-3 pb-2 pt-3">
+          {activeCommand && (
+            <button
+              type="button"
+              aria-label={`${t('agent.editCommand')} ${activeCommand.name}`}
+              title={t('agent.editCommand')}
+              onClick={() => {
+                setText(activeCommand.name.slice(0, -1));
+                requestAnimationFrame(() => textareaRef.current?.focus());
+              }}
+              className="mt-0.5 flex h-6 shrink-0 items-center gap-1 rounded-md border border-accent-blue/30 bg-accent-blue/10 px-2 font-mono text-[11px] font-semibold text-accent-blue transition-colors hover:border-accent-blue/50 hover:bg-accent-blue/15 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-blue"
+            >
+              <Icon name="terminal" size={11} />
+              {activeCommand.name}
+              <Icon name="close" size={9} className="opacity-60" />
+            </button>
+          )}
+          <textarea
+            ref={textareaRef}
+            value={visibleText}
+            onChange={(event) => {
+              setText(activeCommand
+                ? `${activeCommand.name}${event.target.value ? ` ${event.target.value}` : ''}`
+                : event.target.value);
+              adjustHeight();
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={activeCommand ? t('agent.commandArguments') : t('agent.placeholder')}
+            rows={2}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={showCommandSuggestions}
+            aria-controls={showCommandSuggestions ? 'agent-command-suggestions' : undefined}
+            aria-activedescendant={showCommandSuggestions ? `agent-command-option-${activeCommandIndex}` : undefined}
+            className="max-h-36 min-h-10 min-w-0 flex-1 resize-none rounded-xl border-0 bg-transparent p-0 font-sans text-xs leading-5 text-text-primary placeholder:text-text-muted focus-visible:outline-none"
+            disabled={isProcessing}
+          />
+        </div>
 
         {composerError && <div className="px-4 pb-1 text-[11px] text-severity-critical">{composerError}</div>}
 
@@ -208,6 +348,35 @@ export function ChatInput() {
           </div>
         </div>
       </div>
+
+      {showCommandSuggestions && (
+        <div
+          id="agent-command-suggestions"
+          role="listbox"
+          aria-label={t('agent.commandSuggestions')}
+          className="ui-popover absolute bottom-full left-3 right-3 z-30 mb-2 max-h-56 overflow-y-auto p-1.5"
+        >
+          {commandSuggestions.map((command, index) => (
+            <button
+              key={command.name}
+              id={`agent-command-option-${index}`}
+              role="option"
+              aria-selected={index === activeCommandIndex}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => chooseCommand(command)}
+              className={cn(
+                'flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-2 text-left transition-colors',
+                index === activeCommandIndex ? 'bg-accent-blue/10 text-text-primary' : 'text-text-secondary hover:bg-raised/60',
+              )}
+            >
+              <span className="shrink-0 rounded border border-accent-blue/25 bg-accent-blue/8 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-accent-blue">{command.name}</span>
+              {command.argumentHint && <span className="shrink-0 font-mono text-[10px] text-text-muted">{command.argumentHint}</span>}
+              <span className="line-clamp-2 min-w-0 flex-1 text-[11px] leading-4 text-text-muted">{command.description}</span>
+              {command.source === 'skill' && <span className="shrink-0 text-[10px] uppercase tracking-wide text-accent-teal">Skill</span>}
+            </button>
+          ))}
+        </div>
+      )}
 
       {openMenu === 'attachments' && <Popover align="left" label={t('agent.addContext')}>
         <MenuButton icon="file" label={t('agent.addFiles')} detail="Text, code, PDF, or a local path" onClick={() => void pickAttachments('files')} />
@@ -281,4 +450,63 @@ function MenuButton({ icon, label, detail, onClick }: { icon: 'file' | 'image'; 
     <Icon name={icon} size={14} className="mt-0.5 text-accent-teal" />
     <span><span className="block text-[11px] font-medium text-text-primary">{label}</span><span className="mt-0.5 block text-[11px] text-text-muted">{detail}</span></span>
   </button>;
+}
+
+function commandCatalog(
+  t: ReturnType<typeof useI18n>['t'],
+  runtimeCommands: ComposerCommand[] | null,
+  skillCommands: ComposerCommand[],
+): ComposerCommand[] {
+  if (runtimeCommands !== null) return runtimeCommands;
+  const builtins: ComposerCommand[] = [
+    { name: '/compact', description: t('agent.commandCompact'), argumentHint: '', source: 'builtin' },
+    { name: '/context', description: t('agent.commandContext'), argumentHint: '', source: 'builtin' },
+    { name: '/cost', description: t('agent.commandCost'), argumentHint: '', source: 'builtin' },
+    { name: '/help', description: t('agent.commandHelp'), argumentHint: '', source: 'builtin' },
+    { name: '/status', description: t('agent.commandStatus'), argumentHint: '', source: 'builtin' },
+  ];
+  const byName = new Map(builtins.map((command) => [command.name, command]));
+  for (const command of skillCommands) if (!byName.has(command.name)) byName.set(command.name, command);
+  return [...byName.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function expandRuntimeCommands(commands: AgentSlashCommandDescriptor[]): ComposerCommand[] {
+  const expanded = new Map<string, ComposerCommand>();
+  for (const command of commands) {
+    expanded.set(command.name, {
+      name: command.name,
+      description: command.description,
+      argumentHint: command.argumentHint,
+      source: 'runtime',
+    });
+    for (const alias of command.aliases) {
+      if (expanded.has(alias)) continue;
+      expanded.set(alias, {
+        name: alias,
+        description: command.description,
+        argumentHint: command.argumentHint,
+        source: 'runtime',
+      });
+    }
+  }
+  return [...expanded.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function slashCommandQuery(content: string) {
+  const match = content.match(/^\/([^\s]*)$/);
+  return match ? match[1] : null;
+}
+
+function commandForText(content: string, commands: ComposerCommand[]) {
+  const trimmed = content.trimStart();
+  return commands.find((command) => trimmed === command.name || trimmed.startsWith(`${command.name} `)) ?? null;
+}
+
+function commandArguments(content: string, commandName: string) {
+  return content.trimStart().slice(commandName.length).replace(/^\s+/, '');
+}
+
+function replaceSlashCommandToken(content: string, commandName: string) {
+  const remainder = content.trimStart().replace(/^\/[^\s]*/, '').replace(/^\s+/, '');
+  return `${commandName}${remainder ? ` ${remainder}` : ''}`;
 }
