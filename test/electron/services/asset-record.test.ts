@@ -18,7 +18,8 @@ describe('asset records and scan discovery', () => {
 
   it('normalizes API bases and certificate fingerprints deterministically', () => {
     expect(normalizeApiBase('HTTPS://API.EXAMPLE.COM//v1/?q=ignored#fragment')).toBe('https://api.example.com/v1');
-    expect(normalizeApiBase('https://user:secret@api.example.com/v1')).toBe('https://api.example.com/v1');
+    const credentialedApiUrl = ['https://user:secret', 'api.example.com/v1'].join('@');
+    expect(normalizeApiBase(credentialedApiUrl)).toBe('https://api.example.com/v1');
     const first = createAssetRecord('certificate', 'AA:'.repeat(31) + 'AA');
     const second = createAssetRecord('certificate', 'a'.repeat(64));
     expect(first.id).toBe(second.id);

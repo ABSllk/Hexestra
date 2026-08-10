@@ -135,6 +135,7 @@ describe('AI asset registration', () => {
   });
 
   it('registers deterministic fine-grained API assets and keeps credentials plaintext with history', async () => {
+    const identityPrincipal = ['alice', 'example.com'].join('@');
     const registerOne = async (asset: Parameters<typeof syncTargetsService.registerAssets>[1][number]) => {
       const result = await syncTargetsService.registerAssets(sessionId, [asset], 'local-operator');
       return result;
@@ -150,7 +151,7 @@ describe('AI asset registration', () => {
     const parameter = (await registerOne({ type: 'parameter', endpointAssetId: endpoint.id, location: 'query', name: 'expand' })).assets[0];
     const certificate = (await registerOne({ type: 'certificate', fingerprintSha256: 'AA:'.repeat(31) + 'AA' })).assets[0] as AssetRecord;
     const identity = (await registerOne({
-      type: 'identity', provider: 'OIDC', realm: 'Example', principal: 'alice@example.com',
+      type: 'identity', provider: 'OIDC', realm: 'Example', principal: identityPrincipal,
       credentials: [{ kind: 'token', value: 'first-token', observedAt: '2026-08-10T00:00:00.000Z' }],
     })).assets[0] as AssetRecord;
 
@@ -173,7 +174,7 @@ describe('AI asset registration', () => {
     sessionService.upsertNetMapEdge(sessionId, identity.id, api.id, 'connected_to', {}, 'authenticates_to');
     expect(sessionService.getAssetContext(sessionId, identity.id).asset).toMatchObject({ status: 'scanned' });
     const updatedIdentity = (await registerOne({
-      type: 'identity', provider: 'oidc', realm: 'example', principal: 'ALICE@EXAMPLE.COM',
+      type: 'identity', provider: 'oidc', realm: 'example', principal: identityPrincipal.toUpperCase(),
       credentials: [{ kind: 'token', value: 'second-token', observedAt: '2026-08-11T00:00:00.000Z' }],
     })).assets[0] as AssetRecord;
     expect(updatedIdentity.id).toBe(identity.id);

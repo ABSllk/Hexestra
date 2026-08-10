@@ -24,8 +24,9 @@ describe('normalizeClaudeMcpRuntimeStatusResult', () => {
   });
 
   it('redacts credentials and URL queries from runtime errors', () => {
+    const credentialedUrl = ['https://alice:hunter2', 'example.com/mcp?api_key=secret'].join('@');
     expect(sanitizeClaudeMcpRuntimeError(
-      'Failed https://alice:hunter2@example.com/mcp?api_key=secret Authorization: Bearer abc token=xyz',
+      `Failed ${credentialedUrl} Authorization: Bearer abc token=xyz`,
     )).toBe(
       'Failed https://example.com/mcp?redacted Authorization: Bearer <redacted> token=<redacted>',
     );

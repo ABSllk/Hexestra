@@ -161,7 +161,8 @@ const APPROVED_DEVELOPER_PATH_FIXTURES = new Set([
 ]);
 
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
-const DEVELOPER_HOME_PATTERN = /(?:[A-Z]:\\+(?:Users|Documents and Settings)\\+[^\\\r\n]+|\/(?:Users|home)\/[^/\s]+)/i;
+// Unix home roots are case-sensitive; matching `/users/...` would flag ordinary API routes.
+const DEVELOPER_HOME_PATTERN = /(?:[A-Za-z]:\\+(?:[Uu]sers|Documents and Settings)\\+[^\\\r\n]+|\/(?:Users|home)\/[^/\s]+)/;
 const OLD_BRAND_PATTERN = /pengent/i;
 const MAX_PUBLIC_FILE_BYTES = 5 * 1024 * 1024;
 
