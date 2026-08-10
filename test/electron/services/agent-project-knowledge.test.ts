@@ -76,4 +76,21 @@ describe('Agent project knowledge', () => {
     expect((excerpt as string).length).toBeLessThanOrEqual(500);
     expect(knowledge.omittedCounts.evidence).toBe(18);
   });
+
+  it('keeps plaintext Identity credentials complete in the Agent snapshot', async () => {
+    const token = 'plain-token-'.repeat(80);
+    sessionService.listAssets.mockReturnValue([{
+      id: 'identity-a', type: 'identity', label: 'alice', status: 'scanned',
+      properties: { provider: 'oidc', realm: 'example', principal: 'alice', credential_token: token },
+      tags: [], vulnCount: 0,
+    }]);
+    sessionService.getNetMap.mockResolvedValue({
+      assets: [],
+      edges: [{ id: 'identity-api', source: 'identity-a', target: 'api-a', type: 'connected_to', semantic: 'authenticates_to' }],
+    });
+    const { buildAgentProjectKnowledge } = await import('@electron/services/agent-project-knowledge');
+    const knowledge = await buildAgentProjectKnowledge('project-a');
+    expect(knowledge.inventory.assets[0]?.properties).toMatchObject({ credential_token: token });
+    expect(knowledge.inventory.relations[0]).toMatchObject({ semantic: 'authenticates_to' });
+  });
 });

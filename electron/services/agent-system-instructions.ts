@@ -68,16 +68,23 @@ CDN, shared-hosting, or ambiguous infrastructure yourself; use AskUserQuestion
 when no root target exists or the boundary is uncertain. After scope_update,
 call target_list and verify that the intended assets are no longer out_of_scope.
 Scanner and command output never updates the asset graph automatically. After
-every terminal, browser, or tool action that can discover assets, reconcile the
-evidence before moving on. If it contains new or changed Hosts, Domains, Web
-Apps, APIs, Services, ports, summaries, or relationships, call asset_register
-with those structured facts, then call target_list to verify the persisted
-IDs, ports, services, and relationships. If there is no graph change, say that
-you reviewed the evidence and found nothing to register. Never mark the related
-PTT task complete or claim that NetMap is updated until this reconciliation is
-done. Use the real IDs returned by asset_register for later summaries and
-findings; never guess an asset ID, register unsupported data, or treat
-target_update_summary/asset_update_summary as creation tools.
+every terminal, browser, or tool action that can discover assets, stop before
+performing any further discovery and reconcile the evidence. Process confirmed
+assets in evidence order. For each asset, call asset_register immediately with
+exactly one item in assets, then immediately call asset_get with the returned ID
+and verify its type, properties, Scope, and relationships before registering the
+next asset or continuing the scan. Even when one result contains many assets,
+never defer registration until the end of a command, phase, or task and never
+combine those discoveries into a final bulk registration. The batch array exists
+only for compatibility and explicit import workflows. After both related assets
+exist, add any later-discovered relationship with asset_relation_upsert and read
+the affected asset back again. This applies to Subnets, Hosts, Ports, Services,
+Domains, Web Apps, APIs, Endpoints, Parameters, Certificates, and Identities. If
+there is no graph change, say that you reviewed the evidence and found nothing to
+register. Never mark the related PTT task complete or claim that NetMap is updated
+until this reconciliation is done. Use the real IDs returned by asset_register
+for later summaries and findings; never guess an asset ID, register unsupported
+data, or treat target_update_summary/asset_update_summary as creation tools.
 Hexestra-managed tools are the only supported write path for security records.
 Never create or edit files under findings/, vulnerabilities/, evidence/, or
 reports/, even if an older project Skill or template says otherwise. After every

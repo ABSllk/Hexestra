@@ -1,6 +1,16 @@
 import crypto from 'crypto';
 
-export type AssetType = 'domain' | 'webapp' | 'api' | 'service' | 'identity' | 'subnet';
+export type AssetType =
+  | 'domain'
+  | 'subnet'
+  | 'port'
+  | 'service'
+  | 'webapp'
+  | 'api'
+  | 'endpoint'
+  | 'parameter'
+  | 'certificate'
+  | 'identity';
 export type OperationalAssetStatus = 'untested' | 'in_progress' | 'scanned' | 'vulnerable' | 'compromised';
 export type AssetStatus = OperationalAssetStatus | 'out_of_scope';
 
@@ -32,12 +42,16 @@ export function createAssetRecord(
     type,
     label: assetLabel(type, normalized),
     status: 'untested',
-    properties: { ...properties, [type === 'webapp' ? 'url' : type]: normalized },
+    properties: { [type === 'webapp' || type === 'api' ? 'url' : type]: normalized, ...properties },
     tags: [...new Set(tags)],
     vulnCount: 0,
     firstSeen: now,
     lastUpdated: now,
   };
+}
+
+export function hostAssetId(normalizedIp: string) {
+  return deterministicAssetId('host', normalizedIp);
 }
 
 export function normalizeStoredAsset(value: unknown): AssetRecord | null {
@@ -100,17 +114,27 @@ function normalizeAssetValue(type: AssetType, value: string) {
     url.hash = '';
     return url.origin.toLowerCase();
   }
+  if (type === 'api') return normalizeApiBase(value);
+  if (type === 'certificate') {
+    const fingerprint = value.replace(/[^a-f0-9]/gi, '').toUpperCase();
+    if (!/^[A-F0-9]{64}$/.test(fingerprint)) throw new Error('Certificate assets require a SHA-256 fingerprint');
+    return fingerprint;
+  }
   const normalized = value.trim();
   if (!normalized || normalized.length > 2_000) throw new Error(`Invalid ${type} asset`);
   return normalized;
 }
 
 function assetId(type: AssetType, normalized: string) {
+  return deterministicAssetId(type, normalized);
+}
+
+function deterministicAssetId(type: string, normalized: string) {
   return `AST-${type}-${crypto.createHash('sha1').update(`${type}:${normalized}`).digest('hex').slice(0, 16)}`;
 }
 
 function assetLabel(type: AssetType, normalized: string) {
-  if (type === 'webapp') return new URL(normalized).host;
+  if (type === 'webapp' || type === 'api') return normalized;
   return normalized;
 }
 
@@ -118,7 +142,10 @@ function normalizeProperties(value: unknown): AssetRecord['properties'] {
   if (!isRecord(value)) return {};
   const properties: AssetRecord['properties'] = {};
   for (const [key, item] of Object.entries(value)) {
-    if (typeof item === 'string') properties[key] = item.slice(0, 4_000);
+    if (typeof item === 'string') {
+      const maximum = /^credential_(password|token|cookie|private_key)$/.test(key) ? 65_536 : 4_000;
+      properties[key] = item.slice(0, maximum);
+    }
     else if (typeof item === 'number' && Number.isFinite(item)) properties[key] = item;
     else if (typeof item === 'boolean') properties[key] = item;
     if (Array.isArray(item)) {
@@ -130,7 +157,21 @@ function normalizeProperties(value: unknown): AssetRecord['properties'] {
 
 function isAssetType(value: unknown): value is AssetType {
   return value === 'domain' || value === 'webapp' || value === 'api'
-    || value === 'service' || value === 'identity' || value === 'subnet';
+    || value === 'service' || value === 'identity' || value === 'subnet'
+    || value === 'port' || value === 'endpoint' || value === 'parameter'
+    || value === 'certificate';
+}
+
+export function normalizeApiBase(value: string) {
+  const url = new URL(value.trim());
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('API assets require HTTP(S)');
+  url.username = '';
+  url.password = '';
+  url.search = '';
+  url.hash = '';
+  url.pathname = `/${url.pathname.split('/').filter(Boolean).join('/')}`;
+  if (url.pathname !== '/') url.pathname = url.pathname.replace(/\/$/, '');
+  return url.toString().replace(/\/$/, url.pathname === '/' ? '/' : '');
 }
 
 export function normalizeOperationalAssetStatus(value: unknown): OperationalAssetStatus {

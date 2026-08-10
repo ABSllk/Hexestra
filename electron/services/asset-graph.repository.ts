@@ -3,28 +3,47 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import {
+  createAssetRecord,
+  hostAssetId,
   normalizeOperationalAssetStatus,
   type AssetRecord,
 } from './asset-record';
+import { normalizeIpAddress } from './ip-address';
 import type { ManagedRecordKind } from '../contracts/records';
 import { projectDataPath } from './project-registry';
 
 export const LOCAL_ASSET_ID = 'local-operator';
-const SCHEMA_VERSION = 3;
-const DOMAIN_LAYOUT_KEY = 'domain';
+const SCHEMA_VERSION = 4;
+const DEFAULT_LAYOUT_KEY: GraphPerspective = 'domain';
 
 export type RelationType = 'belongs_to' | 'resolves_to' | 'connected_to' | 'attack_path';
+export type RelationSemantic =
+  | 'subdomain_of'
+  | 'member_of_subnet'
+  | 'port_of'
+  | 'service_of'
+  | 'api_of'
+  | 'endpoint_of'
+  | 'parameter_of'
+  | 'dns_resolves'
+  | 'served_by'
+  | 'secures'
+  | 'authenticates_to'
+  | 'attack_step';
+export type GraphPerspective = 'network' | 'domain' | 'application';
 
 export interface GraphRelation {
   id: string;
   source: string;
   target: string;
   type: RelationType;
+  semantic?: RelationSemantic;
   label?: string;
   metadata?: Record<string, string>;
 }
 
 export interface GraphLayoutState {
+  perspective: GraphPerspective;
   view: { x: number; y: number; scale: number };
   positions: Record<string, { x: number; y: number }>;
 }
@@ -204,7 +223,7 @@ interface AssetRow {
 }
 
 interface EndpointRow {
-  id: string;
+  port_asset_id: string;
   host_asset_id: string;
   port: number;
   protocol: string;
@@ -222,6 +241,7 @@ interface RelationRow {
   source_asset_id: string;
   target_asset_id: string;
   type: RelationType;
+  semantic: RelationSemantic | null;
   label: string | null;
   metadata_json: string;
   evidence_count: number;
@@ -237,22 +257,208 @@ export class AssetGraphRepository {
     const statePath = projectDataPath(sessionPath);
     fs.mkdirSync(statePath, { recursive: true });
     this.databasePath = path.join(statePath, 'engagement.db');
+    this.backupV3Database();
     this.db = new DatabaseSync(this.databasePath);
     try {
       this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 3000;');
       const versionRow = this.db.prepare('PRAGMA user_version').get() as unknown as { user_version: number };
-      if (![0, 1, 2, SCHEMA_VERSION].includes(versionRow.user_version)) {
+      if (![0, 1, 2, 3, SCHEMA_VERSION].includes(versionRow.user_version)) {
         throw new Error(`Unsupported engagement database schema ${versionRow.user_version}; expected ${SCHEMA_VERSION}`);
       }
-      if (versionRow.user_version === 1) this.replaceLegacyFindingSchema();
-      this.createSchema();
-      if (versionRow.user_version > 0 && versionRow.user_version < 3) {
-        this.removeGeneratedRegistrationEvidence();
+      if (versionRow.user_version === 0 || versionRow.user_version === SCHEMA_VERSION) {
+        this.createSchema();
+      } else {
+        if (versionRow.user_version === 1) this.replaceLegacyFindingSchema();
+        this.ensureColumn('evidence', 'title', "TEXT NOT NULL DEFAULT ''");
+        this.ensureColumn('evidence', 'updated_at', "TEXT NOT NULL DEFAULT ''");
+        this.ensureColumn('reports', 'vulnerability_ids_json', "TEXT NOT NULL DEFAULT '[]'");
+        if (versionRow.user_version < 3) this.removeGeneratedRegistrationEvidence();
+        this.migrateSchemaV4();
+        this.createSchema();
       }
       this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
       this.ensureLocalAsset();
     } catch (error) {
       this.db.close();
+      throw error;
+    }
+  }
+
+  private backupV3Database() {
+    if (!fs.existsSync(this.databasePath)) return;
+    const backupPath = `${this.databasePath}.v3-backup`;
+    if (fs.existsSync(backupPath)) return;
+    const probe = new DatabaseSync(this.databasePath);
+    try {
+      const row = probe.prepare('PRAGMA user_version').get() as unknown as { user_version: number };
+      if (row.user_version !== 3) return;
+      probe.exec(`VACUUM INTO '${backupPath.replaceAll("'", "''")}'`);
+    } finally {
+      probe.close();
+    }
+  }
+
+  private migrateSchemaV4() {
+    const endpoints = this.db.prepare('SELECT * FROM endpoints').all() as unknown as EndpointRow[];
+    this.db.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE;');
+    try {
+      this.db.exec(`
+        CREATE TABLE assets_v4 (
+          id TEXT PRIMARY KEY,
+          semantic_key TEXT NOT NULL UNIQUE,
+          type TEXT NOT NULL CHECK(type IN ('local','host','domain','subnet','port','service','webapp','api','endpoint','parameter','certificate','identity')),
+          label TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('untested','in_progress','scanned','vulnerable','compromised','out_of_scope')),
+          properties_json TEXT NOT NULL DEFAULT '{}',
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          vuln_count INTEGER NOT NULL DEFAULT 0,
+          ai_summary TEXT,
+          first_seen TEXT NOT NULL,
+          last_updated TEXT NOT NULL
+        );
+        INSERT INTO assets_v4 SELECT * FROM assets;
+
+        CREATE TABLE endpoints_v4 (
+          port_asset_id TEXT PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+          host_asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+          port INTEGER NOT NULL CHECK(port BETWEEN 1 AND 65535),
+          protocol TEXT NOT NULL,
+          state TEXT NOT NULL,
+          service TEXT,
+          version TEXT,
+          product TEXT,
+          extra TEXT,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          UNIQUE(host_asset_id, port, protocol)
+        );
+
+        CREATE TABLE relations_v4 (
+          id TEXT PRIMARY KEY,
+          source_asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+          target_asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+          type TEXT NOT NULL CHECK(type IN ('belongs_to','resolves_to','connected_to','attack_path')),
+          semantic TEXT CHECK(semantic IS NULL OR semantic IN ('subdomain_of','member_of_subnet','port_of','service_of','api_of','endpoint_of','parameter_of','dns_resolves','served_by','secures','authenticates_to','attack_step')),
+          label TEXT,
+          metadata_json TEXT NOT NULL DEFAULT '{}',
+          evidence_count INTEGER NOT NULL DEFAULT 1,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL,
+          UNIQUE(source_asset_id, target_asset_id, type),
+          CHECK(source_asset_id <> target_asset_id)
+        );
+        INSERT INTO relations_v4 (
+          id, source_asset_id, target_asset_id, type, semantic, label,
+          metadata_json, evidence_count, first_seen, last_seen
+        ) SELECT id, source_asset_id, target_asset_id, type, NULL, label,
+          metadata_json, evidence_count, first_seen, last_seen FROM relations;
+
+        CREATE TABLE graph_positions_v4 (
+          perspective TEXT NOT NULL CHECK(perspective IN ('network','domain','application')),
+          asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+          x REAL NOT NULL,
+          y REAL NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY(perspective, asset_id)
+        );
+        INSERT INTO graph_positions_v4 SELECT 'domain', asset_id, x, y, updated_at FROM graph_positions;
+        CREATE TABLE graph_views_v4 (
+          perspective TEXT PRIMARY KEY CHECK(perspective IN ('network','domain','application')),
+          x REAL NOT NULL,
+          y REAL NOT NULL,
+          scale REAL NOT NULL CHECK(scale > 0),
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO graph_views_v4 SELECT 'domain', x, y, scale, updated_at FROM graph_views;
+      `);
+
+      const insertAsset = this.db.prepare(`
+        INSERT OR IGNORE INTO assets_v4 (
+          id, semantic_key, type, label, status, properties_json, tags_json,
+          vuln_count, ai_summary, first_seen, last_updated
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const insertEndpoint = this.db.prepare(`
+        INSERT INTO endpoints_v4 (
+          port_asset_id, host_asset_id, port, protocol, state, service,
+          version, product, extra, first_seen, last_seen
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const insertRelation = this.db.prepare(`
+        INSERT OR IGNORE INTO relations_v4 (
+          id, source_asset_id, target_asset_id, type, semantic, label,
+          metadata_json, evidence_count, first_seen, last_seen
+        ) VALUES (?, ?, ?, 'belongs_to', ?, NULL, '{}', 1, ?, ?)
+      `);
+      for (const endpoint of endpoints) {
+        const portAsset = createAssetRecord(
+          'port',
+          `${endpoint.host_asset_id}:${endpoint.protocol.toLowerCase()}:${endpoint.port}`,
+          {
+            hostAssetId: endpoint.host_asset_id,
+            port: endpoint.port,
+            protocol: endpoint.protocol.toLowerCase(),
+            state: endpoint.state,
+          },
+          ['schema-v4-migration'],
+        );
+        insertAsset.run(
+          portAsset.id, portAsset.key, portAsset.type, `${endpoint.port}/${endpoint.protocol}`,
+          endpoint.state === 'open' ? 'scanned' : 'untested', JSON.stringify(portAsset.properties),
+          JSON.stringify(portAsset.tags), 0, null, endpoint.first_seen, endpoint.last_seen,
+        );
+        insertEndpoint.run(
+          portAsset.id, endpoint.host_asset_id, endpoint.port,
+          endpoint.protocol, endpoint.state, endpoint.service, endpoint.version,
+          endpoint.product, endpoint.extra, endpoint.first_seen, endpoint.last_seen,
+        );
+        insertRelation.run(
+          relationId(portAsset.id, 'belongs_to', endpoint.host_asset_id),
+          portAsset.id, endpoint.host_asset_id, 'port_of', endpoint.first_seen, endpoint.last_seen,
+        );
+        if (endpoint.service) {
+          const serviceAsset = createAssetRecord(
+            'service',
+            `${portAsset.id}:${endpoint.service.trim().toLowerCase()}`,
+            {
+              portAssetId: portAsset.id,
+              name: endpoint.service,
+              ...(endpoint.version ? { version: endpoint.version } : {}),
+              ...(endpoint.product ? { product: endpoint.product } : {}),
+              ...(endpoint.extra ? { extra: endpoint.extra } : {}),
+            },
+            ['schema-v4-migration'],
+          );
+          insertAsset.run(
+            serviceAsset.id, serviceAsset.key, serviceAsset.type, endpoint.service,
+            'scanned', JSON.stringify(serviceAsset.properties), JSON.stringify(serviceAsset.tags),
+            0, null, endpoint.first_seen, endpoint.last_seen,
+          );
+          insertRelation.run(
+            relationId(serviceAsset.id, 'belongs_to', portAsset.id),
+            serviceAsset.id, portAsset.id, 'service_of', endpoint.first_seen, endpoint.last_seen,
+          );
+        }
+      }
+
+      this.db.exec(`
+        DROP TABLE endpoints;
+        DROP TABLE relations;
+        DROP TABLE graph_positions;
+        DROP TABLE graph_views;
+        DROP TABLE assets;
+        ALTER TABLE assets_v4 RENAME TO assets;
+        ALTER TABLE endpoints_v4 RENAME TO endpoints;
+        ALTER TABLE relations_v4 RENAME TO relations;
+        ALTER TABLE graph_positions_v4 RENAME TO graph_positions;
+        ALTER TABLE graph_views_v4 RENAME TO graph_views;
+      `);
+      const violations = this.db.prepare('PRAGMA foreign_key_check').all();
+      if (violations.length) throw new Error('Schema v4 migration left invalid foreign keys');
+      this.db.exec('COMMIT; PRAGMA foreign_keys = ON;');
+    } catch (error) {
+      try { this.db.exec('ROLLBACK'); } catch { /* transaction may already be closed */ }
+      this.db.exec('PRAGMA foreign_keys = ON;');
       throw error;
     }
   }
@@ -300,6 +506,7 @@ export class AssetGraphRepository {
   }
 
   upsertTarget(candidate: StoredTarget): StoredTarget {
+    candidate = { ...candidate, ip: normalizeIpAddress(candidate.ip) };
     const now = new Date().toISOString();
     const candidateStatus = normalizeOperationalAssetStatus(candidate.status);
     const existingRow = this.db.prepare("SELECT * FROM assets WHERE semantic_key = ? AND type = 'host'").get(`host:${candidate.ip}`) as unknown as AssetRow | undefined;
@@ -326,7 +533,7 @@ export class AssetGraphRepository {
       firstSeen: candidate.firstSeen || now,
       lastUpdated: candidate.lastUpdated || now,
     };
-    const id = existing?.id ?? candidate.id;
+    const id = existing?.id ?? hostAssetId(candidate.ip);
     const properties = {
       ip: merged.ip,
       ...(merged.hostname ? { hostname: merged.hostname } : {}),
@@ -348,9 +555,20 @@ export class AssetGraphRepository {
     });
     for (const port of merged.ports) {
       const service = merged.services.find((item) => item.port === port.port && item.protocol === port.protocol);
+      const portAsset = this.upsertAsset({
+        ...createAssetRecord('port', `${id}:${port.protocol.toLowerCase()}:${port.port}`, {
+          hostAssetId: id,
+          port: port.port,
+          protocol: port.protocol.toLowerCase(),
+          state: port.state,
+        }, merged.tags),
+        label: `${port.port}/${port.protocol}`,
+        status: port.state === 'open' ? 'scanned' : 'untested',
+      });
+      this.upsertRelation(portAsset.id, id, 'belongs_to', {}, 'port_of');
       this.db.prepare(`
         INSERT INTO endpoints (
-          id, host_asset_id, port, protocol, state, service, version, product, extra, first_seen, last_seen
+          port_asset_id, host_asset_id, port, protocol, state, service, version, product, extra, first_seen, last_seen
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(host_asset_id, port, protocol) DO UPDATE SET
           state = excluded.state,
@@ -360,7 +578,7 @@ export class AssetGraphRepository {
           extra = COALESCE(excluded.extra, endpoints.extra),
           last_seen = excluded.last_seen
       `).run(
-        `${id}:${port.port}/${port.protocol}`,
+        portAsset.id,
         id,
         port.port,
         port.protocol,
@@ -372,6 +590,21 @@ export class AssetGraphRepository {
         port.firstSeen || now,
         port.lastSeen || now,
       );
+      const serviceName = port.service ?? service?.name;
+      if (serviceName) {
+        const serviceAsset = this.upsertAsset({
+          ...createAssetRecord('service', `${portAsset.id}:${serviceName.trim().toLowerCase()}`, {
+            portAssetId: portAsset.id,
+            name: serviceName,
+            ...(port.version ?? service?.version ? { version: port.version ?? service?.version! } : {}),
+            ...(service?.product ? { product: service.product } : {}),
+            ...(service?.extra ? { extra: service.extra } : {}),
+          }, merged.tags),
+          label: serviceName,
+          status: 'scanned',
+        });
+        this.upsertRelation(serviceAsset.id, portAsset.id, 'belongs_to', {}, 'service_of');
+      }
     }
     return this.getTarget(id)!;
   }
@@ -385,6 +618,11 @@ export class AssetGraphRepository {
   listAssets(): AssetRecord[] {
     const rows = this.db.prepare("SELECT * FROM assets WHERE type NOT IN ('local', 'host') ORDER BY last_updated DESC").all() as unknown as AssetRow[];
     return rows.map((row) => this.assetFromRow(row));
+  }
+
+  getAsset(assetId: string): AssetRecord | null {
+    const row = this.db.prepare("SELECT * FROM assets WHERE id = ? AND type NOT IN ('local', 'host')").get(assetId) as unknown as AssetRow | undefined;
+    return row ? this.assetFromRow(row) : null;
   }
 
   upsertAsset(candidate: AssetRecord): AssetRecord {
@@ -443,6 +681,7 @@ export class AssetGraphRepository {
       source: row.source_asset_id,
       target: row.target_asset_id,
       type: row.type,
+      semantic: row.semantic ?? undefined,
       label: row.label ?? undefined,
       metadata: {
         ...parseObject(row.metadata_json),
@@ -458,22 +697,24 @@ export class AssetGraphRepository {
     targetId: string,
     type: RelationType,
     metadata: Record<string, string> = {},
+    semantic?: RelationSemantic,
   ): { edge: GraphRelation | null; created: boolean } {
     const source = sourceId && this.hasAsset(sourceId) ? sourceId : LOCAL_ASSET_ID;
     if (!this.hasAsset(targetId) || source === targetId) return { edge: null, created: false };
-    const id = `edge:${source}:${type}:${targetId}`;
+    const id = relationId(source, type, targetId);
     const existing = this.db.prepare('SELECT id FROM relations WHERE id = ?').get(id);
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO relations (
-        id, source_asset_id, target_asset_id, type, label, metadata_json, evidence_count, first_seen, last_seen
-      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+        id, source_asset_id, target_asset_id, type, semantic, label, metadata_json, evidence_count, first_seen, last_seen
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       ON CONFLICT(source_asset_id, target_asset_id, type) DO UPDATE SET
+        semantic = COALESCE(excluded.semantic, relations.semantic),
         label = COALESCE(excluded.label, relations.label),
         metadata_json = excluded.metadata_json,
         evidence_count = relations.evidence_count + 1,
         last_seen = excluded.last_seen
-    `).run(id, source, targetId, type, metadata.label ?? null, JSON.stringify(metadata), now, now);
+    `).run(id, source, targetId, type, semantic ?? null, metadata.label ?? null, JSON.stringify(metadata), now, now);
     const edge = this.listRelations().find((candidate) => candidate.id === id) ?? null;
     return { edge, created: !existing };
   }
@@ -771,33 +1012,43 @@ export class AssetGraphRepository {
     });
   }
 
-  getLayoutState(): GraphLayoutState {
-    const view = this.db.prepare('SELECT x, y, scale FROM graph_views WHERE perspective = ?').get(DOMAIN_LAYOUT_KEY) as unknown as { x: number; y: number; scale: number } | undefined;
-    const rows = this.db.prepare('SELECT asset_id, x, y FROM graph_positions WHERE perspective = ?').all(DOMAIN_LAYOUT_KEY) as unknown as Array<{ asset_id: string; x: number; y: number }>;
+  getLayoutState(requestedPerspective?: GraphPerspective): GraphLayoutState {
+    const saved = this.db.prepare("SELECT value FROM graph_settings WHERE key = 'last_perspective'").get() as unknown as { value: string } | undefined;
+    const perspective = requestedPerspective ?? (isGraphPerspective(saved?.value) ? saved.value : DEFAULT_LAYOUT_KEY);
+    const view = this.db.prepare('SELECT x, y, scale FROM graph_views WHERE perspective = ?').get(perspective) as unknown as { x: number; y: number; scale: number } | undefined;
+    const rows = this.db.prepare('SELECT asset_id, x, y FROM graph_positions WHERE perspective = ?').all(perspective) as unknown as Array<{ asset_id: string; x: number; y: number }>;
     return {
+      perspective,
       view: view ?? { x: 0, y: 0, scale: 1 },
       positions: Object.fromEntries(rows.map((row) => [row.asset_id, { x: row.x, y: row.y }])),
     };
   }
 
   updateLayoutState(state: Partial<GraphLayoutState>) {
+    const perspective = isGraphPerspective(state.perspective)
+      ? state.perspective
+      : this.getLayoutState().perspective;
     const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO graph_settings (key, value) VALUES ('last_perspective', ?)
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value
+    `).run(perspective);
     if (state.view) {
       this.db.prepare(`
         INSERT INTO graph_views (perspective, x, y, scale, updated_at) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(perspective) DO UPDATE SET x=excluded.x, y=excluded.y, scale=excluded.scale, updated_at=excluded.updated_at
-      `).run(DOMAIN_LAYOUT_KEY, state.view.x, state.view.y, state.view.scale, now);
+      `).run(perspective, state.view.x, state.view.y, state.view.scale, now);
     }
     if (state.positions) {
-      this.db.prepare('DELETE FROM graph_positions WHERE perspective = ?').run(DOMAIN_LAYOUT_KEY);
+      this.db.prepare('DELETE FROM graph_positions WHERE perspective = ?').run(perspective);
       const statement = this.db.prepare(`
         INSERT INTO graph_positions (perspective, asset_id, x, y, updated_at) VALUES (?, ?, ?, ?, ?)
       `);
       for (const [assetId, point] of Object.entries(state.positions)) {
-        if (this.hasAsset(assetId)) statement.run(DOMAIN_LAYOUT_KEY, assetId, point.x, point.y, now);
+        if (this.hasAsset(assetId)) statement.run(perspective, assetId, point.x, point.y, now);
       }
     }
-    return this.getLayoutState();
+    return this.getLayoutState(perspective);
   }
 
   private createSchema() {
@@ -805,9 +1056,9 @@ export class AssetGraphRepository {
       CREATE TABLE IF NOT EXISTS assets (
         id TEXT PRIMARY KEY,
         semantic_key TEXT NOT NULL UNIQUE,
-        type TEXT NOT NULL CHECK(type IN ('local','host','domain','webapp','api','service','identity','subnet')),
+        type TEXT NOT NULL CHECK(type IN ('local','host','domain','subnet','port','service','webapp','api','endpoint','parameter','certificate','identity')),
         label TEXT NOT NULL,
-        status TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('untested','in_progress','scanned','vulnerable','compromised','out_of_scope')),
         properties_json TEXT NOT NULL DEFAULT '{}',
         tags_json TEXT NOT NULL DEFAULT '[]',
         vuln_count INTEGER NOT NULL DEFAULT 0,
@@ -816,9 +1067,9 @@ export class AssetGraphRepository {
         last_updated TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS endpoints (
-        id TEXT PRIMARY KEY,
+        port_asset_id TEXT PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
         host_asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-        port INTEGER NOT NULL,
+        port INTEGER NOT NULL CHECK(port BETWEEN 1 AND 65535),
         protocol TEXT NOT NULL,
         state TEXT NOT NULL,
         service TEXT,
@@ -834,6 +1085,7 @@ export class AssetGraphRepository {
         source_asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
         target_asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
         type TEXT NOT NULL CHECK(type IN ('belongs_to','resolves_to','connected_to','attack_path')),
+        semantic TEXT CHECK(semantic IS NULL OR semantic IN ('subdomain_of','member_of_subnet','port_of','service_of','api_of','endpoint_of','parameter_of','dns_resolves','served_by','secures','authenticates_to','attack_step')),
         label TEXT,
         metadata_json TEXT NOT NULL DEFAULT '{}',
         evidence_count INTEGER NOT NULL DEFAULT 1,
@@ -924,7 +1176,7 @@ export class AssetGraphRepository {
         updated_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS graph_positions (
-        perspective TEXT NOT NULL CHECK(perspective = 'domain'),
+        perspective TEXT NOT NULL CHECK(perspective IN ('network','domain','application')),
         asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
         x REAL NOT NULL,
         y REAL NOT NULL,
@@ -932,11 +1184,15 @@ export class AssetGraphRepository {
         PRIMARY KEY(perspective, asset_id)
       );
       CREATE TABLE IF NOT EXISTS graph_views (
-        perspective TEXT PRIMARY KEY CHECK(perspective = 'domain'),
+        perspective TEXT PRIMARY KEY CHECK(perspective IN ('network','domain','application')),
         x REAL NOT NULL,
         y REAL NOT NULL,
-        scale REAL NOT NULL,
+        scale REAL NOT NULL CHECK(scale > 0),
         updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS graph_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(type);
       CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source_asset_id);
@@ -945,6 +1201,7 @@ export class AssetGraphRepository {
       CREATE INDEX IF NOT EXISTS idx_findings_asset ON findings(asset_id);
       CREATE INDEX IF NOT EXISTS idx_vulnerabilities_asset ON vulnerabilities(asset_id);
       CREATE INDEX IF NOT EXISTS idx_evidence_asset ON evidence(asset_id);
+      CREATE INDEX IF NOT EXISTS idx_endpoints_port_asset ON endpoints(port_asset_id);
       CREATE INDEX IF NOT EXISTS idx_finding_evidence_evidence ON finding_evidence(evidence_id);
     `);
     this.ensureColumn('evidence', 'title', "TEXT NOT NULL DEFAULT ''");
@@ -1065,7 +1322,7 @@ export class AssetGraphRepository {
       status: normalizeOperationalAssetStatus(row.status),
       tags: parseStrings(row.tags_json),
       ports: endpoints.map((endpoint) => ({
-        id: endpoint.id,
+        id: endpoint.port_asset_id,
         port: endpoint.port,
         protocol: endpoint.protocol,
         state: endpoint.state,
@@ -1244,6 +1501,14 @@ function parseStrings(value: string): string[] {
 
 function unique(values: string[]) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function relationId(sourceId: string, type: RelationType, targetId: string) {
+  return `edge:${sourceId}:${type}:${targetId}`;
+}
+
+function isGraphPerspective(value: unknown): value is GraphPerspective {
+  return value === 'network' || value === 'domain' || value === 'application';
 }
 
 function replaceLinks(

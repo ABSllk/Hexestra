@@ -50,6 +50,7 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 text-2xs">
         <DetailRow label="Type" value={node.type} />
+        {asset?.type === 'identity' && hasPlaintextCredential(asset) && <PlaintextCredentialWarning />}
         {target && <DetailRow label="IP" value={target.ip} mono />}
         {target?.hostname && <DetailRow label="Hostname" value={target.hostname} />}
         {target?.os && <DetailRow label="OS" value={target.os} />}
@@ -122,6 +123,14 @@ function humanize(value: string) {
 
 function formatProperty(value: AssetRecord['properties'][string]) {
   return Array.isArray(value) ? value.join(', ') : String(value);
+}
+
+function hasPlaintextCredential(asset: AssetRecord) {
+  return Object.keys(asset.properties).some((key) => /^credential_(password|token|cookie|private_key)$/.test(key));
+}
+
+function PlaintextCredentialWarning() {
+  return <div role="alert" className="rounded border border-severity-high/45 bg-severity-high/10 px-2 py-1.5 font-mono text-[11px] text-severity-high">PLAINTEXT CREDENTIAL — stored and displayed without masking</div>;
 }
 
 function DetailRow({ label, value, mono = false, danger = false }: { label: string; value: string; mono?: boolean; danger?: boolean }) {

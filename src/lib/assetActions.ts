@@ -13,8 +13,22 @@ export interface AssetRescanPlan {
 export function assetPrimaryValue(node: GraphNode, target?: Target, asset?: AssetRecord): string {
   if (target?.ip) return target.ip;
 
-  const propertyValue = firstText(asset?.properties.url, asset?.properties.domain, asset?.properties.ip);
+  const properties = asset?.properties;
+  const typedValue = asset ? typedAssetValue(asset) : undefined;
+  const propertyValue = firstText(properties?.url, properties?.domain, properties?.ip, typedValue);
   return propertyValue ?? asset?.key ?? node.ip ?? node.hostname ?? node.key ?? node.label;
+}
+
+function typedAssetValue(asset: AssetRecord) {
+  const value = asset.properties;
+  if (asset.type === 'subnet') return firstText(value.cidr);
+  if (asset.type === 'port' && typeof value.port === 'number') return `${value.port}/${firstText(value.protocol) ?? 'tcp'}`;
+  if (asset.type === 'service') return [firstText(value.name), firstText(value.version)].filter(Boolean).join(' ');
+  if (asset.type === 'endpoint') return [firstText(value.method), firstText(value.pathTemplate, value.path)].filter(Boolean).join(' ');
+  if (asset.type === 'parameter') return [firstText(value.location), firstText(value.name)].filter(Boolean).join(':');
+  if (asset.type === 'certificate') return firstText(value.fingerprintSha256);
+  if (asset.type === 'identity') return [firstText(value.provider, value.realm), firstText(value.principal)].filter(Boolean).join(':');
+  return undefined;
 }
 
 export function assetBrowserUrl(node: GraphNode, target?: Target, asset?: AssetRecord): string | undefined {

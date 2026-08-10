@@ -19,6 +19,11 @@ describe('Agent system instructions', () => {
     expect(instructions).toContain('It owns report structure');
     expect(instructions).toContain('Stage 0 must define it');
     expect(instructions).toContain('call scope_update');
+    expect(instructions).toContain('call asset_register immediately with');
+    expect(instructions).toContain('exactly one item in assets');
+    expect(instructions).toContain('immediately call asset_get');
+    expect(instructions).toMatch(/before registering the\s+next asset or continuing the scan/);
+    expect(instructions).toContain('asset_relation_upsert');
     expect(instructions).toContain('Never authorize unrelated third-party');
     expect(instructions).toMatch(/shared by every chat\s+conversation/);
     expect(instructions).toMatch(/call target_list, task_list, finding_list,\s+vulnerability_list, evidence_list/);

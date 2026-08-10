@@ -69,6 +69,19 @@ describe('AssetWorkspaceTab', () => {
     expect(screen.queryByText('Details')).not.toBeInTheDocument();
   });
 
+  it('renders Identity credentials as plaintext directly in the Assets inventory', () => {
+    const identity: AssetRecord = {
+      ...asset,
+      id: 'identity-assets', key: 'identity:oidc:example:alice', type: 'identity', label: 'alice',
+      properties: { provider: 'oidc', realm: 'example', principal: 'alice', credential_cookie: 'session=visible' },
+    };
+    useSessionStore.setState({ assets: [identity] });
+    useNetMapStore.setState({ nodes: [{ ...node, id: identity.id, key: identity.key, type: identity.type, label: identity.label, properties: identity.properties }] });
+    render(<AssetWorkspaceTab />);
+    expect(screen.getByRole('alert')).toHaveTextContent('PLAINTEXT CREDENTIAL');
+    expect(screen.getByText(/session=visible/)).toBeInTheDocument();
+  });
+
   it('opens the asset context menu without changing selection and can reveal the NetMap', () => {
     render(<AssetWorkspaceTab />);
     const row = screen.getByRole('button', { name: /api\.example\.com/i });

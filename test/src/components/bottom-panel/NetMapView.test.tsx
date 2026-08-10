@@ -22,6 +22,8 @@ describe('NetMapView', () => {
       error: null,
       view: { x: 0, y: 0, scale: 1 },
       positions: {},
+      perspective: 'domain',
+      revealNodeId: null,
     });
     useSessionStore.setState({ targets: [], assets: [] });
   });
@@ -243,5 +245,48 @@ describe('NetMapView', () => {
     expect(screen.queryByText('DOMAIN-0')).not.toBeInTheDocument();
     expect(screen.queryByText('DOMAIN-2')).not.toBeInTheDocument();
     expect(screen.queryByTestId('netmap-node-hud')).not.toBeInTheDocument();
+  });
+
+  it('switches among three perspectives and expands Application children on demand', () => {
+    useNetMapStore.setState({
+      nodes: [
+        { id: 'webapp-view', label: 'WEB APP', type: 'webapp', status: 'scanned', portCount: 0, vulnCount: 0 },
+        { id: 'api-view', label: 'API V1', type: 'api', status: 'scanned', portCount: 0, vulnCount: 0 },
+        { id: 'endpoint-view', label: 'GET /USERS/{ID}', type: 'endpoint', status: 'scanned', portCount: 0, vulnCount: 0 },
+        { id: 'parameter-view', label: 'ID', type: 'parameter', status: 'scanned', portCount: 0, vulnCount: 0 },
+      ],
+      edges: [
+        { id: 'api-webapp', source: 'api-view', target: 'webapp-view', type: 'belongs_to', semantic: 'api_of' },
+        { id: 'endpoint-api', source: 'endpoint-view', target: 'api-view', type: 'belongs_to', semantic: 'endpoint_of' },
+        { id: 'parameter-endpoint', source: 'parameter-view', target: 'endpoint-view', type: 'belongs_to', semantic: 'parameter_of' },
+      ],
+    });
+    render(<NetMapView />);
+    fireEvent.click(screen.getByRole('button', { name: 'application' }));
+    expect(screen.getByRole('button', { name: 'API V1, scanned' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'GET /USERS/{ID}, scanned' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'API V1, scanned' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Expand children' }));
+    expect(screen.getByRole('button', { name: 'GET /USERS/{ID}, scanned' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'ID, scanned' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'GET /USERS/{ID}, scanned' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Expand children' }));
+    expect(screen.getByRole('button', { name: 'ID, scanned' })).toBeInTheDocument();
+  });
+
+  it('reveals a hidden search result by switching perspective and expanding ancestors', () => {
+    useNetMapStore.setState({
+      nodes: [
+        { id: 'api-search', label: 'SEARCH API', type: 'api', status: 'scanned', portCount: 0, vulnCount: 0 },
+        { id: 'endpoint-search', label: 'POST /SEARCH', type: 'endpoint', status: 'scanned', portCount: 0, vulnCount: 0 },
+      ],
+      edges: [{ id: 'endpoint-api-search', source: 'endpoint-search', target: 'api-search', type: 'belongs_to', semantic: 'endpoint_of' }],
+      revealNodeId: 'endpoint-search',
+    });
+    render(<NetMapView />);
+    expect(screen.getByRole('button', { name: 'POST /SEARCH, scanned' })).toBeInTheDocument();
+    expect(useNetMapStore.getState()).toMatchObject({ perspective: 'application', selectedNodeId: 'endpoint-search', revealNodeId: null });
   });
 });

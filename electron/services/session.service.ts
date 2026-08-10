@@ -9,8 +9,11 @@ import {
 } from './asset-record';
 import {
   AssetGraphRepository,
+  LOCAL_ASSET_ID,
   type GraphLayoutState,
   type GraphRelation,
+  type GraphPerspective,
+  type RelationSemantic,
   type RelationType,
   type AssetChangeRecord,
   type FindingRecord,
@@ -34,7 +37,7 @@ import {
   type PttTaskInput,
   type TaskStatus,
 } from './ptt-markdown';
-import { deriveScopedAssetStatus, isValueInScope } from './scope-policy';
+import { deriveScopedAssetStatus, isValueExcluded, isValueInScope } from './scope-policy';
 import { isManagedRecordKind, RECORDS_IPC, type RecordExportResult } from '../contracts/records';
 import { managedRecordFilename, managedRecordMarkdown } from './record-export';
 import type { SessionDataChangedEvent } from '../contracts/session';
@@ -88,7 +91,7 @@ type GraphEdgeType = RelationType;
 type GraphEdge = GraphRelation;
 
 interface SessionNetMap {
-  version: 3;
+  version: 4;
   assets: AssetRecord[];
   edges: GraphEdge[];
 }
@@ -170,8 +173,8 @@ class SessionService {
       return this.getNetMap(sessionId);
     });
 
-    ipcMain.handle('netmap:layout:get', async (_event, sessionId: string) => {
-      return this.getNetMapLayout(sessionId);
+    ipcMain.handle('netmap:layout:get', async (_event, sessionId: string, perspective?: GraphPerspective) => {
+      return this.getNetMapLayout(sessionId, perspective);
     });
 
     ipcMain.handle('netmap:layout:update', async (
@@ -511,8 +514,13 @@ class SessionService {
 
   listAssets(sessionId: string): AssetRecord[] {
     const scope = readProjectMetadata(this.getSessionPath(sessionId))?.scope;
-    return this.getRepository(sessionId).listAssets()
-      .map((asset) => projectAssetScope(asset, scope));
+    const repository = this.getRepository(sessionId);
+    return projectAssetsScope(
+      repository.listAssets(),
+      this.listTargets(sessionId),
+      repository.listRelations(),
+      scope,
+    );
   }
 
   upsertAsset(sessionId: string, candidate: AssetRecord): AssetRecord {
@@ -534,7 +542,30 @@ class SessionService {
 
   async getNetMap(sessionId: string): Promise<SessionNetMap> {
     const repository = this.getRepository(sessionId);
-    return { version: 3, assets: this.listAssets(sessionId), edges: repository.listRelations() };
+    return { version: 4, assets: this.listAssets(sessionId), edges: repository.listRelations() };
+  }
+
+  getAssetContext(sessionId: string, assetId: string) {
+    const host = this.listTargets(sessionId).find((candidate) => candidate.id === assetId);
+    const asset = this.listAssets(sessionId).find((candidate) => candidate.id === assetId);
+    if (!host && !asset) throw new Error(`Asset ${assetId} not found`);
+    const relationships = this.getRepository(sessionId).listRelations()
+      .filter((edge) => edge.source === assetId || edge.target === assetId);
+    return {
+      asset: host ? {
+        ...host,
+        type: 'host' as const,
+        key: `host:${host.ip}`,
+        label: host.hostname ?? host.ip,
+        properties: {
+          ip: host.ip,
+          ...(host.hostname ? { hostname: host.hostname } : {}),
+          domains: host.domains,
+          ...(host.os ? { os: host.os } : {}),
+        },
+      } : asset!,
+      relationships,
+    };
   }
 
   upsertNetMapEdge(
@@ -543,8 +574,9 @@ class SessionService {
     targetId: string,
     type: GraphEdgeType,
     metadata: Record<string, string> = {},
+    semantic?: RelationSemantic,
   ): { edge: GraphEdge | null; created: boolean } {
-    return this.getRepository(sessionId).upsertRelation(sourceTargetId, targetId, type, metadata);
+    return this.getRepository(sessionId).upsertRelation(sourceTargetId, targetId, type, metadata, semantic);
   }
 
   withGraphTransaction<T>(sessionId: string, work: () => T): T {
@@ -556,8 +588,8 @@ class SessionService {
     this.reconcileProjectCounts(sessionId);
   }
 
-  getNetMapLayout(sessionId: string) {
-    return this.getRepository(sessionId).getLayoutState();
+  getNetMapLayout(sessionId: string, perspective?: GraphPerspective) {
+    return this.getRepository(sessionId).getLayoutState(perspective);
   }
 
   updateNetMapLayout(
@@ -1073,11 +1105,53 @@ function projectTargetScope(target: Target, scope: SessionMeta['scope']): Target
 }
 
 function projectAssetScope(asset: AssetRecord, scope: SessionMeta['scope']): AssetRecord {
+  if (asset.type === 'certificate' || asset.type === 'identity') {
+    return { ...asset, status: 'out_of_scope' };
+  }
   const semanticValue = asset.key.slice(asset.key.indexOf(':') + 1);
   return {
     ...asset,
     status: deriveScopedAssetStatus(scope, [asset.id, semanticValue], asset.status),
   };
+}
+
+function projectAssetsScope(
+  assets: AssetRecord[],
+  targets: Target[],
+  relations: GraphRelation[],
+  scope: SessionMeta['scope'],
+) {
+  const rawById = new Map(assets.map((asset) => [asset.id, asset]));
+  const projected = new Map(assets.map((asset) => [asset.id, projectAssetScope(asset, scope)]));
+  const inScopeIds = new Set<string>([
+    LOCAL_ASSET_ID,
+    ...targets.filter((target) => target.status !== 'out_of_scope').map((target) => target.id),
+    ...[...projected.values()].filter((asset) => asset.status !== 'out_of_scope').map((asset) => asset.id),
+  ]);
+
+  for (let pass = 0; pass < assets.length + 1; pass += 1) {
+    let changed = false;
+    for (const edge of relations) {
+      const candidates: Array<{ childId: string; parentId: string }> = edge.type === 'belongs_to'
+        ? [{ childId: edge.source, parentId: edge.target }]
+        : [
+            { childId: edge.source, parentId: edge.target },
+            { childId: edge.target, parentId: edge.source },
+          ];
+      for (const { childId, parentId } of candidates) {
+        const child = rawById.get(childId);
+        if (!child || !inScopeIds.has(parentId) || inScopeIds.has(childId)) continue;
+        const semanticValue = child.key.slice(child.key.indexOf(':') + 1);
+        if (isValueExcluded(scope, semanticValue)) continue;
+        if (edge.type !== 'belongs_to' && child.type !== 'certificate' && child.type !== 'identity') continue;
+        projected.set(childId, { ...child, status: normalizeOperationalAssetStatus(child.status) });
+        inScopeIds.add(childId);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return assets.map((asset) => projected.get(asset.id)!);
 }
 
 function cleanTerminalField(value?: string) {

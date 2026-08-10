@@ -2,7 +2,9 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { AssetRecord } from '@electron/services/asset-record';
 
 vi.mock('electron', () => ({
   BrowserWindow: {
@@ -19,6 +21,7 @@ describe('AI asset registration', () => {
   let sessionService: typeof import('@electron/services/session.service').sessionService;
   let syncTargetsService: typeof import('@electron/services/sync-targets.service').syncTargetsService;
   let sessionId: string;
+  let projectPath: string;
 
   beforeAll(async () => {
     appData = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-ai-assets-'));
@@ -27,7 +30,7 @@ describe('AI asset registration', () => {
     vi.resetModules();
     sessionService = (await import('@electron/services/session.service')).sessionService;
     syncTargetsService = (await import('@electron/services/sync-targets.service')).syncTargetsService;
-    const projectPath = path.join(appData, 'asset-project');
+    projectPath = path.join(appData, 'asset-project');
     fs.mkdirSync(projectPath, { recursive: true });
     sessionId = (await sessionService.openProjectPath(projectPath, {
       name: 'AI registration test',
@@ -68,7 +71,7 @@ describe('AI asset registration', () => {
 
     expect(result.hosts).toHaveLength(1);
     expect(result.hosts[0]).toMatchObject({
-      id: expect.stringMatching(/^TGT-/),
+      id: expect.stringMatching(/^AST-host-/),
       ip: '192.0.2.10',
       domains: ['api.example.com', 'admin.example.com'],
       aiSummary: 'Shared public application host.',
@@ -129,5 +132,85 @@ describe('AI asset registration', () => {
 
     expect(sessionService.listTargets(sessionId)).toEqual(beforeTargets);
     expect(sessionService.listAssets(sessionId)).toEqual(beforeAssets);
+  });
+
+  it('registers deterministic fine-grained API assets and keeps credentials plaintext with history', async () => {
+    const registerOne = async (asset: Parameters<typeof syncTargetsService.registerAssets>[1][number]) => {
+      const result = await syncTargetsService.registerAssets(sessionId, [asset], 'local-operator');
+      return result;
+    };
+    const hostRegistration = await registerOne({ type: 'host', ip: '2001:0db8::10', hostname: 'v6.example.com' });
+    const host = hostRegistration.hosts[0];
+    expect(hostRegistration.assets).toEqual([]);
+    const port = (await registerOne({ type: 'port', hostAssetId: host.id, port: 8443, protocol: 'tcp' })).assets[0];
+    const service = (await registerOne({ type: 'service', portAssetId: port.id, name: 'HTTPS', version: '1.0' })).assets[0];
+    const webapp = (await registerOne({ type: 'webapp', url: 'https://api.example.com/login' })).assets[0];
+    const api = (await registerOne({ type: 'api', baseUrl: 'https://api.example.com/v1/', webAppAssetId: webapp.id })).assets[0];
+    const endpoint = (await registerOne({ type: 'endpoint', apiAssetId: api.id, method: 'get', path: '/users/123?expand=roles' })).assets[0];
+    const parameter = (await registerOne({ type: 'parameter', endpointAssetId: endpoint.id, location: 'query', name: 'expand' })).assets[0];
+    const certificate = (await registerOne({ type: 'certificate', fingerprintSha256: 'AA:'.repeat(31) + 'AA' })).assets[0] as AssetRecord;
+    const identity = (await registerOne({
+      type: 'identity', provider: 'OIDC', realm: 'Example', principal: 'alice@example.com',
+      credentials: [{ kind: 'token', value: 'first-token', observedAt: '2026-08-10T00:00:00.000Z' }],
+    })).assets[0] as AssetRecord;
+
+    expect(host).toMatchObject({ id: expect.stringMatching(/^AST-host-/), ip: '2001:db8::10' });
+    expect(sessionService.getAssetContext(sessionId, host.id).asset).toMatchObject({
+      id: host.id, type: 'host', key: 'host:2001:db8::10', properties: { ip: '2001:db8::10' },
+    });
+    expect(port).toMatchObject({ type: 'port', properties: { hostAssetId: host.id, port: 8443, protocol: 'tcp' } });
+    expect(service).toMatchObject({ type: 'service', properties: { portAssetId: port.id, name: 'HTTPS', version: '1.0' } });
+    expect(api).toMatchObject({ key: 'api:https://api.example.com/v1', properties: { basePath: '/v1' } });
+    expect(endpoint).toMatchObject({ properties: { method: 'GET', pathTemplate: '/users/{id}' } });
+    expect(parameter).toMatchObject({ properties: { location: 'query', name: 'expand' } });
+    expect(certificate.type).toBe('certificate');
+    expect(identity).toMatchObject({
+      type: 'identity',
+      status: 'out_of_scope',
+      properties: { credential_token: 'first-token' },
+    });
+
+    sessionService.upsertNetMapEdge(sessionId, identity.id, api.id, 'connected_to', {}, 'authenticates_to');
+    expect(sessionService.getAssetContext(sessionId, identity.id).asset).toMatchObject({ status: 'scanned' });
+    const updatedIdentity = (await registerOne({
+      type: 'identity', provider: 'oidc', realm: 'example', principal: 'ALICE@EXAMPLE.COM',
+      credentials: [{ kind: 'token', value: 'second-token', observedAt: '2026-08-11T00:00:00.000Z' }],
+    })).assets[0] as AssetRecord;
+    expect(updatedIdentity.id).toBe(identity.id);
+    expect(updatedIdentity.properties).toMatchObject({ credential_token: 'second-token' });
+    expect(sessionService.getAssetContext(sessionId, identity.id).asset).toMatchObject({
+      properties: { credential_token: 'second-token' },
+    });
+    const plaintextProbe = new DatabaseSync(path.join(projectPath, '.hexestra', 'engagement.db'), { readOnly: true });
+    const storedIdentity = plaintextProbe.prepare('SELECT properties_json FROM assets WHERE id = ?').get(identity.id) as { properties_json: string };
+    plaintextProbe.close();
+    expect(storedIdentity.properties_json).toContain('second-token');
+    expect(sessionService.listEvidence(sessionId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ assetId: identity.id, kind: 'credential-history', content: expect.stringContaining('first-token') }),
+    ]));
+
+    const repeatedEndpoint = (await registerOne({ type: 'endpoint', apiAssetId: api.id, method: 'GET', path: '/users/456' })).assets[0];
+    expect(repeatedEndpoint.id).toBe(endpoint.id);
+
+    const uuidEndpoint = (await registerOne({
+      type: 'endpoint', apiAssetId: api.id, method: 'GET', path: '/jobs/550e8400-e29b-41d4-a716-446655440000',
+    })).assets[0];
+    const uuidRepeat = (await registerOne({
+      type: 'endpoint', apiAssetId: api.id, method: 'GET', path: '/jobs/123e4567-e89b-12d3-a456-426614174000',
+    })).assets[0];
+    const malformedUuid = (await registerOne({
+      type: 'endpoint', apiAssetId: api.id, method: 'GET', path: '/jobs/550e8400-e29b-41d4-a716-not-a-uuid',
+    })).assets[0];
+    expect(uuidRepeat.id).toBe(uuidEndpoint.id);
+    expect(malformedUuid.id).not.toBe(uuidEndpoint.id);
+  });
+
+  it('rolls back a fine-grained batch when a parent asset is missing', async () => {
+    const before = sessionService.listAssets(sessionId);
+    await expect(syncTargetsService.registerAssets(sessionId, [
+      { type: 'subnet', cidr: '2001:db8:abcd:1::7/64' },
+      { type: 'endpoint', apiAssetId: 'missing-api', method: 'GET', path: '/health' },
+    ])).rejects.toThrow(/missing-api/);
+    expect(sessionService.listAssets(sessionId)).toEqual(before);
   });
 });

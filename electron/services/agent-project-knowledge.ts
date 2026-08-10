@@ -106,7 +106,7 @@ export async function buildAgentProjectKnowledge(sessionId: string) {
         type: asset.type,
         label: asset.label,
         status: asset.status,
-        properties: compactProperties(asset.properties),
+        properties: compactProperties(asset.properties, asset.type === 'identity'),
         tags: asset.tags.slice(0, 12),
         vulnCount: asset.vulnCount,
         summary: clip(asset.aiSummary, 600),
@@ -116,6 +116,7 @@ export async function buildAgentProjectKnowledge(sessionId: string) {
         source: edge.source,
         target: edge.target,
         type: edge.type,
+        semantic: edge.semantic,
         label: clip(edge.label, 160),
       })),
     },
@@ -213,10 +214,16 @@ export async function buildAgentProjectKnowledge(sessionId: string) {
   };
 }
 
-function compactProperties(properties: Record<string, string | number | boolean | string[]>) {
-  return Object.fromEntries(Object.entries(properties).slice(0, 10).map(([key, value]) => [
+function compactProperties(
+  properties: Record<string, string | number | boolean | string[]>,
+  preservePlaintextCredentials = false,
+) {
+  const entries = preservePlaintextCredentials ? Object.entries(properties) : Object.entries(properties).slice(0, 10);
+  return Object.fromEntries(entries.map(([key, value]) => [
     key,
-    Array.isArray(value) ? value.slice(0, 16).map((item) => clip(item, 240)) : clip(value, 400),
+    preservePlaintextCredentials
+      ? value
+      : Array.isArray(value) ? value.slice(0, 16).map((item) => clip(item, 240)) : clip(value, 400),
   ]));
 }
 

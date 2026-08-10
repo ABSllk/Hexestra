@@ -9,14 +9,6 @@ const assetRegistrationSchema = z.discriminatedUnion('type', [
     type: z.literal('host'),
     ip: z.string().min(7).max(45),
     hostname: z.string().min(1).max(253).optional(),
-    domains: z.array(z.string().min(3).max(253)).max(100).optional(),
-    ports: z.array(z.object({
-      port: z.number().int().min(1).max(65_535),
-      protocol: z.enum(['tcp', 'udp']).optional(),
-      state: z.enum(['open', 'filtered', 'closed']).optional(),
-      service: z.string().min(1).max(200).optional(),
-      version: z.string().min(1).max(500).optional(),
-    })).max(1_000).optional(),
     summary: z.string().max(4_000).optional(),
     tags: z.array(z.string().min(1).max(100)).max(50).optional(),
   }),
@@ -29,14 +21,95 @@ const assetRegistrationSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('webapp'),
     url: z.url().max(2_000),
-    ip: z.string().min(7).max(45).optional(),
-    domain: z.string().min(3).max(253).optional(),
     statusCode: z.number().int().min(100).max(599).optional(),
     title: z.string().max(500).optional(),
     technologies: z.array(z.string().min(1).max(200)).max(100).optional(),
     summary: z.string().max(4_000).optional(),
     tags: z.array(z.string().min(1).max(100)).max(50).optional(),
   }),
+  z.object({
+    type: z.literal('subnet'),
+    cidr: z.string().min(3).max(100),
+    summary: z.string().max(4_000).optional(),
+    tags: z.array(z.string().min(1).max(100)).max(50).optional(),
+  }),
+  z.object({
+    type: z.literal('port'),
+    hostAssetId: z.string().min(1).max(200),
+    port: z.number().int().min(1).max(65_535),
+    protocol: z.enum(['tcp', 'udp']).optional(),
+    state: z.enum(['open', 'filtered', 'closed']).optional(),
+    summary: z.string().max(4_000).optional(),
+    tags: z.array(z.string().min(1).max(100)).max(50).optional(),
+  }),
+  z.object({
+    type: z.literal('service'),
+    portAssetId: z.string().min(1).max(200),
+    name: z.string().min(1).max(200),
+    version: z.string().min(1).max(500).optional(),
+    product: z.string().min(1).max(500).optional(),
+    extra: z.string().min(1).max(1_000).optional(),
+    summary: z.string().max(4_000).optional(),
+    tags: z.array(z.string().min(1).max(100)).max(50).optional(),
+  }),
+  z.object({
+    type: z.literal('api'),
+    baseUrl: z.url().max(2_000),
+    webAppAssetId: z.string().min(1).max(200).optional(),
+    summary: z.string().max(4_000).optional(),
+    tags: z.array(z.string().min(1).max(100)).max(50).optional(),
+  }),
+  z.object({
+    type: z.literal('endpoint'),
+    apiAssetId: z.string().min(1).max(200),
+    method: z.string().min(1).max(20),
+    path: z.string().min(1).max(2_000),
+    pathTemplate: z.string().min(1).max(2_000).optional(),
+    summary: z.string().max(4_000).optional(),
+    tags: z.array(z.string().min(1).max(100)).max(50).optional(),
+  }),
+  z.object({
+    type: z.literal('parameter'),
+    endpointAssetId: z.string().min(1).max(200),
+    location: z.enum(['path', 'query', 'header', 'cookie', 'body']),
+    name: z.string().min(1).max(300),
+    dataType: z.string().min(1).max(200).optional(),
+    required: z.boolean().optional(),
+    summary: z.string().max(4_000).optional(),
+    tags: z.array(z.string().min(1).max(100)).max(50).optional(),
+  }),
+  z.object({
+    type: z.literal('certificate'),
+    fingerprintSha256: z.string().min(64).max(95),
+    subject: z.string().max(1_000).optional(),
+    issuer: z.string().max(1_000).optional(),
+    san: z.array(z.string().min(1).max(500)).max(200).optional(),
+    validFrom: z.string().max(100).optional(),
+    validTo: z.string().max(100).optional(),
+    summary: z.string().max(4_000).optional(),
+    tags: z.array(z.string().min(1).max(100)).max(50).optional(),
+  }),
+  z.object({
+    type: z.literal('identity'),
+    provider: z.string().min(1).max(200),
+    realm: z.string().min(1).max(500),
+    principal: z.string().min(1).max(500),
+    identityKind: z.string().min(1).max(100).optional(),
+    credentials: z.array(z.object({
+      kind: z.enum(['password', 'token', 'cookie', 'private_key']),
+      value: z.string().min(1).max(65_536),
+      observedAt: z.string().max(100).optional(),
+    })).max(4).optional(),
+    summary: z.string().max(4_000).optional(),
+    tags: z.array(z.string().min(1).max(100)).max(50).optional(),
+  }),
+]);
+
+const relationTypeSchema = z.enum(['belongs_to', 'resolves_to', 'connected_to', 'attack_path']);
+const relationSemanticSchema = z.enum([
+  'subdomain_of', 'member_of_subnet', 'port_of', 'service_of', 'api_of',
+  'endpoint_of', 'parameter_of', 'dns_resolves', 'served_by', 'secures',
+  'authenticates_to', 'attack_step',
 ]);
 
 export function createProjectAgentTools({ sender, sessionId, selectedTargetId }: AgentToolContext) {
@@ -51,6 +124,15 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
           hosts: await sessionService.listTargets(sessionId),
           assets: sessionService.listAssets(sessionId),
         }, null, 2) }] };
+      },
+    ),
+    createAgentTool(
+      'asset_get',
+      'Immediately read back one persisted asset and its relationships after asset_register. Use the exact returned asset ID before any further discovery action.',
+      { assetId: z.string().min(1).max(200) },
+      async ({ assetId }) => {
+        if (!sessionId) throw new Error('No active engagement');
+        return { content: [{ type: 'text', text: JSON.stringify(sessionService.getAssetContext(sessionId, assetId), null, 2) }] };
       },
     ),
     createAgentTool(
@@ -80,10 +162,10 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
     ),
     createAgentTool(
       'asset_register',
-      'Register discovered Hosts, Domains, and Web Apps in the active engagement. '
-        + 'Use this after interpreting tool evidence; it atomically upserts stable identities, '
-        + 'ports/services and graph relations, then returns persisted IDs. Never invent IDs or '
-        + 'use summary-update tools to create assets.',
+      'Immediately register confirmed Host, Domain, Subnet, Port, Service, Web App, API, Endpoint, Parameter, Certificate, or Identity assets. '
+        + 'For Agent discovery work, submit exactly one confirmed asset in the assets array, then immediately call asset_get with its returned ID before any further scan/browser/tool action. '
+        + 'If one result contains several discoveries, repeat asset_register(one asset) -> asset_get in evidence order; never defer them to a final batch. '
+        + 'The array remains batch-capable only for compatibility/import workflows. Never invent IDs or use summary-update tools to create assets.',
       { assets: z.array(assetRegistrationSchema).min(1).max(100) },
       async ({ assets }) => {
         if (!sessionId) throw new Error('No active engagement');
@@ -106,6 +188,33 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
             scanRunId: registered.scanRunId,
           }, null, 2),
         }] };
+      },
+    ),
+    createAgentTool(
+      'asset_relation_upsert',
+      'Persist one verified relationship after both assets have been registered and read back. Use exact persisted IDs; this tool never creates assets. '
+        + 'Structural semantic edges point child to parent: subdomain->domain, host->subnet, port->host, service->port, API->WebApp, Endpoint->API, and Parameter->Endpoint. '
+        + 'Certificate secures and Identity authenticates_to edges point from the Certificate/Identity to the related in-scope asset.',
+      {
+        sourceAssetId: z.string().min(1).max(200),
+        targetAssetId: z.string().min(1).max(200),
+        type: relationTypeSchema,
+        semantic: relationSemanticSchema,
+        label: z.string().max(200).optional(),
+      },
+      async ({ sourceAssetId, targetAssetId, type, semantic, label }) => {
+        if (!sessionId) throw new Error('No active engagement');
+        const result = sessionService.upsertNetMapEdge(
+          sessionId,
+          sourceAssetId,
+          targetAssetId,
+          type,
+          label ? { label } : {},
+          semantic,
+        );
+        if (!result.edge) throw new Error('Relationship assets were missing or identical');
+        if (!sender.isDestroyed()) sender.send('session:data-changed', { sessionId, netmap: true });
+        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
       },
     ),
     createAgentTool(

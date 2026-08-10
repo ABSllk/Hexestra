@@ -65,6 +65,10 @@ export interface GraphProjection {
   edges: GraphEdge[];
 }
 
+export function buildNetworkProjection(nodes: GraphNode[], edges: GraphEdge[]): GraphProjection {
+  return projectTypes(nodes, edges, new Set(['local', 'subnet', 'host', 'port', 'service']), true);
+}
+
 export function buildDomainProjection(nodes: GraphNode[], edges: GraphEdge[]): GraphProjection {
   const domainFacingTypes = new Set<GraphNode['type']>(['domain', 'webapp', 'api']);
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -79,9 +83,9 @@ export function buildDomainProjection(nodes: GraphNode[], edges: GraphEdge[]): G
 
   const visible = nodes.filter((node) =>
     domainFacingTypes.has(node.type)
-    || node.type === 'service'
     || (node.type === 'host' && associatedHosts.has(node.id)),
   );
+  includeRelatedSecurityAssets(visible, nodes, edges);
   const unassociatedHosts = nodes.filter((node) => node.type === 'host' && !associatedHosts.has(node.id));
   if (unassociatedHosts.length > 0) {
     visible.push({
@@ -100,6 +104,120 @@ export function buildDomainProjection(nodes: GraphNode[], edges: GraphEdge[]): G
     nodes: visible,
     edges: edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)),
   };
+}
+
+export function buildApplicationProjection(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  expandedNodeIds: ReadonlySet<string> = new Set(),
+): GraphProjection {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const children = new Map<string, GraphNode[]>();
+  for (const edge of edges) {
+    if (edge.semantic !== 'endpoint_of' && edge.semantic !== 'parameter_of') continue;
+    const child = nodeById.get(edge.source);
+    const parent = nodeById.get(edge.target);
+    if (!child || !parent) continue;
+    const existing = children.get(parent.id) ?? [];
+    existing.push(child);
+    children.set(parent.id, existing);
+  }
+
+  const visible = nodes
+    .filter((node) => node.type === 'webapp' || node.type === 'api')
+    .map((node) => withChildCount(node, children.get(node.id)?.filter((child) => child.type === 'endpoint').length ?? 0));
+  for (const api of visible.filter((node) => node.type === 'api')) {
+    if (!expandedNodeIds.has(api.id)) continue;
+    for (const endpoint of children.get(api.id) ?? []) {
+      if (endpoint.type !== 'endpoint') continue;
+      visible.push(withChildCount(
+        endpoint,
+        children.get(endpoint.id)?.filter((child) => child.type === 'parameter').length ?? 0,
+      ));
+      if (!expandedNodeIds.has(endpoint.id)) continue;
+      visible.push(...(children.get(endpoint.id) ?? []).filter((child) => child.type === 'parameter'));
+    }
+  }
+  includeRelatedSecurityAssets(visible, nodes, edges);
+  const ids = new Set(visible.map((node) => node.id));
+  return {
+    nodes: visible,
+    edges: edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)),
+  };
+}
+
+export function ancestorsToReveal(nodeId: string, nodes: GraphNode[], edges: GraphEdge[]) {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const result = new Set<string>();
+  let cursor = nodeById.get(nodeId);
+  while (cursor?.type === 'endpoint' || cursor?.type === 'parameter') {
+    const semantic = cursor.type === 'endpoint' ? 'endpoint_of' : 'parameter_of';
+    const parentId = edges.find((edge) => edge.source === cursor?.id && edge.semantic === semantic)?.target;
+    if (!parentId) break;
+    result.add(parentId);
+    cursor = nodeById.get(parentId);
+  }
+  return result;
+}
+
+export function perspectiveForNode(type: GraphNode['type']): 'network' | 'domain' | 'application' {
+  if (type === 'subnet' || type === 'host' || type === 'port' || type === 'service' || type === 'local') {
+    return 'network';
+  }
+  if (type === 'endpoint' || type === 'parameter') return 'application';
+  return 'domain';
+}
+
+export function perspectiveForAsset(
+  nodeId: string,
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+): 'network' | 'domain' | 'application' {
+  const node = nodes.find((candidate) => candidate.id === nodeId);
+  if (!node) return 'domain';
+  if (node.type !== 'certificate' && node.type !== 'identity') return perspectiveForNode(node.type);
+  const nodeById = new Map(nodes.map((candidate) => [candidate.id, candidate]));
+  const neighborTypes = edges
+    .filter((edge) => edge.source === nodeId || edge.target === nodeId)
+    .map((edge) => nodeById.get(edge.source === nodeId ? edge.target : edge.source)?.type);
+  if (neighborTypes.some((type) => type === 'endpoint' || type === 'parameter')) return 'application';
+  if (neighborTypes.some((type) => type === 'domain' || type === 'webapp' || type === 'api')) return 'domain';
+  return 'network';
+}
+
+function projectTypes(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  types: ReadonlySet<GraphNode['type']>,
+  securityAssets: boolean,
+): GraphProjection {
+  const visible = nodes.filter((node) => types.has(node.type));
+  if (securityAssets) includeRelatedSecurityAssets(visible, nodes, edges);
+  const ids = new Set(visible.map((node) => node.id));
+  return { nodes: visible, edges: edges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)) };
+}
+
+function includeRelatedSecurityAssets(visible: GraphNode[], nodes: GraphNode[], edges: GraphEdge[]) {
+  const ids = new Set(visible.map((node) => node.id));
+  const securityById = new Map(nodes
+    .filter((node) => node.type === 'certificate' || node.type === 'identity')
+    .map((node) => [node.id, node]));
+  for (const edge of edges) {
+    if (ids.has(edge.source) && securityById.has(edge.target) && !ids.has(edge.target)) {
+      visible.push(securityById.get(edge.target)!);
+      ids.add(edge.target);
+    }
+    if (ids.has(edge.target) && securityById.has(edge.source) && !ids.has(edge.source)) {
+      visible.push(securityById.get(edge.source)!);
+      ids.add(edge.source);
+    }
+  }
+}
+
+function withChildCount(node: GraphNode, childCount: number): GraphNode {
+  return childCount > 0
+    ? { ...node, properties: { ...node.properties, childCount } }
+    : node;
 }
 
 export function buildAgentTargetContext(

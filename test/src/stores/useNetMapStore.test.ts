@@ -38,6 +38,8 @@ describe('useNetMapStore', () => {
       error: null,
       view: { x: 0, y: 0, scale: 1 },
       positions: {},
+      perspective: 'domain',
+      revealNodeId: null,
     });
   });
 
@@ -81,5 +83,23 @@ describe('useNetMapStore', () => {
     const state = useNetMapStore.getState();
     expect(state.view).toEqual({ x: 10, y: 20, scale: 1.2 });
     expect(state.positions['host-a']).toEqual({ x: 100, y: 80 });
+  });
+
+  it('switches perspectives without carrying pan or manual positions across views', () => {
+    const store = useNetMapStore.getState();
+    store.setViewTransform({ x: 40, y: 20, scale: 1.5 });
+    store.setManualPosition(node.id, { x: 80, y: 90 });
+    store.setPerspective('application');
+    expect(useNetMapStore.getState()).toMatchObject({
+      perspective: 'application',
+      view: { x: 0, y: 0, scale: 1 },
+      positions: {},
+    });
+    store.hydrateLayout({
+      perspective: 'application',
+      view: { x: 4, y: 5, scale: 1.1 },
+      positions: { 'api-a': { x: 120, y: 60 } },
+    });
+    expect(useNetMapStore.getState().positions).toEqual({ 'api-a': { x: 120, y: 60 } });
   });
 });

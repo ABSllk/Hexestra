@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatStore, useNetMapStore, usePentestTreeStore, useSessionStore } from '@/stores';
-import type { GraphNode, Session, Target } from '@/types';
+import type { AssetRecord, GraphNode, Session, Target } from '@/types';
 import { NetMapAssetDetails } from '@/components/bottom-panel/NetMapAssetDetails';
 
 const now = '2026-08-03T00:00:00.000Z';
@@ -81,5 +81,22 @@ describe('NetMapAssetDetails', () => {
     render(<NetMapAssetDetails nodeId={node.id} onClose={vi.fn()} />);
 
     expect(screen.getByRole('button', { name: 'Out of scope' })).toBeDisabled();
+  });
+
+  it('always displays plaintext identity credentials with an explicit warning', () => {
+    const identity: AssetRecord = {
+      id: 'identity-alice', key: 'identity:oidc:example:alice', type: 'identity', label: 'alice', status: 'scanned',
+      properties: { provider: 'oidc', realm: 'example', principal: 'alice', credential_token: 'visible-token' },
+      tags: [], vulnCount: 0, firstSeen: now, lastUpdated: now,
+    };
+    const identityNode: GraphNode = {
+      id: identity.id, key: identity.key, label: identity.label, type: identity.type, status: identity.status,
+      properties: identity.properties, portCount: 0, vulnCount: 0,
+    };
+    useSessionStore.setState({ assets: [identity], targets: [] });
+    useNetMapStore.setState({ nodes: [identityNode], selectedNodeId: identity.id });
+    render(<NetMapAssetDetails nodeId={identity.id} onClose={vi.fn()} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('PLAINTEXT CREDENTIAL');
+    expect(screen.getByText('visible-token')).toBeInTheDocument();
   });
 });

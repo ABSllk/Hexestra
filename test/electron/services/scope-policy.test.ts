@@ -33,4 +33,18 @@ describe('scope policy', () => {
       'scanned',
     )).toBe('out_of_scope');
   });
+
+  it('normalizes IPv4 and IPv6 CIDRs and applies exclusions first', () => {
+    const dualStack = {
+      inScope: ['192.0.2.129/24', '2001:0db8:1234::/48'],
+      outOfScope: ['192.0.2.200', '2001:db8:1234::dead'],
+    };
+    expect(isValueInScope(dualStack, '192.0.2.10')).toBe(true);
+    expect(isValueInScope(dualStack, '192.0.2.200')).toBe(false);
+    expect(isValueInScope(dualStack, '2001:db8:1234:1::42')).toBe(true);
+    expect(isValueInScope(dualStack, '2001:db8:1234:5678::/64')).toBe(true);
+    expect(isValueInScope(dualStack, '192.0.2.128/25')).toBe(true);
+    expect(isValueInScope(dualStack, 'https://[2001:db8:1234::dead]/')).toBe(false);
+    expect(isValueInScope(dualStack, '2001:db8:9999::1')).toBe(false);
+  });
 });

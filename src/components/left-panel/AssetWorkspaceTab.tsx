@@ -16,6 +16,7 @@ export function AssetWorkspaceTab() {
   const nodes = useNetMapStore((s) => s.nodes);
   const selectedNodeId = useNetMapStore((s) => s.selectedNodeId);
   const selectNode = useNetMapStore((s) => s.selectNode);
+  const requestReveal = useNetMapStore((s) => s.requestReveal);
   const setNetMapVisible = useAppStore((s) => s.setNetMapVisible);
   const upsertTask = usePentestTreeStore((s) => s.upsertTask);
   const sendMessage = useChatStore((s) => s.sendMessage);
@@ -51,6 +52,7 @@ export function AssetWorkspaceTab() {
         label: t('assets.viewInNetMap'),
         onSelect: () => {
           selectNode(menuNode.id);
+          requestReveal(menuNode.id);
           setNetMapVisible(true);
         },
       },
@@ -82,7 +84,7 @@ export function AssetWorkspaceTab() {
         },
       },
     ];
-  }, [isProcessing, menu, menuAsset, menuBrowserUrl, menuNode, menuTarget, selectNode, sendMessage, session?.scope, setNetMapVisible, t, upsertTask]);
+  }, [isProcessing, menu, menuAsset, menuBrowserUrl, menuNode, menuTarget, requestReveal, selectNode, sendMessage, session?.scope, setNetMapVisible, t, upsertTask]);
 
   useEffect(() => {
     if (!filtersExpanded) return;
@@ -143,7 +145,10 @@ export function AssetWorkspaceTab() {
             const updatedAt = target?.lastUpdated ?? asset?.lastUpdated;
             return <button
               key={node.id}
-              onClick={() => selectNode(node.id)}
+              onClick={() => {
+                selectNode(node.id);
+                if (query.trim()) requestReveal(node.id);
+              }}
               onContextMenu={(event) => {
                 event.preventDefault();
                 setMenu({ nodeId: node.id, x: event.clientX, y: event.clientY, target: event.currentTarget });
@@ -152,6 +157,10 @@ export function AssetWorkspaceTab() {
             >
               <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5 select-none"><span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><StatusBadge status={node.status} className="shrink-0" /></div>
               <div className="flex min-w-0 items-center gap-2 text-[11px] text-text-muted select-none"><span className="shrink-0 uppercase text-accent-teal select-none">{node.type}</span><span className="min-w-0 flex-1 truncate">{assetPrimaryValue(node, target, asset)}</span>{node.portCount > 0 && <span className="shrink-0">{node.portCount} ports</span>}</div>
+              {asset?.type === 'identity' && plaintextCredentials(asset).length > 0 && <div className="mt-1.5 rounded border border-severity-high/40 bg-severity-high/10 px-2 py-1 font-mono text-[10px] text-severity-high" role="alert">
+                <div>PLAINTEXT CREDENTIAL</div>
+                {plaintextCredentials(asset).map(([kind, value]) => <div key={kind} className="break-all text-text-primary">{kind}: {value}</div>)}
+              </div>}
               {updatedAt && <div className="mt-1 font-mono text-[11px] text-text-muted/70 select-none">Seen {formatTime(updatedAt)}</div>}
             </button>;
           })}
@@ -229,3 +238,8 @@ function ScopeField({ label, value, onChange, placeholder }: { label: string; va
 
 function formatTime(value: string) { return new Date(value).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }
 function lines(value: string) { return [...new Set(value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))]; }
+function plaintextCredentials(asset: { properties: Record<string, string | number | boolean | string[]> }) {
+  return Object.entries(asset.properties)
+    .filter(([key, value]) => /^credential_(password|token|cookie|private_key)$/.test(key) && typeof value === 'string')
+    .map(([key, value]) => [key.replace('credential_', ''), String(value)] as const);
+}

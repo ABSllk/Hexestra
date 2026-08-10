@@ -5,6 +5,7 @@ import type {
   GraphLayoutState,
   GraphUpdate,
   GraphViewTransform,
+  GraphPerspective,
 } from '@/types';
 
 type LayoutAlgorithm = 'force' | 'hierarchical' | 'grid' | 'circle';
@@ -20,6 +21,8 @@ interface NetMapStore {
   error: string | null;
   view: GraphViewTransform;
   positions: Record<string, { x: number; y: number }>;
+  perspective: GraphPerspective;
+  revealNodeId: string | null;
 
   // Actions
   setGraphData: (nodes: GraphNode[], edges: GraphEdge[]) => void;
@@ -29,6 +32,9 @@ interface NetMapStore {
   clearHighlights: () => void;
   setLayout: (layout: LayoutAlgorithm) => void;
   hydrateLayout: (state: GraphLayoutState) => void;
+  setPerspective: (perspective: GraphPerspective) => void;
+  requestReveal: (nodeId: string) => void;
+  clearReveal: () => void;
   setViewTransform: (view: GraphViewTransform) => void;
   setManualPosition: (nodeId: string, point: { x: number; y: number }) => void;
   resetLayout: () => void;
@@ -47,6 +53,8 @@ export const useNetMapStore = create<NetMapStore>((set, get) => ({
   error: null,
   view: { x: 0, y: 0, scale: 1 },
   positions: {},
+  perspective: 'domain',
+  revealNodeId: null,
 
   setGraphData: (nodes, edges) => set({ nodes, edges }),
 
@@ -100,7 +108,16 @@ export const useNetMapStore = create<NetMapStore>((set, get) => ({
 
   setLayout: (layout) => set({ layout }),
 
-  hydrateLayout: (state) => set({ view: state.view, positions: state.positions }),
+  hydrateLayout: (state) => set({ perspective: state.perspective, view: state.view, positions: state.positions }),
+
+  setPerspective: (perspective) => set({
+    perspective,
+    view: { x: 0, y: 0, scale: 1 },
+    positions: {},
+  }),
+
+  requestReveal: (nodeId) => set({ revealNodeId: nodeId }),
+  clearReveal: () => set({ revealNodeId: null }),
 
   setViewTransform: (view) => set({ view }),
 

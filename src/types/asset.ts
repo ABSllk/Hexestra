@@ -1,6 +1,16 @@
 import type { TargetStatus } from './target';
 
-export type AssetType = 'domain' | 'webapp' | 'api' | 'service' | 'identity' | 'subnet';
+export type AssetType =
+  | 'domain'
+  | 'subnet'
+  | 'port'
+  | 'service'
+  | 'webapp'
+  | 'api'
+  | 'endpoint'
+  | 'parameter'
+  | 'certificate'
+  | 'identity';
 
 export interface AssetRecord {
   id: string;

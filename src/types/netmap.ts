@@ -1,7 +1,22 @@
+import type { AssetType } from './asset';
 import type { TargetStatus } from './target';
 
-export type NodeType = 'local' | 'host' | 'domain' | 'webapp' | 'api' | 'service' | 'identity' | 'subnet';
+export type NodeType = 'local' | 'host' | AssetType;
 export type EdgeType = 'belongs_to' | 'resolves_to' | 'connected_to' | 'attack_path';
+export type GraphPerspective = 'network' | 'domain' | 'application';
+export type RelationSemantic =
+  | 'subdomain_of'
+  | 'member_of_subnet'
+  | 'port_of'
+  | 'service_of'
+  | 'api_of'
+  | 'endpoint_of'
+  | 'parameter_of'
+  | 'dns_resolves'
+  | 'served_by'
+  | 'secures'
+  | 'authenticates_to'
+  | 'attack_step';
 
 export interface GraphViewTransform {
   x: number;
@@ -10,6 +25,7 @@ export interface GraphViewTransform {
 }
 
 export interface GraphLayoutState {
+  perspective: GraphPerspective;
   view: GraphViewTransform;
   positions: Record<string, { x: number; y: number }>;
 }
@@ -36,6 +52,7 @@ export interface GraphEdge {
   source: string;
   target: string;
   type: EdgeType;
+  semantic?: RelationSemantic;
   label?: string;
   metadata?: Record<string, string>;
 }

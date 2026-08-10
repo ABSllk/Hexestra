@@ -5,6 +5,7 @@ const READ_ONLY_HEXESTRA_TOOLS = new Set([
   'browser_cookies',
   'browser_storage',
   'target_list',
+  'asset_get',
   'finding_list',
   'vulnerability_list',
   'evidence_list',

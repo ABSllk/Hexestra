@@ -1,4 +1,6 @@
+import net from 'net';
 import { normalizeOperationalAssetStatus, type AssetStatus } from './asset-record';
+import { cidrContains, normalizeCidr, normalizeIpAddress } from './ip-address';
 
 export interface ScopePolicy {
   inScope: string[];
@@ -36,33 +38,44 @@ function normalizeValue(value: string) {
   const trimmed = value.trim().toLowerCase();
   if (!trimmed) return '';
   try {
-    return new URL(trimmed).hostname.toLowerCase();
+    const hostname = new URL(trimmed).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    try {
+      return normalizeIpAddress(hostname);
+    } catch {
+      return hostname;
+    }
   } catch {
-    return trimmed.replace(/^\*\./, '').replace(/\.$/, '').replace(/^\[|\]$/g, '');
+    if (trimmed.includes('/')) {
+      try {
+        return normalizeCidr(trimmed);
+      } catch {
+        return trimmed;
+      }
+    }
+    const candidate = trimmed.replace(/^\*\./, '').replace(/\.$/, '').replace(/^\[|\]$/g, '');
+    try {
+      return normalizeIpAddress(candidate);
+    } catch {
+      return candidate;
+    }
   }
 }
 
 function matchesRule(value: string, rawRule: string) {
   const rule = normalizeValue(rawRule);
   if (!rule) return false;
-  if (rule.includes('/')) return cidrContains(rule, value);
-  if (isIPv4(rule) || isIPv4(value)) return rule === value;
+  if (rule.includes('/')) {
+    if (!value.includes('/')) return cidrContains(rule, value);
+    try {
+      const normalizedRule = normalizeCidr(rule);
+      const normalizedValue = normalizeCidr(value);
+      const [candidateAddress, candidatePrefix] = normalizedValue.split('/');
+      const [, rulePrefix] = normalizedRule.split('/');
+      return Number(candidatePrefix) >= Number(rulePrefix) && cidrContains(normalizedRule, candidateAddress);
+    } catch {
+      return false;
+    }
+  }
+  if (net.isIP(rule) || net.isIP(value)) return rule === value;
   return value === rule || value.endsWith(`.${rule}`);
-}
-
-function cidrContains(cidr: string, value: string) {
-  const [network, prefixText] = cidr.split('/');
-  const prefix = Number(prefixText);
-  if (!isIPv4(network) || !isIPv4(value) || !Number.isInteger(prefix) || prefix < 0 || prefix > 32) return false;
-  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
-  return (ipv4Number(network) & mask) === (ipv4Number(value) & mask);
-}
-
-function ipv4Number(value: string) {
-  return value.split('.').reduce((result, octet) => ((result << 8) | Number(octet)) >>> 0, 0);
-}
-
-function isIPv4(value: string) {
-  const parts = value.split('.');
-  return parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
 }

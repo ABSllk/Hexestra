@@ -85,6 +85,7 @@ function NodeDetailPanel({ nodeId }: { nodeId: string }) {
       </div>
       <div className="space-y-2 p-3 text-2xs">
         <DetailRow label="Type" value={node.type} />
+        {asset?.type === 'identity' && hasPlaintextCredential(asset) && <PlaintextCredentialWarning />}
         {target && <DetailRow label="IP" value={target.ip} mono />}
         {target?.hostname && <DetailRow label="Hostname" value={target.hostname} />}
         {target?.os && <DetailRow label="OS" value={target.os} />}
@@ -146,7 +147,12 @@ function NodeDetailPanel({ nodeId }: { nodeId: string }) {
 
 function assetPrimaryValue(asset?: AssetRecord) {
   if (!asset) return undefined;
-  const value = asset.properties.url ?? asset.properties.domain ?? asset.properties.ip;
+  const properties = asset.properties;
+  const value = properties.url ?? properties.domain ?? properties.ip ?? properties.cidr
+    ?? (asset.type === 'port' && typeof properties.port === 'number' ? `${properties.port}/${String(properties.protocol ?? 'tcp')}` : undefined)
+    ?? (asset.type === 'endpoint' ? `${String(properties.method ?? '')} ${String(properties.pathTemplate ?? properties.path ?? '')}`.trim() : undefined)
+    ?? (asset.type === 'parameter' ? `${String(properties.location ?? '')}:${String(properties.name ?? '')}` : undefined)
+    ?? properties.fingerprintSha256 ?? properties.principal ?? properties.name;
   return typeof value === 'string' ? value : asset.key;
 }
 
@@ -156,6 +162,14 @@ function humanize(value: string) {
 
 function formatProperty(value: AssetRecord['properties'][string]) {
   return Array.isArray(value) ? value.join(', ') : String(value);
+}
+
+function hasPlaintextCredential(asset: AssetRecord) {
+  return Object.keys(asset.properties).some((key) => /^credential_(password|token|cookie|private_key)$/.test(key));
+}
+
+function PlaintextCredentialWarning() {
+  return <div role="alert" className="rounded border border-severity-high/45 bg-severity-high/10 px-2 py-1.5 font-mono text-[11px] text-severity-high">PLAINTEXT CREDENTIAL — stored and displayed without masking</div>;
 }
 
 function DetailRow({

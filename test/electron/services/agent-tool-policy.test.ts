@@ -13,6 +13,7 @@ describe('Agent tool policy', () => {
     expect(isReadOnlyHexestraTool('browser_cookies')).toBe(true);
     expect(isReadOnlyHexestraTool('browser_storage')).toBe(true);
     expect(isReadOnlyHexestraTool('target_list')).toBe(true);
+    expect(isReadOnlyHexestraTool('asset_get')).toBe(true);
     expect(isReadOnlyHexestraTool('finding_list')).toBe(true);
     expect(isReadOnlyHexestraTool('vulnerability_list')).toBe(true);
     expect(isReadOnlyHexestraTool('evidence_list')).toBe(true);
@@ -34,6 +35,7 @@ describe('Agent tool policy', () => {
     expect(isReadOnlyHexestraTool('browser_reload')).toBe(false);
     expect(isReadOnlyHexestraTool('browser_evaluate')).toBe(false);
     expect(isReadOnlyHexestraTool('asset_register')).toBe(false);
+    expect(isReadOnlyHexestraTool('asset_relation_upsert')).toBe(false);
     expect(isReadOnlyHexestraTool('finding_upsert')).toBe(false);
     expect(isReadOnlyHexestraTool('vulnerability_upsert')).toBe(false);
     expect(isReadOnlyHexestraTool('task_update_status')).toBe(false);

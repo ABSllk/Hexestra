@@ -38,4 +38,20 @@ describe('TargetsTab asset inventory', () => {
     expect(screen.getAllByText('api.example.com').length).toBeGreaterThan(1);
     expect(screen.getByText('nginx, React')).toBeInTheDocument();
   });
+
+  it('shows identity credential values without masking and warns the operator', () => {
+    const identity: AssetRecord = {
+      ...asset,
+      id: 'identity-visible', key: 'identity:local:realm:alice', type: 'identity', label: 'alice',
+      properties: { provider: 'local', realm: 'realm', principal: 'alice', credential_password: 'visible-password' },
+    };
+    useSessionStore.setState({ assets: [identity] });
+    useNetMapStore.setState({
+      nodes: [{ ...node, id: identity.id, key: identity.key, type: identity.type, label: identity.label, properties: identity.properties }],
+      selectedNodeId: identity.id,
+    });
+    render(<TargetsTab />);
+    expect(screen.getByRole('alert')).toHaveTextContent('PLAINTEXT CREDENTIAL');
+    expect(screen.getByText('visible-password')).toBeInTheDocument();
+  });
 });

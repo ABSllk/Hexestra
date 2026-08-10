@@ -2,6 +2,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createAssetRecord } from '@electron/services/asset-record';
 import { AssetGraphRepository } from '@electron/services/asset-graph.repository';
@@ -35,14 +36,14 @@ describe('AssetGraphRepository', () => {
 
     expect(fs.existsSync(path.join(directory, '.hexestra', 'engagement.db'))).toBe(true);
     expect(repository.listTargets()[0]).toMatchObject({
-      id: 'host-1',
+      id: expect.stringMatching(/^AST-host-/),
       ports: [expect.objectContaining({ port: 443, service: 'https', version: 'nginx' })],
       services: [expect.objectContaining({ name: 'https', product: 'nginx' })],
     });
-    expect(repository.listAssets()).toEqual([expect.objectContaining({ id: domain.id })]);
-    expect(repository.listRelations()).toEqual([
+    expect(repository.listAssets()).toEqual(expect.arrayContaining([expect.objectContaining({ id: domain.id })]));
+    expect(repository.listRelations()).toEqual(expect.arrayContaining([
       expect.objectContaining({ source: domain.id, target: target.id, type: 'resolves_to' }),
-    ]);
+    ]));
   });
 
   it('deduplicates one host identity and increments relation evidence', () => {
@@ -73,18 +74,88 @@ describe('AssetGraphRepository', () => {
   });
 
   it('persists the Domain graph layout state', () => {
-    repository.upsertTarget({
+    const host = repository.upsertTarget({
       id: 'host-1', ip: '192.0.2.30', domains: [], status: 'untested', tags: [], ports: [], services: [],
       vulnCount: 0, firstSeen: now, lastUpdated: now,
     });
     repository.updateLayoutState({
       view: { x: 12, y: 8, scale: 1.4 },
-      positions: { 'host-1': { x: 220, y: 90 } },
+      positions: { [host.id]: { x: 220, y: 90 } },
     });
 
     expect(repository.getLayoutState()).toMatchObject({
-      view: { x: 12, y: 8, scale: 1.4 }, positions: { 'host-1': { x: 220, y: 90 } },
+      perspective: 'domain',
+      view: { x: 12, y: 8, scale: 1.4 }, positions: { [host.id]: { x: 220, y: 90 } },
     });
+  });
+
+  it('migrates v3 data to v4 with a backup, materialized Port and Service assets, and preserved records', () => {
+    const migrationDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-v3-migration-'));
+    const legacy = new AssetGraphRepository(migrationDirectory);
+    const host = legacy.upsertTarget({
+      id: 'legacy-host', ip: '203.0.113.10', domains: ['legacy.example.com'], status: 'scanned', tags: ['legacy'],
+      ports: [{ id: 'legacy:443/tcp', port: 443, protocol: 'tcp', state: 'open', service: 'https', version: 'nginx', firstSeen: now, lastSeen: now }],
+      services: [{ port: 443, protocol: 'tcp', name: 'https', product: 'nginx' }],
+      vulnCount: 0, firstSeen: now, lastUpdated: now,
+    });
+    const domain = legacy.upsertAsset(createAssetRecord('domain', 'legacy.example.com'));
+    legacy.upsertRelation(domain.id, host.id, 'resolves_to', { tool: 'legacy' });
+    const evidence = legacy.upsertEvidence({ assetId: host.id, title: 'Legacy evidence', tool: 'nmap', kind: 'scan', content: '443/tcp open' });
+    const finding = legacy.upsertFinding({ assetId: host.id, title: 'Legacy finding', evidenceIds: [evidence.id] });
+    const vulnerability = legacy.upsertVulnerability({ assetId: host.id, title: 'Legacy vulnerability', findingIds: [finding.id], evidenceIds: [evidence.id] });
+    const report = legacy.upsertReport({ title: 'Legacy report', content: '# Legacy', findingIds: [finding.id], vulnerabilityIds: [vulnerability.id] });
+    legacy.updateLayoutState({ perspective: 'domain', view: { x: 7, y: 9, scale: 1.3 }, positions: { [domain.id]: { x: 50, y: 60 } } });
+    const databasePath = legacy.databasePath;
+    legacy.close();
+
+    const downgrade = new DatabaseSync(databasePath);
+    const endpoint = downgrade.prepare('SELECT * FROM endpoints').get() as {
+      port_asset_id: string; host_asset_id: string; port: number; protocol: string; state: string;
+      service: string | null; version: string | null; product: string | null; extra: string | null;
+      first_seen: string; last_seen: string;
+    };
+    downgrade.exec(`
+      PRAGMA foreign_keys = OFF;
+      DROP TABLE endpoints;
+      CREATE TABLE endpoints (
+        id TEXT PRIMARY KEY, host_asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+        port INTEGER NOT NULL, protocol TEXT NOT NULL, state TEXT NOT NULL, service TEXT,
+        version TEXT, product TEXT, extra TEXT, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+        UNIQUE(host_asset_id, port, protocol)
+      );
+    `);
+    downgrade.prepare(`INSERT INTO endpoints VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(`legacy:${endpoint.port}/${endpoint.protocol}`, endpoint.host_asset_id, endpoint.port, endpoint.protocol, endpoint.state,
+        endpoint.service, endpoint.version, endpoint.product, endpoint.extra, endpoint.first_seen, endpoint.last_seen);
+    downgrade.exec(`
+      DELETE FROM relations WHERE source_asset_id IN (SELECT id FROM assets WHERE type IN ('port','service'));
+      DELETE FROM assets WHERE type IN ('port','service');
+      PRAGMA user_version = 3;
+    `);
+    downgrade.close();
+
+    const migrated = new AssetGraphRepository(migrationDirectory);
+    try {
+      expect(fs.existsSync(`${databasePath}.v3-backup`)).toBe(true);
+      const versionProbe = new DatabaseSync(databasePath);
+      const schemaVersion = (versionProbe.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
+      versionProbe.close();
+      expect(schemaVersion).toBe(4);
+      expect(migrated.getTarget(host.id)).toMatchObject({ id: host.id, ports: [expect.objectContaining({ port: 443, service: 'https' })] });
+      expect(migrated.listAssets()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: domain.id, type: 'domain' }),
+        expect.objectContaining({ type: 'port', properties: expect.objectContaining({ port: 443 }) }),
+        expect.objectContaining({ type: 'service', properties: expect.objectContaining({ name: 'https' }) }),
+      ]));
+      expect(migrated.listEvidence().map((item) => item.id)).toContain(evidence.id);
+      expect(migrated.listFindings().map((item) => item.id)).toContain(finding.id);
+      expect(migrated.listVulnerabilities().map((item) => item.id)).toContain(vulnerability.id);
+      expect(migrated.listReports().map((item) => item.id)).toContain(report.id);
+      expect(migrated.getLayoutState('domain')).toMatchObject({ view: { x: 7, y: 9, scale: 1.3 }, positions: { [domain.id]: { x: 50, y: 60 } } });
+    } finally {
+      migrated.close();
+      fs.rmSync(migrationDirectory, { recursive: true, force: true });
+    }
   });
 
   it('rolls back a failed graph transaction', () => {

@@ -9,7 +9,13 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react';
 import { Icon } from '@/components/shared';
-import { buildDomainProjection } from '@/lib/networkGraph';
+import {
+  ancestorsToReveal,
+  buildApplicationProjection,
+  buildDomainProjection,
+  buildNetworkProjection,
+  perspectiveForAsset,
+} from '@/lib/networkGraph';
 import { APP_FONT_SIZE_PX, APP_SUPPORTING_FONT_SIZE_PX } from '@/lib/typography';
 import { getNetMapPalette, type NetMapPalette } from '@/lib/theme';
 import { useAppPreferences } from '@/i18n';
@@ -23,7 +29,7 @@ import {
   resolveNodeOverlaps,
 } from '@/lib/netmapLayout';
 import { useAppStore, useNetMapStore, useSessionStore } from '@/stores';
-import type { GraphEdge, GraphNode, GraphViewTransform } from '@/types';
+import type { GraphEdge, GraphNode, GraphPerspective, GraphViewTransform } from '@/types';
 import { NetMapAssetDetails } from './NetMapAssetDetails';
 
 const NETMAP_EDGE_LABEL_FONT_SIZE = 7;
@@ -71,6 +77,7 @@ export function NetMapView() {
   const [isDragging, setIsDragging] = useState(false);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
 
   const nodes = useNetMapStore((state) => state.nodes);
   const edges = useNetMapStore((state) => state.edges);
@@ -83,17 +90,37 @@ export function NetMapView() {
   const setViewTransform = useNetMapStore((state) => state.setViewTransform);
   const setManualPosition = useNetMapStore((state) => state.setManualPosition);
   const resetLayout = useNetMapStore((state) => state.resetLayout);
+  const perspective = useNetMapStore((state) => state.perspective);
+  const setPerspective = useNetMapStore((state) => state.setPerspective);
+  const revealNodeId = useNetMapStore((state) => state.revealNodeId);
+  const clearReveal = useNetMapStore((state) => state.clearReveal);
   const sessionId = useSessionStore((state) => state.currentSession?.id);
   const toggleNetMap = useAppStore((state) => state.toggleNetMap);
   const { resolvedTheme } = useAppPreferences();
   const palette = getNetMapPalette(resolvedTheme);
+  const changePerspective = useCallback((next: GraphPerspective) => {
+    if (next === perspective) return;
+    if (sessionId) {
+      hydratedLayoutRef.current.delete(`${sessionId}:${next}`);
+      void window.hexestra?.invoke('netmap:layout:update', sessionId, {
+        perspective,
+        view,
+        positions: manualPositions,
+      }).then(() => window.hexestra?.invoke('netmap:layout:update', sessionId, { perspective: next }));
+    }
+    setPerspective(next);
+  }, [manualPositions, perspective, sessionId, setPerspective, view]);
 
   const isPreview = nodes.length === 0;
   const canonicalNodes = isPreview ? NETMAP_PREVIEW.nodes : nodes;
   const canonicalEdges = isPreview ? NETMAP_PREVIEW.edges : edges;
   const projection = useMemo(
-    () => buildDomainProjection(canonicalNodes, canonicalEdges),
-    [canonicalEdges, canonicalNodes],
+    () => perspective === 'network'
+      ? buildNetworkProjection(canonicalNodes, canonicalEdges)
+      : perspective === 'application'
+        ? buildApplicationProjection(canonicalNodes, canonicalEdges, expandedNodeIds)
+        : buildDomainProjection(canonicalNodes, canonicalEdges),
+    [canonicalEdges, canonicalNodes, expandedNodeIds, perspective],
   );
   const renderedNodes = projection.nodes;
   const renderedEdges = projection.edges;
@@ -102,8 +129,8 @@ export function NetMapView() {
     [renderedEdges, renderedNodes],
   );
   const automaticLayoutKey = useMemo(
-    () => `${viewport.width}x${viewport.height}:${layoutFingerprint}`,
-    [layoutFingerprint, viewport.height, viewport.width],
+    () => `${perspective}:${viewport.width}x${viewport.height}:${layoutFingerprint}`,
+    [layoutFingerprint, perspective, viewport.height, viewport.width],
   );
   const denseGraph = renderedNodes.length > 36;
   const visualNodeScale = netmapNodeScale(renderedNodes.length, viewport);
@@ -202,7 +229,8 @@ export function NetMapView() {
 
   useEffect(() => {
     if (!window.hexestra || !sessionId) return;
-    const key = sessionId;
+    const key = `${sessionId}:initial`;
+    if (hydratedLayoutRef.current.has(key)) return;
     const interactionRevision = layoutInteractionRef.current;
     let cancelled = false;
     void window.hexestra.invoke<import('@/types').GraphLayoutState>('netmap:layout:get', sessionId)
@@ -210,12 +238,15 @@ export function NetMapView() {
         if (cancelled) return;
         if (interactionRevision === layoutInteractionRef.current) {
           hydrateLayout(state);
+          hydratedLayoutRef.current.add(`${sessionId}:${state.perspective}`);
         } else {
           const current = useNetMapStore.getState();
           void window.hexestra.invoke('netmap:layout:update', sessionId, {
+            perspective: current.perspective,
             view: current.view,
             positions: current.positions,
           });
+          hydratedLayoutRef.current.add(`${sessionId}:${current.perspective}`);
         }
         hydratedLayoutRef.current.add(key);
       })
@@ -225,17 +256,59 @@ export function NetMapView() {
 
   useEffect(() => {
     if (!window.hexestra || !sessionId) return;
-    const key = sessionId;
+    if (!hydratedLayoutRef.current.has(`${sessionId}:initial`)) return;
+    const key = `${sessionId}:${perspective}`;
+    if (hydratedLayoutRef.current.has(key)) return;
+    let cancelled = false;
+    void window.hexestra.invoke<import('@/types').GraphLayoutState>(
+      'netmap:layout:get', sessionId, perspective,
+    ).then((state) => {
+      if (!cancelled) {
+        hydrateLayout(state);
+        hydratedLayoutRef.current.add(key);
+      }
+    }).catch((error) => console.error('[NetMap] Failed to load perspective layout:', error));
+    return () => { cancelled = true; };
+  }, [hydrateLayout, perspective, sessionId]);
+
+  useEffect(() => {
+    if (!window.hexestra || !sessionId) return;
+    const key = `${sessionId}:${perspective}`;
     if (!hydratedLayoutRef.current.has(key)) return;
     const timeout = window.setTimeout(() => {
       void window.hexestra.invoke(
         'netmap:layout:update',
         sessionId,
-        { view, positions: manualPositions },
+        { perspective, view, positions: manualPositions },
       );
     }, 300);
     return () => window.clearTimeout(timeout);
-  }, [manualPositions, sessionId, view]);
+  }, [manualPositions, perspective, sessionId, view]);
+
+  useEffect(() => {
+    if (!revealNodeId) return;
+    const requested = nodes.find((node) => node.id === revealNodeId);
+    if (!requested) {
+      clearReveal();
+      return;
+    }
+    const targetPerspective = perspectiveForAsset(requested.id, nodes, edges);
+    if (targetPerspective !== perspective) {
+      changePerspective(targetPerspective);
+    }
+    if (targetPerspective === 'application') {
+      const relatedApplicationNodes = edges
+        .filter((edge) => edge.source === requested.id || edge.target === requested.id)
+        .map((edge) => edge.source === requested.id ? edge.target : edge.source);
+      setExpandedNodeIds((current) => new Set([
+        ...current,
+        ...ancestorsToReveal(requested.id, nodes, edges),
+        ...relatedApplicationNodes.flatMap((nodeId) => [...ancestorsToReveal(nodeId, nodes, edges)]),
+      ]));
+    }
+    selectNode(requested.id);
+    clearReveal();
+  }, [changePerspective, clearReveal, edges, nodes, perspective, revealNodeId, selectNode]);
 
   const resetView = useCallback(() => {
     layoutInteractionRef.current += 1;
@@ -345,9 +418,13 @@ export function NetMapView() {
   const selectedProjectNode = !isPreview
     ? nodes.find((node) => node.id === selectedNodeId)
     : undefined;
+  const selectedIsVisible = Boolean(selectedProjectNode && renderedNodes.some((node) => node.id === selectedProjectNode.id));
+  const selectedApplicationExpandable = selectedProjectNode
+    && perspective === 'application'
+    && (selectedProjectNode.type === 'api' || selectedProjectNode.type === 'endpoint');
 
   return (
-    <section className="netmap-shell flex h-full flex-col" aria-label="Domain asset relationship map">
+    <section className="netmap-shell flex h-full flex-col" aria-label={`${perspective} asset relationship map`}>
       <header className="flex shrink-0 items-center justify-between border-b border-accent-teal/10 bg-[rgb(var(--color-netmap-chrome)/0.95)] px-3 py-1.5">
         <div className="flex items-center gap-2">
           <Icon name="network" size={14} className="text-accent-teal" />
@@ -357,6 +434,17 @@ export function NetMapView() {
           <span className="font-mono text-[11px] text-text-muted select-none">
             {renderedNodes.length} NODES / {renderedEdges.length} LINKS
           </span>
+          <div className="ui-segmented ml-1 flex" aria-label="NetMap perspective">
+            {(['network', 'domain', 'application'] as GraphPerspective[]).map((option) => (
+              <button
+                key={option}
+                className={`ui-segmented-item px-2 py-0.5 font-mono text-[10px] uppercase ${perspective === option ? 'ui-segmented-item-active' : ''}`}
+                onClick={() => changePerspective(option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
           {isPreview && (
             <span className="rounded-md border border-accent-teal/20 bg-accent-teal/5 px-1.5 py-0.5 font-mono text-[11px] tracking-wider text-accent-teal/70 select-none">
               PREVIEW TOPOLOGY
@@ -457,6 +545,28 @@ export function NetMapView() {
           </div>
         )}
 
+        {selectedProjectNode && !selectedIsVisible && (
+          <button
+            className="absolute bottom-3 left-3 z-20 rounded border border-accent-teal/35 bg-[rgb(var(--color-netmap-chrome)/0.96)] px-3 py-1.5 font-mono text-[11px] uppercase text-accent-teal"
+            onClick={() => useNetMapStore.getState().requestReveal(selectedProjectNode.id)}
+          >
+            View in {perspectiveForAsset(selectedProjectNode.id, nodes, edges)}
+          </button>
+        )}
+        {selectedApplicationExpandable && selectedIsVisible && (
+          <button
+            className="absolute bottom-3 left-3 z-20 rounded border border-accent-teal/35 bg-[rgb(var(--color-netmap-chrome)/0.96)] px-3 py-1.5 font-mono text-[11px] uppercase text-accent-teal"
+            onClick={() => setExpandedNodeIds((current) => {
+              const next = new Set(current);
+              if (next.has(selectedProjectNode.id)) next.delete(selectedProjectNode.id);
+              else next.add(selectedProjectNode.id);
+              return next;
+            })}
+          >
+            {expandedNodeIds.has(selectedProjectNode.id) ? 'Collapse children' : 'Expand children'}
+          </button>
+        )}
+
       </div>
 
       <footer className="flex shrink-0 items-center gap-3 border-t border-accent-teal/10 bg-[rgb(var(--color-netmap-chrome)/0.95)] px-3 py-1 font-mono text-[11px] text-text-muted select-none">
@@ -499,7 +609,7 @@ const AssetEdge = memo(function AssetEdge({
   const path = `M ${source.x} ${source.y} Q ${midX} ${midY} ${target.x} ${target.y}`;
   const attack = edge.type === 'attack_path';
   const color = attack ? palette.edgeAttack : edge.type === 'resolves_to' ? palette.edgeResolve : palette.edgeLink;
-  const label = (edge.label ?? edge.type).replace('_', ' ').toUpperCase();
+  const label = (edge.label ?? edge.semantic ?? edge.type).replaceAll('_', ' ').toUpperCase();
   const labelWidth = Math.max(48, label.length * NETMAP_EDGE_LABEL_FONT_SIZE * 0.62 + 12);
 
   return (
@@ -589,7 +699,11 @@ const AssetNode = memo(function AssetNode({
   const color = palette.nodeColors[node.status] ?? palette.nodeColors.untested;
   const riskSize = netmapNodeCoreSize(node, dense);
   const url = typeof node.properties?.url === 'string' ? node.properties.url : undefined;
-  const secondaryLabel = node.ip ?? url ?? node.hostname ?? node.type.toUpperCase();
+  const childCount = typeof node.properties?.childCount === 'number' ? node.properties.childCount : undefined;
+  const childKind = node.type === 'api' ? 'ENDPOINTS' : node.type === 'endpoint' ? 'PARAMETERS' : undefined;
+  const secondaryLabel = childCount && childKind
+    ? `${childCount} ${childKind}`
+    : node.ip ?? url ?? node.hostname ?? node.type.toUpperCase();
   const showSecondaryLabel = secondaryLabel.toLocaleLowerCase() !== node.label.toLocaleLowerCase();
   const showLabels = !dense || selected || highlighted || dragging || hovered;
   const showGlow = selected || highlighted || dragging || hovered;
@@ -726,6 +840,22 @@ function NodeGlyph({ type, color }: { type: GraphNode['type']; color: string }) 
 
   if (type === 'api') {
     return <path d="M-3-7c-4 0-4 3-4 5v1c0 2-1 3-3 3 2 0 3 1 3 3v1c0 2 0 5 4 5M3-7c4 0 4 3 4 5v1c0 2 1 3 3 3-2 0-3 1-3 3v1c0 2 0 5-4 5" fill="none" stroke={color} strokeWidth="1" />;
+  }
+
+  if (type === 'endpoint') {
+    return <path d="M-8-5h16v10H-8zM-5-2h4M-5 1h7" fill="none" stroke={color} strokeWidth=".9" />;
+  }
+
+  if (type === 'parameter') {
+    return <path d="M-8-4h10M-8 1h16M5-7v6M-3-1v6" fill="none" stroke={color} strokeWidth="1" />;
+  }
+
+  if (type === 'port') {
+    return <path d="M-7-6h14v12H-7zM-3-2h6v4H-3zM-5 6v3M0 6v3M5 6v3" fill="none" stroke={color} strokeWidth=".9" />;
+  }
+
+  if (type === 'certificate') {
+    return <path d="M-6-7h12v10H-6zM-3-3h6M-3 0h4M-3 3l-2 6 5-2 5 2-2-6" fill="none" stroke={color} strokeWidth=".9" />;
   }
 
   if (type === 'identity') {
