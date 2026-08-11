@@ -64,13 +64,40 @@ describe('ProxySettings', () => {
 
     expect(await screen.findByText('Nodes and chains')).toBeInTheDocument();
     expect(screen.getByTestId('proxy-node-library-scroll')).toHaveClass('flex-1', 'overflow-y-auto');
-    const workspacePanels = screen.getByText('Node library').closest('.ui-card')?.parentElement?.querySelectorAll('.ui-card');
-    expect(workspacePanels).toHaveLength(2);
-    expect(workspacePanels?.[0]).toHaveClass('h-[25rem]');
-    expect(workspacePanels?.[1]).toHaveClass('h-[25rem]');
+    const nodeLibrary = screen.getByTestId('proxy-node-library');
+    const chainEditor = screen.getByTestId('proxy-chain-editor');
+    const workspace = nodeLibrary.closest('.ui-card');
+    expect(workspace).toHaveClass('h-[25rem]', 'flex', 'overflow-hidden');
+    expect(workspace?.querySelectorAll(':scope > .ui-card')).toHaveLength(0);
+    expect(nodeLibrary).toHaveStyle({ width: '304px' });
+    expect(chainEditor).toHaveClass('flex-1', 'min-w-0');
     expect(screen.queryByLabelText('URIs (one per line)')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Select proxy chain')).toBeInTheDocument();
     expect(screen.queryByText('Known routing boundary')).not.toBeInTheDocument();
+
+    Object.defineProperty(workspace, 'clientWidth', { configurable: true, value: 1_000 });
+    const resizer = screen.getByRole('separator', { name: 'Resize node library' });
+    expect(resizer).toHaveAttribute('aria-valuenow', '304');
+    fireEvent.keyDown(resizer, { key: 'ArrowRight' });
+    expect(nodeLibrary).toHaveStyle({ width: '320px' });
+    expect(resizer).toHaveAttribute('aria-valuenow', '320');
+    fireEvent.pointerDown(resizer, { pointerId: 1, button: 0, clientX: 320 });
+    fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 380 });
+    fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 380 });
+    expect(nodeLibrary).toHaveStyle({ width: '380px' });
+
+    const collapseLibrary = screen.getByRole('button', { name: 'Collapse node library' });
+    expect(collapseLibrary).toHaveAttribute('aria-expanded', 'true');
+    collapseLibrary.focus();
+    fireEvent.click(collapseLibrary);
+    expect(nodeLibrary).toHaveStyle({ width: '48px' });
+    expect(screen.queryByRole('separator', { name: 'Resize node library' })).not.toBeInTheDocument();
+    const expandLibrary = screen.getByRole('button', { name: 'Expand node library (2 nodes, 0 selected)' });
+    expect(expandLibrary).toHaveAttribute('aria-expanded', 'false');
+    expect(expandLibrary).toHaveFocus();
+    expect(document.getElementById('proxy-node-library-content')).toHaveClass('hidden');
+    fireEvent.click(expandLibrary);
+    expect(nodeLibrary).toHaveStyle({ width: '380px' });
 
     const addFirst = screen.getByRole('button', { name: 'Add node to chain: First' });
     fireEvent.click(addFirst);

@@ -2,12 +2,28 @@
 
 ## Unreleased / 未发布
 
+## [0.4.0] - 2026-08-12
+
 ### Added / 新增
 
 - 新增项目级 Mihomo 多跳出口代理、safeStorage 加密节点库、可视化链编辑器、状态栏与 Agent 编排工具；v1.19.29 为已测试推荐版本而非版本限制，代理故障时保持 fail-closed。
   Added project-scoped Mihomo multi-hop egress, a safeStorage-encrypted node vault, visual chain editor, status bar, and Agent orchestration tools. v1.19.29 is tested and recommended rather than enforced, while proxy failures remain fail-closed.
 - Browser、Traffic/Replay、SSH、WebShell 与 Local/WSL Terminal 现可共享项目 mixed 入口；不修改系统代理或启用 TUN。
   Browser, Traffic/Replay, SSH, WebShell, and Local/WSL Terminal can now share the project mixed ingress without changing the system proxy or enabling TUN.
+- 新增 Claude 命令目录、MCP 服务健康状态，以及 Agent 命令与附件能力协商。
+  Added the Claude command catalog, MCP server health status, and capability negotiation for Agent commands and attachments.
+- 新增细粒度资产图，将目标、服务、端点与发现关系同步到 NetMap，并支持 Agent 查询项目资产关系。
+  Added a fine-grained asset graph that synchronizes targets, services, endpoints, and discovery relationships into NetMap and exposes project asset relationships to the Agent.
+
+### Changed / 变更
+
+- 将节点库与多跳链整合为可调比例工作台；节点库可折叠为状态窄栏，并支持鼠标拖动和键盘调整宽度。
+  Consolidated the node library and multi-hop chain editor into a resizable workspace with a collapsible status rail and pointer or keyboard resizing.
+
+### Fixed / 修复
+
+- 修复窄聊天面板中用户消息不换行，以及生成回复时视图不持续跟随最新内容的问题。
+  Fixed user messages overflowing narrow chat panels and live responses failing to remain in view while being generated.
 
 ## [0.3.0] - 2026-08-09
 

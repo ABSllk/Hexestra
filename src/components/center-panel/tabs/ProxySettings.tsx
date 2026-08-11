@@ -1,4 +1,11 @@
-import { useEffect, useState, type DragEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import type {
   EgressProxyChain,
   EgressProxyNodeInput,
@@ -33,6 +40,13 @@ const INPUT_MODES = [
   { id: 'yaml', label: 'YAML' },
 ];
 
+const NODE_LIBRARY_DEFAULT_WIDTH = 304;
+const NODE_LIBRARY_MIN_WIDTH = 240;
+const NODE_LIBRARY_MAX_WIDTH = 480;
+const NODE_LIBRARY_COLLAPSED_WIDTH = 48;
+const NODE_LIBRARY_RESIZE_STEP = 16;
+const CHAIN_EDITOR_MIN_WIDTH = 320;
+
 export function ProxySettings() {
   const { language } = useI18n();
   const zh = language === 'zh-CN';
@@ -43,6 +57,15 @@ export function ProxySettings() {
   const [source, setSource] = useState('');
   const [nodeMessage, setNodeMessage] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [nodeLibraryOpen, setNodeLibraryOpen] = useState(true);
+  const [nodeLibraryWidth, setNodeLibraryWidth] = useState(NODE_LIBRARY_DEFAULT_WIDTH);
+  const [nodeLibraryResizing, setNodeLibraryResizing] = useState(false);
+  const nodeLibraryResizeRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startWidth: number;
+    maxWidth: number;
+  } | null>(null);
   const [form, setForm] = useState({
     protocol: 'http' as EgressProxyProtocol,
     server: '',
@@ -140,6 +163,54 @@ export function ProxySettings() {
       next.splice(targetIndex, 0, moved);
       return next;
     });
+  };
+
+  const startNodeLibraryResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const workspaceWidth = event.currentTarget.parentElement?.clientWidth ?? 0;
+    nodeLibraryResizeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: nodeLibraryWidth,
+      maxWidth: nodeLibraryMaxWidth(workspaceWidth),
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setNodeLibraryResizing(true);
+  };
+
+  const resizeNodeLibrary = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const resize = nodeLibraryResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    setNodeLibraryWidth(clamp(
+      resize.startWidth + event.clientX - resize.startX,
+      NODE_LIBRARY_MIN_WIDTH,
+      resize.maxWidth,
+    ));
+  };
+
+  const stopNodeLibraryResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const resize = nodeLibraryResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    nodeLibraryResizeRef.current = null;
+    setNodeLibraryResizing(false);
+  };
+
+  const resizeNodeLibraryWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const maxWidth = nodeLibraryMaxWidth(event.currentTarget.parentElement?.clientWidth ?? 0);
+    const nextWidth = event.key === 'ArrowLeft'
+      ? nodeLibraryWidth - NODE_LIBRARY_RESIZE_STEP
+      : event.key === 'ArrowRight'
+        ? nodeLibraryWidth + NODE_LIBRARY_RESIZE_STEP
+        : event.key === 'Home'
+          ? NODE_LIBRARY_MIN_WIDTH
+          : event.key === 'End'
+            ? maxWidth
+            : null;
+    if (nextWidth === null) return;
+    event.preventDefault();
+    setNodeLibraryWidth(clamp(nextWidth, NODE_LIBRARY_MIN_WIDTH, maxWidth));
   };
 
   const saveChain = async () => {
@@ -254,33 +325,61 @@ export function ProxySettings() {
             <span className="font-mono text-[11px] text-text-muted">{proxy.nodes.length} / {proxy.chains.length}</span>
           </div>
 
-          <div className="grid items-start gap-3 xl:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
-            <Surface className="flex h-[25rem] min-w-0 flex-col overflow-hidden">
-              <div className="flex min-h-11 items-center gap-2 border-b border-border-subtle px-3 py-2">
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-xs font-semibold text-text-secondary">{zh ? '节点库' : 'Node library'}</h3>
-                </div>
-                <Button
-                  size="compact"
-                  leadingIcon="activity"
-                  disabled={busy || proxy.nodes.length === 0 || !proxy.diagnostic?.supported}
-                  onClick={() => void proxy.testNodes().catch(() => undefined)}
-                  title={!proxy.diagnostic?.supported ? (zh ? '请先选择可用的 Mihomo Runtime' : 'Select a working Mihomo runtime first') : undefined}
-                >
-                  {proxy.busy === 'node-test' ? (zh ? '测速中…' : 'Testing…') : (zh ? '测速' : 'Test')}
-                </Button>
-                <Button
-                  size="compact"
-                  leadingIcon={importOpen ? 'close' : 'plus'}
-                  aria-expanded={importOpen}
-                  aria-controls="proxy-node-import-panel"
-                  aria-label={importOpen ? (zh ? '收起节点导入' : 'Close node import') : (zh ? '打开节点导入' : 'Open node import')}
-                  onClick={() => { setImportOpen((open) => !open); setNodeMessage(null); }}
-                >
-                  {zh ? '导入' : 'Import'}
-                </Button>
+          <Surface className="flex h-[25rem] min-w-0 overflow-hidden">
+            <aside
+              id="proxy-node-library"
+              data-testid="proxy-node-library"
+              aria-label={zh ? '节点库' : 'Node library'}
+              className={cn(
+                'flex min-w-0 shrink-0 flex-col overflow-hidden bg-panel/20',
+                !nodeLibraryOpen && 'border-r border-border-subtle',
+              )}
+              style={{ width: nodeLibraryOpen ? nodeLibraryWidth : NODE_LIBRARY_COLLAPSED_WIDTH }}
+            >
+              <div className={cn('flex min-h-11 items-center gap-2 border-b border-border-subtle py-2', nodeLibraryOpen ? 'px-3' : 'justify-center px-1')}>
+                {nodeLibraryOpen && (
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-xs font-semibold text-text-secondary">{zh ? '节点库' : 'Node library'}</h3>
+                  </div>
+                )}
+                {nodeLibraryOpen && (
+                  <Button
+                    size="compact"
+                    leadingIcon="activity"
+                    disabled={busy || proxy.nodes.length === 0 || !proxy.diagnostic?.supported}
+                    onClick={() => void proxy.testNodes().catch(() => undefined)}
+                    title={!proxy.diagnostic?.supported ? (zh ? '请先选择可用的 Mihomo Runtime' : 'Select a working Mihomo runtime first') : undefined}
+                  >
+                    {proxy.busy === 'node-test' ? (zh ? '测速中…' : 'Testing…') : (zh ? '测速' : 'Test')}
+                  </Button>
+                )}
+                {nodeLibraryOpen && (
+                  <Button
+                    size="compact"
+                    leadingIcon={importOpen ? 'close' : 'plus'}
+                    aria-expanded={importOpen}
+                    aria-controls="proxy-node-import-panel"
+                    aria-label={importOpen ? (zh ? '收起节点导入' : 'Close node import') : (zh ? '打开节点导入' : 'Open node import')}
+                    onClick={() => { setImportOpen((open) => !open); setNodeMessage(null); }}
+                  >
+                    {zh ? '导入' : 'Import'}
+                  </Button>
+                )}
+                <IconButton
+                  name={nodeLibraryOpen ? 'chevron-left' : 'chevron-right'}
+                  label={nodeLibraryOpen
+                    ? (zh ? '收起节点库' : 'Collapse node library')
+                    : (zh
+                      ? `展开节点库（${proxy.nodes.length} 个节点，已选 ${chainNodes.length}）`
+                      : `Expand node library (${proxy.nodes.length} nodes, ${chainNodes.length} selected)`)}
+                  aria-expanded={nodeLibraryOpen}
+                  aria-controls="proxy-node-library-content"
+                  className="h-7 min-w-7 shrink-0"
+                  onClick={() => setNodeLibraryOpen((open) => !open)}
+                />
               </div>
 
+              <div id="proxy-node-library-content" className={cn('min-h-0 flex-1 flex-col', nodeLibraryOpen ? 'flex' : 'hidden')}>
               {importOpen && (
                 <div id="proxy-node-import-panel" className="max-h-[20rem] shrink-0 overflow-y-auto border-b border-border-subtle bg-raised/20 p-3">
                   <SegmentedControl
@@ -395,9 +494,47 @@ export function ProxySettings() {
                   })}
                 </div>
               )}
-            </Surface>
+              </div>
 
-            <Surface className="flex h-[25rem] min-w-0 flex-col overflow-hidden">
+              {!nodeLibraryOpen && (
+                <div className="flex min-h-0 flex-1 flex-col items-center gap-2 py-3 text-text-muted" aria-hidden="true">
+                  <Icon name="server" size={15} />
+                  <span className="font-mono text-[10px]">{proxy.nodes.length}</span>
+                  <span className="h-px w-4 bg-border-subtle" />
+                  <Icon name="check" size={13} />
+                  <span className="font-mono text-[10px]">{chainNodes.length}</span>
+                </div>
+              )}
+            </aside>
+
+            {nodeLibraryOpen && (
+              <div
+                data-testid="proxy-node-library-resizer"
+                role="separator"
+                aria-label={zh ? '调整节点库宽度' : 'Resize node library'}
+                aria-orientation="vertical"
+                aria-valuemin={NODE_LIBRARY_MIN_WIDTH}
+                aria-valuemax={NODE_LIBRARY_MAX_WIDTH}
+                aria-valuenow={nodeLibraryWidth}
+                tabIndex={0}
+                onPointerDown={startNodeLibraryResize}
+                onPointerMove={resizeNodeLibrary}
+                onPointerUp={stopNodeLibraryResize}
+                onPointerCancel={stopNodeLibraryResize}
+                onKeyDown={resizeNodeLibraryWithKeyboard}
+                className={cn(
+                  'group relative w-2 shrink-0 cursor-col-resize touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue/60',
+                  nodeLibraryResizing && 'bg-accent-blue/5',
+                )}
+              >
+                <span className={cn(
+                  'absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border-subtle group-hover:bg-accent-blue/60 group-focus-visible:bg-accent-blue',
+                  nodeLibraryResizing && 'bg-accent-blue',
+                )} />
+              </div>
+            )}
+
+            <div data-testid="proxy-chain-editor" className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <div className="flex min-h-11 flex-wrap items-center gap-2 border-b border-border-subtle px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <h3 className="text-xs font-semibold text-text-secondary">{zh ? '多跳链' : 'Multi-hop chains'}</h3>
@@ -508,8 +645,8 @@ export function ProxySettings() {
                   {testMessage && <p role="status" className="basis-full text-[11px] leading-4 text-text-muted">{testMessage}</p>}
                 </div>
               </div>
-            </Surface>
-          </div>
+            </div>
+          </Surface>
         </section>
       </div>
     </div>
@@ -661,6 +798,18 @@ function FlowNode({
       {onRemove && <IconButton name="close" label={removeLabel ?? 'Remove hop'} size={11} className="h-6 min-w-6 hover:text-status-error" onClick={onRemove} />}
     </div>
   );
+}
+
+function nodeLibraryMaxWidth(workspaceWidth: number) {
+  if (workspaceWidth <= 0) return NODE_LIBRARY_MAX_WIDTH;
+  return Math.max(
+    NODE_LIBRARY_MIN_WIDTH,
+    Math.min(NODE_LIBRARY_MAX_WIDTH, workspaceWidth - CHAIN_EDITOR_MIN_WIDTH),
+  );
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function sameNodeOrder(left: string[], right: string[]) {
