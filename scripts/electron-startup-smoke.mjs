@@ -66,7 +66,7 @@ const run = async () => {
   await withTimeout(window.loadFile(path.join(projectRoot, 'dist', 'index.html')), startupTimeoutMs, 'Renderer load');
   console.log('Renderer loaded');
   const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'));
-  const args = process.platform === 'win32' ? ['-NoLogo', '-NoProfile', '-Command', 'Write-Output HEXESTRA_PTY_OK'] : ['-lc', 'printf HEXESTRA_PTY_OK'];
+  const args = process.platform === 'win32' ? ['-NoLogo', '-NoProfile', '-Command', 'Write-Output HEXESTRA_PTY_OK'] : ['-ilc', 'printf HEXESTRA_PTY_OK'];
   terminal = pty.spawn(shell, args, { name: 'xterm-256color', cols: 80, rows: 24, cwd: projectRoot, env: process.env });
   console.log(`PTY spawned with ${shell}`);
   const output = await new Promise((resolve, reject) => {

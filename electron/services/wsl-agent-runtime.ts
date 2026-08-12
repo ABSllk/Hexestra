@@ -11,6 +11,7 @@ import type {
   AgentConnectionSettings,
   AgentDiagnosticCheck,
 } from '../contracts/agent-settings';
+import { resolveClaudeRuntime } from './claude-runtime';
 
 const FORWARDED_ENV = /^(?:ANTHROPIC_|CLAUDE_|MCP_|HEXESTRA_|HTTP_PROXY$|HTTPS_PROXY$|NO_PROXY$)/i;
 const EXCLUDED_ENV = new Set([
@@ -21,7 +22,7 @@ const EXCLUDED_ENV = new Set([
 ]);
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 
-type RunFile = (command: string, args: string[]) => Promise<{ stdout: string; stderr: string }>;
+type RunFile = (command: string, args: string[], environment?: NodeJS.ProcessEnv) => Promise<{ stdout: string; stderr: string }>;
 
 interface AgentDiagnosticDependencies {
   runFile: RunFile;
@@ -97,10 +98,38 @@ export function spawnClaudeCodeInWsl(
     windowsHide: true,
   });
   child.stderr?.on('data', (chunk: Buffer | string) => {
-    const line = String(chunk).replace(/\0/g, '').trim();
+    const line = decodeProcessOutput(chunk);
     if (line) console.warn('[Agent][WSL]', line);
   });
   return child as SpawnedProcess;
+}
+
+export function validateWslClaudeExecutable(
+  settings: AgentConnectionSettings,
+  executablePath: string,
+  environment: NodeJS.ProcessEnv = process.env,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (process.platform !== 'win32') {
+    return Promise.resolve({ ok: false, error: 'WSL Agent runtime is only supported on Windows' });
+  }
+  return new Promise((resolve) => {
+    execFile('wsl.exe', [
+      '--distribution', settings.wslDistribution,
+      '--exec', '/usr/bin/test', '-x', executablePath,
+    ], {
+      env: environment,
+      encoding: 'buffer',
+      timeout: 15_000,
+      windowsHide: true,
+      maxBuffer: 256 * 1024,
+    }, (error, stdout, stderr) => {
+      if (!error) return resolve({ ok: true });
+      const detail = firstUsefulLine(decodeProcessOutput(stderr))
+        || firstUsefulLine(decodeProcessOutput(stdout))
+        || error.message;
+      resolve({ ok: false, error: detail });
+    });
+  });
 }
 
 export async function diagnoseAgentConnection(
@@ -113,12 +142,12 @@ export async function diagnoseAgentConnection(
   const run = dependencyOverrides.runFile ?? runFile;
   const environment = dependencyOverrides.environment ?? process.env;
   const checks: AgentDiagnosticCheck[] = [];
-  const command = settings.executionMode === 'wsl'
-    ? 'wsl.exe'
-    : settings.claudeExecutable || resolveBundledClaudeExecutable() || 'claude';
+  const runtime = await resolveClaudeRuntime(settings, { environment });
+  const command = settings.executionMode === 'wsl' ? 'wsl.exe' : runtime.executablePath ?? '';
   const prefix = settings.executionMode === 'wsl'
-    ? ['--distribution', settings.wslDistribution, '--exec', settings.claudeExecutable]
+    ? ['--distribution', settings.wslDistribution, '--exec', runtime.executablePath ?? '/usr/bin/claude']
     : [];
+  const runWithRuntimeEnvironment = (command: string, args: string[]) => run(command, args, runtime.environment);
 
   if (settings.executionMode === 'wsl') {
     checks.push({
@@ -136,8 +165,56 @@ export async function diagnoseAgentConnection(
     });
   }
 
+  const baseDiagnostic = {
+    checkedAt: new Date().toISOString(),
+    executionMode: settings.executionMode,
+    executablePath: runtime.executablePath,
+    executableSource: runtime.source,
+    installGuidance: runtime.installGuidance,
+  } as const;
+
+  if (settings.executionMode === 'native' && !runtime.executablePath) {
+    checks[0] = { ...checks[0], status: 'fail', detail: runtime.error ?? runtime.installGuidance };
+    checks.push({
+      id: 'claude',
+      label: 'Claude Code',
+      status: 'fail',
+      detail: `Not checked because local Claude Code was not found. ${runtime.installGuidance}`,
+    });
+    return {
+      ...baseDiagnostic,
+      ok: false,
+      claudeVersion: null,
+      authenticated: null,
+      authMethod: null,
+      checks,
+    };
+  }
+
   try {
-    const versionResult = await run(command, [...prefix, '--version']);
+    if (settings.executionMode === 'wsl') {
+      try {
+        await runWithRuntimeEnvironment('wsl.exe', ['--distribution', settings.wslDistribution, '--exec', '/bin/true']);
+      } catch (error) {
+        const detail = errorMessage(error);
+        checks[0] = { ...checks[0], status: 'fail', detail };
+        checks.push({
+          id: 'claude',
+          label: 'Claude Code',
+          status: 'skipped',
+          detail: 'Skipped because the WSL runtime is unavailable. Install/enable WSL, restart Windows, then install Claude Code in the selected distribution.',
+        });
+        return {
+          ...baseDiagnostic,
+          ok: false,
+          claudeVersion: null,
+          authenticated: null,
+          authMethod: null,
+          checks,
+        };
+      }
+    }
+    const versionResult = await runWithRuntimeEnvironment(command, [...prefix, '--version']);
     const claudeVersion = firstUsefulLine(versionResult.stdout) || firstUsefulLine(versionResult.stderr);
     checks.push({
       id: 'claude',
@@ -149,7 +226,7 @@ export async function diagnoseAgentConnection(
     let authenticated: boolean | null = null;
     let authMethod: string | null = null;
     try {
-      const authResult = await run(command, [...prefix, 'auth', 'status', '--json']);
+      const authResult = await runWithRuntimeEnvironment(command, [...prefix, 'auth', 'status', '--json']);
       const auth = parseAuthStatus(authResult.stdout);
       authenticated = auth.loggedIn;
       authMethod = auth.authMethod;
@@ -172,7 +249,7 @@ export async function diagnoseAgentConnection(
 
     let networkReady = true;
     if (settings.executionMode === 'wsl') {
-      const endpoint = await resolveProviderEndpoint(settings, run, environment);
+      const endpoint = await resolveProviderEndpoint(settings, runWithRuntimeEnvironment, runtime.environment);
       if (endpoint.error || !endpoint.url) {
         networkReady = false;
         checks.push({
@@ -184,7 +261,7 @@ export async function diagnoseAgentConnection(
       } else {
         const endpointLabel = safeEndpointLabel(endpoint.url);
         try {
-          await run('wsl.exe', [
+          await runWithRuntimeEnvironment('wsl.exe', [
             '--distribution', settings.wslDistribution,
             '--exec', '/usr/bin/curl',
             '--silent', '--show-error', '--output', '/dev/null',
@@ -211,25 +288,23 @@ export async function diagnoseAgentConnection(
 
     return {
       ok: authenticated !== false && networkReady,
-      checkedAt: new Date().toISOString(),
-      executionMode: settings.executionMode,
       claudeVersion,
       authenticated,
       authMethod,
       checks,
+      ...baseDiagnostic,
     };
   } catch (error) {
-    checks[0] = { ...checks[0], status: 'fail', detail: errorMessage(error) };
+    const detail = errorMessage(error);
     checks.push({
       id: 'claude',
       label: 'Claude Code',
       status: 'fail',
-      detail: errorMessage(error),
+      detail,
     });
     return {
+      ...baseDiagnostic,
       ok: false,
-      checkedAt: new Date().toISOString(),
-      executionMode: settings.executionMode,
       claudeVersion: null,
       authenticated: null,
       authMethod: null,
@@ -312,30 +387,22 @@ function providerSourceLabel(source: ProviderEndpoint['source']) {
   return 'Claude default';
 }
 
-function resolveBundledClaudeExecutable() {
-  const platform = process.platform;
-  const arch = process.arch;
-  const executable = platform === 'win32' ? 'claude.exe' : 'claude';
-  try {
-    return require.resolve(`@anthropic-ai/claude-agent-sdk-${platform}-${arch}/${executable}`);
-  } catch {
-    return null;
-  }
-}
-
-function runFile(command: string, args: string[]) {
+function runFile(command: string, args: string[], environment: NodeJS.ProcessEnv = process.env) {
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     execFile(command, args, {
-      encoding: 'utf8',
+      encoding: 'buffer',
+      env: environment,
       timeout: 15_000,
       windowsHide: true,
       maxBuffer: 512 * 1024,
     }, (error, stdout, stderr) => {
       if (error) {
-        const detail = firstUsefulLine(stderr) || error.message;
+        const detail = firstUsefulLine(decodeProcessOutput(stderr))
+          || firstUsefulLine(decodeProcessOutput(stdout))
+          || error.message;
         reject(new Error(detail));
       } else {
-        resolve({ stdout: stripNulls(stdout), stderr: stripNulls(stderr) });
+        resolve({ stdout: decodeProcessOutput(stdout), stderr: decodeProcessOutput(stderr) });
       }
     });
   });
@@ -353,12 +420,47 @@ function parseAuthStatus(output: string) {
   };
 }
 
-function stripNulls(value: string) {
-  return value.replace(/\0/g, '').trim();
+export function decodeProcessOutput(value: Buffer | string) {
+  const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value);
+  let decoded: string;
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    decoded = bytes.subarray(2).toString('utf16le');
+  } else if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+    decoded = swapUtf16Bytes(bytes.subarray(2)).toString('utf16le');
+  } else if (looksLikeUtf16Le(bytes)) {
+    decoded = bytes.toString('utf16le');
+  } else {
+    decoded = bytes.toString('utf8');
+  }
+  return decoded.replace(/^\uFEFF/, '').replace(/\0/g, '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim();
 }
 
 function firstUsefulLine(value: string) {
-  return stripNulls(value).split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? '';
+  return value.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? '';
+}
+
+function looksLikeUtf16Le(bytes: Buffer) {
+  if (bytes.length < 4) return false;
+  let oddNulls = 0;
+  let evenNulls = 0;
+  for (let index = 0; index < bytes.length; index += 1) {
+    if (bytes[index] === 0) {
+      if (index % 2) oddNulls += 1;
+      else evenNulls += 1;
+    }
+  }
+  const pairs = Math.floor(bytes.length / 2);
+  return oddNulls >= Math.max(2, pairs * 0.2) && oddNulls > evenNulls * 2;
+}
+
+function swapUtf16Bytes(bytes: Buffer) {
+  const swapped = Buffer.from(bytes);
+  for (let index = 0; index + 1 < swapped.length; index += 2) {
+    const next = swapped[index];
+    swapped[index] = swapped[index + 1];
+    swapped[index + 1] = next;
+  }
+  return swapped;
 }
 
 function errorMessage(error: unknown) {

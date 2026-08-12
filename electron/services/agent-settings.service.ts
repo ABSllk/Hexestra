@@ -77,7 +77,7 @@ export function normalizeAgentSettingsContainer(
 export function agentConnectionFingerprint(settings: AgentConnectionSettings) {
   return settings.executionMode === 'wsl'
     ? `wsl:${settings.wslDistribution}:${settings.claudeExecutable}`
-    : `native:${settings.claudeExecutable || 'bundled'}`;
+    : `native:${settings.claudeExecutable || 'auto'}`;
 }
 
 export class AgentSettingsService {

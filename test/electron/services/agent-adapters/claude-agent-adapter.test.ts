@@ -1,7 +1,11 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const sdk = vi.hoisted(() => ({ query: vi.fn() }));
+const sdk = vi.hoisted(() => ({
+  query: vi.fn(),
+  executable: ['Z:', 'hexestra-test', 'npm', 'claude.cmd'].join('/'),
+  path: ['Z:', 'hexestra-test', 'npm'].join('/'),
+}));
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({ query: sdk.query }));
 vi.mock('@electron/services/agent-settings.service', () => ({
@@ -15,6 +19,17 @@ vi.mock('@electron/services/agent-settings.service', () => ({
       settingSources: ['user', 'project', 'local'],
     }),
   },
+}));
+vi.mock('@electron/services/claude-runtime', () => ({
+  resolveClaudeRuntime: vi.fn(async () => ({
+    executionMode: 'native',
+    executablePath: sdk.executable,
+    source: 'process-path',
+    environment: { PATH: sdk.path },
+    error: null,
+    installGuidance: 'Install Claude Code',
+  })),
+  runtimeFingerprint: vi.fn(() => `native:${sdk.executable}`),
 }));
 
 import { ClaudeAgentAdapter } from '@electron/services/agent-adapters/claude-agent-adapter';
@@ -56,6 +71,8 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
         cwd: 'D:\\project',
         persistSession: false,
         settingSources: ['user', 'project', 'local'],
+        pathToClaudeCodeExecutable: sdk.executable,
+        env: { PATH: sdk.path },
       }),
     }));
     const queryInput = sdk.query.mock.calls[0]?.[0];

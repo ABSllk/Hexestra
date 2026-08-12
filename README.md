@@ -67,6 +67,7 @@ These screenshots use the fictional Northstar Demo Lab, reserved `example.test` 
 - Node.js 24 and npm
 - Windows x64, Linux x64 (Ubuntu 24.04 baseline), macOS Intel, or macOS Apple Silicon
 - Standard Electron desktop libraries; Ubuntu needs the usual X11/GTK runtime libraries
+- Claude Code installed separately on the host for the selected Native or WSL runtime; Hexestra does not bundle or install it
 - mitmproxy is bundled in packaged builds; source runs may provide it separately
 - Optional Burp Suite and JDK 17 for the Bridge
 - Optional user-provided [Mihomo](https://github.com/MetaCubeX/mihomo/releases) for project-level multi-hop egress (v1.19.29 is tested and recommended, but not required)

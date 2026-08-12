@@ -93,12 +93,14 @@ export interface AgentRunInput {
   fork: boolean;
   settingSources?: string[];
   tools: AgentToolDefinition[];
+  projectId?: string;
 }
 
 export interface AgentCommandDiscoveryInput {
   cwd: string;
   additionalDirectories?: string[];
   settingSources?: string[];
+  projectId?: string;
 }
 
 export interface AgentSessionEvent {
@@ -140,8 +142,9 @@ export type AgentRunEvent =
 export interface AgentAdapter {
   readonly id: AgentBackendId;
   readonly capabilities: AgentBackendCapabilities;
-  initialize(): Promise<boolean>;
+  initialize(projectId?: string): Promise<boolean>;
   fingerprint(): string;
+  resolveFingerprint?(projectId?: string): Promise<string>;
   status(): AgentBackendStatus;
   listCommands?(input: AgentCommandDiscoveryInput): Promise<AgentSlashCommandDescriptor[]>;
   runTurn(

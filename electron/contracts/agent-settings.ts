@@ -1,5 +1,6 @@
 export type AgentExecutionMode = 'native' | 'wsl';
 export type ClaudeSettingSource = 'user' | 'project' | 'local';
+export type ClaudeRuntimeSource = 'explicit' | 'login-shell' | 'process-path' | 'standard-location' | 'wsl' | 'none';
 
 /** Claude-specific connection settings retained for the Claude settings UI. */
 export interface AgentConnectionSettings {
@@ -31,7 +32,7 @@ export type AgentSettingsContainerInput = {
 export interface AgentDiagnosticCheck {
   id: 'runtime' | 'claude' | 'authentication' | 'network';
   label: string;
-  status: 'pass' | 'warning' | 'fail';
+  status: 'pass' | 'warning' | 'fail' | 'skipped';
   detail: string;
 }
 
@@ -40,6 +41,9 @@ export interface AgentConnectionDiagnostic {
   checkedAt: string;
   executionMode: AgentExecutionMode;
   claudeVersion: string | null;
+  executablePath: string | null;
+  executableSource: ClaudeRuntimeSource;
+  installGuidance: string | null;
   authenticated: boolean | null;
   authMethod: string | null;
   checks: AgentDiagnosticCheck[];

@@ -75,6 +75,8 @@ Hexestra 将分散的渗透测试环节整合进同一个项目。Agent 可以�
 
 在 **Settings > Connection（设置 > 连接）** 中选择的 Native 或 WSL 环境内执行：
 
+Native 或 WSL 环境需要单独安装 Claude Code；Hexestra 不会内置或自动安装 CLI。
+
 ```bash
 npm install -g @anthropic-ai/claude-code
 claude --version

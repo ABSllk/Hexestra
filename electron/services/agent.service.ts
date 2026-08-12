@@ -297,6 +297,7 @@ class AgentService {
       cwd,
       additionalDirectories: sessionPath && fs.existsSync(sessionPath) ? [sessionPath] : undefined,
       settingSources: agentSettingsService.getClaudeSettings().settingSources,
+      projectId: sessionId,
     };
   }
 
@@ -488,7 +489,10 @@ class AgentService {
     if (sourceIndex < 0) throw new Error(`User message ${input.sourceMessageId} not found`);
     const sourceMessage = this.chatHistory[sourceIndex];
 
-    const currentFingerprint = this.adapterRegistry.get(sourceBranch.backendId)?.fingerprint() ?? '';
+    const sourceAdapter = this.adapterRegistry.get(sourceBranch.backendId);
+    const currentFingerprint = sourceAdapter?.resolveFingerprint
+      ? await sourceAdapter.resolveFingerprint(sessionId)
+      : sourceAdapter?.fingerprint() ?? '';
     const resumeOptions = resolveBranchResumeOptions(
       this.chatHistory,
       sourceIndex,
@@ -554,7 +558,7 @@ class AgentService {
     const activeBranch = this.branches.find((branch) => branch.id === this.activeBranchId);
     if (!activeBranch) throw new Error('Active conversation branch is missing');
     const adapter = this.adapterRegistry.require(activeBranch.backendId);
-    const available = await adapter.initialize();
+    const available = await adapter.initialize(request.session?.id);
     if (!available) {
       throw new Error(adapter.status().lastError ?? `Agent backend is unavailable: ${adapter.id}`);
     }
@@ -565,7 +569,9 @@ class AgentService {
       throw new Error('Slash commands cannot include attachments or staged context');
     }
 
-    const currentFingerprint = adapter.fingerprint();
+    const currentFingerprint = adapter.resolveFingerprint
+      ? await adapter.resolveFingerprint(request.session?.id)
+      : adapter.fingerprint();
     if (this.connectionFingerprint !== currentFingerprint) {
       this.backendSessionId = null;
       this.connectionFingerprint = currentFingerprint;
@@ -656,6 +662,7 @@ class AgentService {
         settingSources: connectionSettings.settingSources,
         tools: hexestraTools,
       };
+        projectId: request.session?.id,
       for await (const event of adapter.runTurn(runInput, interactions)) {
         if (event.type === 'session') {
           this.backendSessionId = event.sessionId;

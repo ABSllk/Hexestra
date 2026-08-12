@@ -7,7 +7,7 @@ const shell = process.platform === 'win32'
   : process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash');
 const args = process.platform === 'win32'
   ? ['-NoLogo', '-NoProfile', '-Command', `Write-Output ${sentinel}`]
-  : ['-lc', `printf ${sentinel}`];
+  : ['-ilc', `printf ${sentinel}`];
 const terminal = pty.spawn(shell, args, {
   name: 'xterm-256color',
   cols: 80,

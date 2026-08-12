@@ -4,6 +4,7 @@ import { spawn as spawnPty, type IPty } from '@lydell/node-pty';
 import { v4 as uuid } from 'uuid';
 import { sessionService } from './session.service';
 import { projectProxyEnvironment } from './project-egress';
+import { localShellLaunch, sanitizeChildEnvironment } from './shell-environment';
 
 interface PtySession {
   id: string;
@@ -148,17 +149,19 @@ export class TerminalService {
     const leaseId = uuid();
 
     // Use appropriate shell based on platform
-    const shell = process.platform === 'win32'
-      ? 'powershell.exe'
-      : (process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'));
+    const shellLaunch = localShellLaunch();
+    const baseEnvironment = sanitizeChildEnvironment(process.env);
+    const shellEnvironment = engagementId
+      ? projectProxyEnvironment(engagementId, baseEnvironment)
+      : baseEnvironment;
 
-    const pty = spawnPty(shell, [], {
+    const pty = spawnPty(shellLaunch.shell, shellLaunch.args, {
       name: 'xterm-256color',
       cols: 120,
       rows: 40,
       cwd,
       env: {
-        ...(engagementId ? projectProxyEnvironment(engagementId, process.env) : process.env),
+        ...shellEnvironment,
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
         ELECTRON_RUN_AS_NODE: undefined, // Prevent Electron from being forced to node mode

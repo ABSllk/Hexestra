@@ -3,6 +3,7 @@ import type { AgentConnectionSettings } from '@electron/contracts/agent-settings
 import {
   buildWslEnvironment,
   buildWslSpawnArguments,
+  decodeProcessOutput,
   diagnoseAgentConnection,
   windowsPathToWsl,
 } from '@electron/services/wsl-agent-runtime';
@@ -17,6 +18,11 @@ const settings: AgentConnectionSettings = {
 };
 
 describe('WSL Agent runtime', () => {
+  it('decodes UTF-16LE WSL errors before stripping control characters', () => {
+    const output = Buffer.from('无法启动 WSL：请重启计算机后重试', 'utf16le');
+    expect(decodeProcessOutput(output)).toBe('无法启动 WSL：请重启计算机后重试');
+  });
+
   it('maps only deterministic SDK working-directory forms', () => {
     expect(windowsPathToWsl('D:\\study\\项目\\Hexestra', settings.wslDistribution))
       .toBe('/mnt/d/study/项目/Hexestra');

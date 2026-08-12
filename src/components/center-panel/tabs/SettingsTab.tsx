@@ -219,14 +219,14 @@ function ConnectionSettings() {
         )}
 
         {claudeSettings.executionMode === 'native' && (
-          <SettingsSection title="Native runtime" description="Leave the executable empty to use the Claude Code binary bundled with the Agent SDK.">
-            <Field label="Claude executable" hint="Optional executable name or absolute path">
+          <SettingsSection title="Native runtime" description="Leave the executable empty to discover Claude Code from your login shell, PATH, and standard install locations.">
+            <Field label="Claude executable" hint="Optional absolute path; empty means automatic local discovery">
               <input
                 aria-label="Claude executable"
               value={claudeSettings.claudeExecutable}
               onChange={(event) => updateClaude({ claudeExecutable: event.target.value })}
                 className="settings-input font-mono"
-                placeholder="Bundled Agent SDK executable"
+                placeholder="Auto-discover local Claude Code"
               />
             </Field>
           </SettingsSection>
@@ -496,11 +496,16 @@ function DiagnosticCard({ diagnostic }: { diagnostic: AgentConnectionDiagnostic 
         <span className="text-xs font-semibold text-text-secondary">{diagnostic.ok ? 'Connection ready' : 'Connection needs attention'}</span>
         {diagnostic.claudeVersion && <span className="ml-auto font-mono text-[11px] text-text-muted">{diagnostic.claudeVersion}</span>}
       </div>
+      <div className="mb-2 grid gap-1 text-[11px] text-text-muted sm:grid-cols-3">
+        <span>Path: <span className="font-mono text-text-secondary">{diagnostic.executablePath ?? 'not found'}</span></span>
+        <span>Source: <span className="font-mono text-text-secondary">{diagnostic.executableSource}</span></span>
+        {!diagnostic.ok && diagnostic.installGuidance && <span>{diagnostic.installGuidance}</span>}
+      </div>
       <div className="grid grid-cols-3 gap-2">
         {diagnostic.checks.map((check) => (
           <div key={check.id} className="rounded border border-border-subtle/70 bg-panel/50 p-2">
             <div className="mb-1 flex items-center gap-1.5">
-              <span className={cn('h-1.5 w-1.5 rounded-full', check.status === 'pass' ? 'bg-accent-green' : check.status === 'warning' ? 'bg-severity-medium' : 'bg-severity-critical')} />
+              <span className={cn('h-1.5 w-1.5 rounded-full', check.status === 'pass' ? 'bg-accent-green' : check.status === 'warning' ? 'bg-severity-medium' : check.status === 'skipped' ? 'bg-text-muted' : 'bg-severity-critical')} />
               <span className="text-[11px] font-medium text-text-secondary">{check.label}</span>
             </div>
             <p className="break-words font-mono text-[11px] leading-4 text-text-muted">{check.detail}</p>

@@ -33,10 +33,14 @@ import {
 import { installHexestraSkills } from '../pentest-skill';
 import { isAgentAuthenticationError } from '../agent-error';
 import {
-  agentConnectionFingerprint,
   agentSettingsService,
 } from '../agent-settings.service';
-import { spawnClaudeCodeInWsl, windowsPathToWsl } from '../wsl-agent-runtime';
+import { spawnClaudeCodeInWsl, validateWslClaudeExecutable, windowsPathToWsl } from '../wsl-agent-runtime';
+import {
+  resolveClaudeRuntime,
+  runtimeFingerprint,
+  type ClaudeRuntimeResolution,
+} from '../claude-runtime';
 import {
   buildAgentSdkPrompt,
 } from '../agent-attachment';
@@ -69,26 +73,39 @@ export class ClaudeAgentAdapter implements AgentAdapter {
 
   private sdk: AgentSdk | null = null;
   private initialization: Promise<boolean> | null = null;
+  private initializationSettingsKey: string | null = null;
+  private preparedRuntimeSettingsKey: string | null = null;
+  private runtime: ClaudeRuntimeResolution | null = null;
   private authenticated: boolean | null = null;
   private model: string | null = null;
   private lastError: string | null = null;
   private readonly commandCache = new Map<string, AgentSlashCommandDescriptor[]>();
   private readonly commandRequests = new Map<string, Promise<AgentSlashCommandDescriptor[]>>();
 
-  async initialize() {
-    if (this.initialization) return this.initialization;
-    this.initialization = this.loadSDK();
+  async initialize(projectId?: string) {
+    const settings = agentSettingsService.getClaudeSettings();
+    const settingsKey = runtimeSettingsKey(settings, projectId);
+    if (this.initialization && this.initializationSettingsKey === settingsKey) return this.initialization;
+    this.initializationSettingsKey = settingsKey;
+    this.initialization = this.prepareRuntime(settings, projectId);
     return this.initialization;
   }
 
   fingerprint() {
-    return `${agentConnectionFingerprint(agentSettingsService.getClaudeSettings())}:${AGENT_CONTEXT_VERSION}`;
+    const settings = agentSettingsService.getClaudeSettings();
+    const runtime = this.preparedRuntimeSettingsKey === runtimeSettingsKey(settings) ? this.runtime : null;
+    return `${runtimeFingerprint(settings, runtime)}:${AGENT_CONTEXT_VERSION}`;
+  }
+
+  async resolveFingerprint(projectId?: string) {
+    await this.initialize(projectId);
+    return this.fingerprint();
   }
 
   status(): AgentBackendStatus {
     const settings = agentSettingsService.getClaudeSettings();
     return {
-      available: this.sdk !== null,
+      available: this.sdk !== null && Boolean(this.runtime?.executablePath),
       authenticated: this.authenticated,
       model: this.model ?? settings.model,
       lastError: this.lastError,
@@ -100,7 +117,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
   }
 
   async listCommands(input: AgentCommandDiscoveryInput) {
-    const available = await this.initialize();
+    const available = await this.initialize(input.projectId);
     if (!available || !this.sdk) {
       throw new AgentBackendError(
         this.lastError ?? 'Claude Agent SDK is unavailable',
@@ -127,7 +144,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
   async listMcpServerStatuses(
     input: AgentCommandDiscoveryInput,
   ): Promise<ClaudeMcpRuntimeStatusResult> {
-    const available = await this.initialize();
+    const available = await this.initialize(input.projectId);
     if (!available || !this.sdk) {
       throw new AgentBackendError(
         this.lastError ?? 'Claude Agent SDK is unavailable',
@@ -168,7 +185,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
     input: AgentRunInput,
     interactions: AgentInteractionHandler,
   ): AsyncIterable<AgentRunEvent> {
-    const available = await this.initialize();
+    const available = await this.initialize(input.projectId);
     if (!available || !this.sdk) {
       throw new AgentBackendError(
         this.lastError ?? 'Claude Agent SDK is unavailable',
@@ -178,6 +195,11 @@ export class ClaudeAgentAdapter implements AgentAdapter {
     }
 
     const settings = agentSettingsService.getClaudeSettings();
+    const runtime = this.runtime;
+    if (!runtime?.executablePath) {
+      throw new AgentBackendError(this.lastError ?? 'Claude Code is not installed', this.id, 'unavailable');
+    }
+    const runtimeSettings = { ...settings, claudeExecutable: runtime.executablePath };
     const timeline = new AgentTimelineBuilder(`turn-${Date.now()}`);
     const subagentRegistry = new SubagentRegistry(`turn-${Date.now()}`);
     const pendingSubagentRunIds = new Set<string>();
@@ -213,9 +235,9 @@ export class ClaudeAgentAdapter implements AgentAdapter {
           abortController,
           cwd: sdkCwd,
           additionalDirectories: input.additionalDirectories,
-          pathToClaudeCodeExecutable: settings.claudeExecutable || undefined,
+          pathToClaudeCodeExecutable: runtime.executablePath,
           spawnClaudeCodeProcess: isWsl
-            ? (options) => spawnClaudeCodeInWsl(options, settings)
+            ? (options) => spawnClaudeCodeInWsl(options, runtimeSettings)
             : undefined,
           canUseTool,
           hooks: {
@@ -245,10 +267,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
             append: input.systemInstructions,
           },
           tools: { type: 'preset', preset: 'claude_code' },
-          env: {
-            ...process.env,
-            ELECTRON_RUN_AS_NODE: undefined,
-          },
+          env: runtime.environment,
           stderr: (data) => {
             const line = data.trim();
             if (line) console.warn('[Agent] Claude stderr:', line);
@@ -370,6 +389,35 @@ export class ClaudeAgentAdapter implements AgentAdapter {
     }
   }
 
+  private async prepareRuntime(settings: ReturnType<typeof agentSettingsService.getClaudeSettings>, projectId?: string) {
+    this.runtime = null;
+    this.preparedRuntimeSettingsKey = null;
+    const sdkAvailable = await this.loadSDK();
+    if (!sdkAvailable) return false;
+    try {
+      const runtime = await resolveClaudeRuntime(settings, { projectId });
+      if (!runtime.executablePath) {
+        this.lastError = runtime.error ?? runtime.installGuidance;
+        return false;
+      }
+      if (settings.executionMode === 'wsl') {
+        const validation = await validateWslClaudeExecutable(settings, runtime.executablePath, runtime.environment);
+        if (!validation.ok) {
+          this.lastError = `${validation.error}. ${runtime.installGuidance}`;
+          this.runtime = { ...runtime, executablePath: null, error: this.lastError };
+          return false;
+        }
+      }
+      this.runtime = runtime;
+      this.preparedRuntimeSettingsKey = runtimeSettingsKey(settings);
+      this.lastError = null;
+      return true;
+    } catch (error) {
+      this.lastError = toErrorMessage(error);
+      return false;
+    }
+  }
+
   private async discoverCommands(input: AgentCommandDiscoveryInput, cacheKey: string) {
     if (!this.sdk) throw new AgentBackendError('Claude Agent SDK is unavailable', this.id, 'unavailable');
     const discovery = this.createDiscoveryQuery(input);
@@ -387,6 +435,11 @@ export class ClaudeAgentAdapter implements AgentAdapter {
   private createDiscoveryQuery(input: AgentCommandDiscoveryInput) {
     if (!this.sdk) throw new AgentBackendError('Claude Agent SDK is unavailable', this.id, 'unavailable');
     const settings = agentSettingsService.getClaudeSettings();
+    const runtime = this.runtime;
+    if (!runtime?.executablePath) {
+      throw new AgentBackendError(this.lastError ?? 'Claude Code is not installed', this.id, 'unavailable');
+    }
+    const runtimeSettings = { ...settings, claudeExecutable: runtime.executablePath };
     const isWsl = settings.executionMode === 'wsl';
     const sdkCwd = isWsl
       ? windowsPathToWsl(input.cwd, settings.wslDistribution)
@@ -400,16 +453,13 @@ export class ClaudeAgentAdapter implements AgentAdapter {
         abortController,
         cwd: sdkCwd,
         additionalDirectories: input.additionalDirectories,
-        pathToClaudeCodeExecutable: settings.claudeExecutable || undefined,
+        pathToClaudeCodeExecutable: runtime.executablePath,
         spawnClaudeCodeProcess: isWsl
-          ? (options) => spawnClaudeCodeInWsl(options, settings)
+          ? (options) => spawnClaudeCodeInWsl(options, runtimeSettings)
           : undefined,
         persistSession: false,
         settingSources: requiredSettingSources(settings.settingSources),
-        env: {
-          ...process.env,
-          ELECTRON_RUN_AS_NODE: undefined,
-        },
+        env: runtime.environment,
       },
     });
     return {
@@ -492,6 +542,15 @@ export class ClaudeAgentAdapter implements AgentAdapter {
       };
     };
   }
+}
+
+function runtimeSettingsKey(settings: ReturnType<typeof agentSettingsService.getClaudeSettings>, projectId?: string) {
+  return JSON.stringify([
+    settings.executionMode,
+    settings.wslDistribution,
+    settings.claudeExecutable,
+    projectId ?? '',
+  ]);
 }
 
 async function* idlePrompt(signal: AbortSignal): AsyncGenerator<SDKUserMessage, void> {
