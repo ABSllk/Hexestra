@@ -11,6 +11,7 @@ export interface TabDefinition {
   title: string;
   icon?: string;
   closable: boolean;
+  transient?: boolean;
   data?: Record<string, unknown>;
 }
 
@@ -116,15 +117,19 @@ export const useTabStore = create<TabStore>((set, get) => ({
 }));
 
 export function serializeProjectWorkspace(state: Pick<TabStore, 'tabs' | 'activeTabId' | 'nextTabNumber'>): ProjectWorkspaceState {
-  return {
-    tabs: state.tabs.map((tab) => ({
+  const persistedTabs = state.tabs.filter((tab) => !tab.transient).map((tab) => ({
       id: tab.id,
       type: tab.type,
       title: tab.title,
       closable: tab.closable,
       data: persistedTabData(tab),
-    })),
-    activeTabId: state.activeTabId,
+    }));
+  const activeTabId = persistedTabs.some((tab) => tab.id === state.activeTabId)
+    ? state.activeTabId
+    : persistedTabs[persistedTabs.length - 1]?.id ?? null;
+  return {
+    tabs: persistedTabs,
+    activeTabId,
     nextTabNumber: state.nextTabNumber,
   };
 }

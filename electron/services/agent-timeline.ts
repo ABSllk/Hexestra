@@ -1,6 +1,6 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentActivity } from '../contracts/agent-runtime';
-import { sanitizeAgentToolInputForDisplay } from './agent-tool-policy';
+import { sanitizeAgentToolInputForDisplay, sanitizeAgentToolOutputForDisplay } from './agent-tool-policy';
 export type { AgentActivity } from '../contracts/agent-runtime';
 export type AgentActivityStatus = AgentActivity['status'];
 
@@ -229,7 +229,7 @@ export class AgentTimelineBuilder {
         };
         this.activities.push(activity);
       }
-      const fullOutput = extractToolOutput(block.content);
+      const fullOutput = sanitizeAgentToolOutputForDisplay(activity.toolName ?? 'Tool', extractToolOutput(block.content));
       activity.status = block.is_error ? 'error' : 'complete';
       activity.outputSummary = summarizeToolOutput(fullOutput, block.is_error ?? false);
       activity.output = truncate(fullOutput, MAX_TOOL_OUTPUT_LENGTH);

@@ -13,6 +13,7 @@ export type IconName =
   | 'close'
   | 'code'
   | 'copy'
+  | 'download'
   | 'edit'
   | 'eye'
   | 'file'
@@ -30,6 +31,7 @@ export type IconName =
   | 'play'
   | 'plus'
   | 'report'
+  | 'refresh'
   | 'search'
   | 'send'
   | 'select-all'
@@ -42,6 +44,7 @@ export type IconName =
   | 'terminal'
   | 'trash'
   | 'tool'
+  | 'upload'
   | 'vulnerability'
   | 'window-maximize'
   | 'window-minimize'
@@ -124,6 +127,11 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
     <>
       <rect height="13" rx="2" width="12" x="8" y="7" />
       <path d="M16 7V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h2" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M12 3v12M7 10l5 5 5-5M4 20h16" />
     </>
   ),
   edit: (
@@ -223,6 +231,13 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
       <path d="M9 8h6M9 12h6M9 16h4" />
     </>
   ),
+  refresh: (
+    <>
+      <path d="M20 11a8 8 0 0 0-14.8-4L3 10" />
+      <path d="M3 5v5h5M4 13a8 8 0 0 0 14.8 4L21 14" />
+      <path d="M21 19v-5h-5" />
+    </>
+  ),
   search: (
     <>
       <circle cx="11" cy="11" r="6" />
@@ -295,6 +310,11 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M14.5 6.5a4 4 0 0 0-5-5L12 4l-3 3-2.5-2.5a4 4 0 0 0 5 5L19 17l2-2-6.5-8.5Z" />
       <path d="m4 20 5.5-5.5" />
+    </>
+  ),
+  upload: (
+    <>
+      <path d="M12 21V9M7 14l5-5 5 5M4 4h16" />
     </>
   ),
   vulnerability: (

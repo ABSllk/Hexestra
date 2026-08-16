@@ -1,11 +1,13 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, dialog, ipcMain } from 'electron';
+import fs from 'fs';
+import path from 'path';
 import os from 'os';
 import net, { type Server, type Socket } from 'net';
 import https from 'https';
 import crypto from 'crypto';
 import type { Duplex } from 'stream';
 import { spawn as spawnPty, type IPty } from '@lydell/node-pty';
-import { Client, type ClientChannel, type ConnectConfig } from 'ssh2';
+import { Client, type ClientChannel, type ConnectConfig, type SFTPWrapper, type FileEntryWithStats, type Stats } from 'ssh2';
 import {
   SHELL_IPC,
   LOCAL_OPERATOR_ASSET_ID,
@@ -19,6 +21,12 @@ import {
   type ShellListenerRuntime,
   type ShellNetworkInterface,
   type ShellOutputEvent,
+  type ShellFileChangedEvent,
+  type ShellFileTransferEvent,
+  type ShellRemoteDeletePreview,
+  type ShellRemoteFileContent,
+  type ShellRemoteFileEntry,
+  type ShellRemoteUploadPlan,
   type ShellProfile,
   type ShellSession,
   type WebShellCommandMode,
@@ -28,6 +36,7 @@ import { sessionService } from './session.service';
 import { terminatePtyProcessTree } from './terminal.service';
 import { shellVault } from './shell-vault';
 import { ShellAuditRepository } from './shell-audit.repository';
+import { ShellFileAuditRepository, type ShellFileAuditInput } from './shell-file-audit.repository';
 import { buildShellConnectCommand, listShellConnectTemplates } from './shell-connect-builder';
 import {
   type WebShellCommandResult,
@@ -52,6 +61,9 @@ const MAX_TRANSCRIPT_BYTES = 2 * 1024 * 1024;
 const MAX_TRANSCRIPT_LINES = 10_000;
 const QUARANTINE_PREVIEW_BYTES = 32 * 1024;
 const MAX_LISTENER_SESSIONS = 32;
+const MAX_REMOTE_EDITOR_BYTES = 2 * 1024 * 1024;
+const MAX_AGENT_FILE_BYTES = 256 * 1024;
+const REMOTE_TOKEN_TTL_MS = 2 * 60 * 1000;
 
 interface ActiveCommand {
   id: string;
@@ -76,6 +88,11 @@ interface InternalSession {
   sshClient?: Client;
   jumpClient?: Client;
   sshChannel?: ClientChannel;
+  sftp?: SFTPWrapper;
+  sftpOpening?: Promise<SFTPWrapper>;
+  sftpHome?: string;
+  remoteMutation: Promise<void>;
+  remoteTransfers: Map<string, { canceled: boolean; temporaryPaths: string[] }>;
   webshell?: WebShellRuntime;
   activeCommand?: ActiveCommand;
   previewBytes: number;
@@ -101,6 +118,9 @@ export class ShellService {
   private readonly listeners = new Map<string, InternalListener>();
   private readonly webshellResolutions = new Map<string, WebShellResolution>();
   private readonly webshellHealthRepositories = new Map<string, WebShellHealthRepository>();
+  private readonly remoteFileAuditRepositories = new Map<string, ShellFileAuditRepository>();
+  private readonly remoteDeletePreviews = new Map<string, { projectId: string; sessionId: string; preview: ShellRemoteDeletePreview }>();
+  private readonly remoteUploadPlans = new Map<string, { projectId: string; sessionId: string; remoteDirectory: string; files: Array<{ localPath: string; name: string; size: number; conflict: boolean }>; expiresAt: number }>();
 
   constructor(registerHandlers = true) {
     if (registerHandlers) this.registerHandlers();
@@ -190,6 +210,42 @@ export class ShellService {
     ));
     ipcMain.handle(SHELL_IPC.SAVE_EVIDENCE, (_event, projectId: string, auditId: string) => (
       this.saveEvidence(projectId, auditId)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_HOME, (_event, projectId: string, sessionId: string) => (
+      this.remoteHome(projectId, sessionId)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_LIST, (_event, projectId: string, sessionId: string, remotePath?: string) => (
+      this.listRemoteFiles(projectId, sessionId, remotePath)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_READ, (_event, projectId: string, sessionId: string, remotePath: string) => (
+      this.readRemoteFile(projectId, sessionId, remotePath)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_WRITE, (_event, projectId: string, sessionId: string, remotePath: string, content: string, expectedRevision?: string, force = false) => (
+      this.writeRemoteFile(projectId, sessionId, remotePath, content, expectedRevision, force)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_MKDIR, (_event, projectId: string, sessionId: string, remotePath: string) => (
+      this.mkdirRemote(projectId, sessionId, remotePath)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_RENAME, (_event, projectId: string, sessionId: string, sourcePath: string, targetPath: string) => (
+      this.renameRemote(projectId, sessionId, sourcePath, targetPath)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_DELETE_PREVIEW, (_event, projectId: string, sessionId: string, remotePath: string) => (
+      this.previewRemoteDelete(projectId, sessionId, remotePath)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_DELETE, (_event, projectId: string, sessionId: string, token: string, recursive = false) => (
+      this.deleteRemote(projectId, sessionId, token, recursive)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_UPLOAD_PICK, (event, projectId: string, sessionId: string, remoteDirectory: string) => (
+      this.pickRemoteUpload(event, projectId, sessionId, remoteDirectory)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_UPLOAD_START, (_event, projectId: string, sessionId: string, selectionId: string, overwrite = false) => (
+      this.startRemoteUpload(projectId, sessionId, selectionId, overwrite)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_DOWNLOAD, (event, projectId: string, sessionId: string, remotePath: string) => (
+      this.downloadRemoteFile(event, projectId, sessionId, remotePath)
+    ));
+    ipcMain.handle(SHELL_IPC.FILE_TRANSFER_CANCEL, (_event, projectId: string, sessionId: string, transferId: string) => (
+      this.cancelRemoteTransfer(projectId, sessionId, transferId)
     ));
   }
 
@@ -666,6 +722,427 @@ export class ShellService {
     });
   }
 
+  async remoteHome(projectId: string, sessionId: string) {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const sftp = await this.getSftp(session);
+    if (!session.sftpHome) session.sftpHome = normalizeRemotePath(await callSftp<string>(sftp, 'realpath', '.'));
+    return session.sftpHome;
+  }
+
+  async listRemoteFiles(projectId: string, sessionId: string, remotePath?: string): Promise<ShellRemoteFileEntry[]> {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const sftp = await this.getSftp(session);
+    const directory = remotePath === undefined ? await this.remoteHome(projectId, sessionId) : normalizeRemotePath(remotePath);
+    const entries = await callSftp<FileEntryWithStats[]>(sftp, 'readdir', directory);
+    return entries.map((entry) => {
+      const child = path.posix.join(directory, entry.filename);
+      const type = remoteEntryType(entry.attrs);
+      return {
+        name: entry.filename,
+        path: child,
+        type,
+        size: Number(entry.attrs.size ?? 0),
+        modifiedAt: new Date(Number(entry.attrs.mtime ?? 0) * 1000).toISOString(),
+        mode: Number(entry.attrs.mode ?? 0),
+      };
+    }).sort((left, right) => {
+      const leftDirectory = left.type === 'directory' ? 0 : 1;
+      const rightDirectory = right.type === 'directory' ? 0 : 1;
+      return leftDirectory - rightDirectory || left.name.localeCompare(right.name);
+    });
+  }
+
+  async readRemoteFile(projectId: string, sessionId: string, remotePath: string, encoding: 'utf8' | 'base64' = 'utf8', maxBytes = MAX_REMOTE_EDITOR_BYTES): Promise<ShellRemoteFileContent> {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const sftp = await this.getSftp(session);
+    const target = normalizeRemotePath(remotePath);
+    const stats = await callSftp<Stats>(sftp, 'lstat', target);
+    if (stats.isDirectory?.() || stats.isSymbolicLink?.()) throw new Error('Requested remote path is not a regular file');
+    if (Number(stats.size) > maxBytes) throw new Error(`Remote file exceeds the ${Math.round(maxBytes / 1024)} KiB read limit`);
+    const buffer = await callSftp<Buffer>(sftp, 'readFile', target);
+    const revision = remoteRevision(buffer, stats);
+    const binary = isBinaryBuffer(buffer);
+    return {
+      path: target,
+      content: binary ? (encoding === 'base64' ? buffer.toString('base64') : undefined) : (encoding === 'base64' ? buffer.toString('base64') : buffer.toString('utf8')),
+      encoding,
+      binary,
+      size: buffer.byteLength,
+      modifiedAt: new Date(Number(stats.mtime ?? 0) * 1000).toISOString(),
+      revision,
+    };
+  }
+
+  async writeRemoteFile(projectId: string, sessionId: string, remotePath: string, content: string, expectedRevision?: string, force = false, encoding: 'utf8' | 'base64' = 'utf8') {
+    const buffer = typeof content === 'string' ? Buffer.from(content, encoding) : Buffer.alloc(0);
+    if (typeof content !== 'string' || buffer.byteLength > MAX_REMOTE_EDITOR_BYTES) {
+      throw new Error('Remote file exceeds the 2 MB editor limit');
+    }
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const target = normalizeRemotePath(remotePath);
+    return this.enqueueRemoteMutation(session, async () => {
+      const sftp = await this.getSftp(session);
+      let current: ShellRemoteFileContent | undefined;
+      try { current = await this.readRemoteFile(projectId, sessionId, target); } catch (error) {
+        if (!isMissingRemotePath(error)) throw error;
+      }
+      if (current && !force && current.revision !== expectedRevision) {
+        return { status: 'conflict' as const, currentRevision: current.revision, currentModifiedAt: current.modifiedAt };
+      }
+      const temporary = `${target}.hexestra-${createShellId('tmp')}`;
+      try {
+        await callSftp<void>(sftp, 'writeFile', temporary, buffer);
+        await this.replaceRemoteFile(sftp, temporary, target, Boolean(current));
+      } finally {
+        await this.unlinkRemoteQuietly(sftp, temporary);
+      }
+      this.emitFileChanged({ projectId, sessionId, directory: path.posix.dirname(target) });
+      return this.readRemoteFile(projectId, sessionId, target);
+    });
+  }
+
+  async mkdirRemote(projectId: string, sessionId: string, remotePath: string) {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const target = normalizeRemotePath(remotePath);
+    return this.enqueueRemoteMutation(session, async () => {
+      const sftp = await this.getSftp(session);
+      await callSftp<void>(sftp, 'mkdir', target, { mode: 0o755 });
+      this.emitFileChanged({ projectId, sessionId, directory: path.posix.dirname(target) });
+      return true;
+    });
+  }
+
+  async renameRemote(projectId: string, sessionId: string, sourcePath: string, targetPath: string) {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const source = normalizeRemotePath(sourcePath);
+    const target = normalizeRemotePath(targetPath);
+    if (source === '/' || target === '/') throw new Error('The remote root cannot be renamed');
+    return this.enqueueRemoteMutation(session, async () => {
+      const sftp = await this.getSftp(session);
+      await callSftp<Stats>(sftp, 'lstat', source);
+      try {
+        await callSftp<Stats>(sftp, 'lstat', target);
+        throw new Error('Remote rename target already exists');
+      } catch (error) {
+        if (!isMissingRemotePath(error)) throw error;
+      }
+      await callSftp<void>(sftp, 'rename', source, target);
+      this.emitFileChanged({ projectId, sessionId, directory: path.posix.dirname(source) });
+      return true;
+    });
+  }
+
+  async previewRemoteDelete(projectId: string, sessionId: string, remotePath: string): Promise<ShellRemoteDeletePreview> {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const target = normalizeRemotePath(remotePath);
+    if (target === '/') throw new Error('The remote root cannot be deleted');
+    const sftp = await this.getSftp(session);
+    const stats = await callSftp<Stats>(sftp, 'lstat', target);
+    const summary = await this.summarizeRemoteTree(sftp, target, stats);
+    const preview: ShellRemoteDeletePreview = {
+      token: createShellId('delete'),
+      path: target,
+      type: remoteStatsType(stats),
+      entries: summary.entries,
+      bytes: summary.bytes,
+      recursive: summary.entries > 1,
+      expiresAt: new Date(Date.now() + REMOTE_TOKEN_TTL_MS).toISOString(),
+    };
+    this.remoteDeletePreviews.set(preview.token, { projectId, sessionId, preview });
+    return preview;
+  }
+
+  async deleteRemote(projectId: string, sessionId: string, token: string, recursive = false) {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const stored = this.remoteDeletePreviews.get(token);
+    if (!stored || stored.projectId !== projectId || stored.sessionId !== sessionId || Date.parse(stored.preview.expiresAt) < Date.now()) {
+      throw new Error('Remote delete preview is missing or expired');
+    }
+    this.remoteDeletePreviews.delete(token);
+    if (stored.preview.recursive && !recursive) throw new Error('Recursive confirmation is required');
+    return this.enqueueRemoteMutation(session, async () => {
+      const sftp = await this.getSftp(session);
+      await this.deleteRemoteTree(sftp, stored.preview.path, recursive);
+      this.emitFileChanged({ projectId, sessionId, directory: path.posix.dirname(stored.preview.path) });
+      return { path: stored.preview.path, recursive: stored.preview.recursive };
+    });
+  }
+
+  async pickRemoteUpload(event: Electron.IpcMainInvokeEvent, projectId: string, sessionId: string, remoteDirectory: string): Promise<ShellRemoteUploadPlan | { canceled: true }> {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const directory = normalizeRemotePath(remoteDirectory);
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const result = owner
+      ? await dialog.showOpenDialog(owner, { title: 'Upload files', properties: ['openFile', 'multiSelections'] })
+      : await dialog.showOpenDialog({ title: 'Upload files', properties: ['openFile', 'multiSelections'] });
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+    const existing = new Set((await this.listRemoteFiles(projectId, sessionId, directory)).map((entry) => entry.name));
+    const files = result.filePaths.map((localPath) => {
+      const stat = fs.statSync(localPath);
+      if (!stat.isFile()) throw new Error('Only regular files can be uploaded');
+      return { localPath, name: path.basename(localPath), size: stat.size, conflict: existing.has(path.basename(localPath)) };
+    });
+    const selectionId = createShellId('upload');
+    const expiresAt = Date.now() + REMOTE_TOKEN_TTL_MS;
+    this.remoteUploadPlans.set(selectionId, { projectId, sessionId, remoteDirectory: directory, files, expiresAt });
+    return { selectionId, files: files.map(({ name, size, conflict }) => ({ name, size, conflict })), expiresAt: new Date(expiresAt).toISOString() };
+  }
+
+  async startRemoteUpload(projectId: string, sessionId: string, selectionId: string, overwrite = false) {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const plan = this.remoteUploadPlans.get(selectionId);
+    if (!plan || plan.projectId !== projectId || plan.sessionId !== sessionId || plan.expiresAt < Date.now()) throw new Error('Remote upload selection is missing or expired');
+    this.remoteUploadPlans.delete(selectionId);
+    if (!overwrite && plan.files.some((file) => file.conflict)) throw new Error('Upload conflict confirmation is required');
+    return this.enqueueRemoteMutation(session, () => this.uploadFiles(session, projectId, sessionId, plan.remoteDirectory, plan.files, overwrite));
+  }
+
+  async downloadRemoteFile(event: Electron.IpcMainInvokeEvent, projectId: string, sessionId: string, remotePath: string) {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const source = normalizeRemotePath(remotePath);
+    const stats = await callSftp<Stats>(await this.getSftp(session), 'lstat', source);
+    if (!stats.isFile?.()) throw new Error('Only regular files can be downloaded');
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const options = { title: 'Download file', defaultPath: path.basename(source) };
+    const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return { canceled: true };
+    return this.enqueueRemoteMutation(session, () => this.downloadFile(session, projectId, sessionId, source, result.filePath!));
+  }
+
+  async uploadRemoteFile(projectId: string, sessionId: string, localPath: string, remotePath: string, overwrite = false) {
+    const session = this.requireAgentRemoteSession(projectId, sessionId);
+    const local = assertLocalFile(localPath);
+    const target = normalizeRemotePath(remotePath);
+    return this.enqueueRemoteMutation(session, async () => this.uploadFiles(session, projectId, sessionId, path.posix.dirname(target), [{ localPath: local, name: path.posix.basename(target), size: fs.statSync(local).size, conflict: await this.remoteExists(session, target) }], overwrite, target));
+  }
+
+  async downloadRemoteFileTo(projectId: string, sessionId: string, remotePath: string, localPath: string, overwrite = false) {
+    const session = this.requireAgentRemoteSession(projectId, sessionId);
+    const target = assertLocalDestination(localPath, overwrite);
+    const source = normalizeRemotePath(remotePath);
+    const stats = await callSftp<Stats>(await this.getSftp(session), 'lstat', source);
+    if (!stats.isFile?.()) throw new Error('Only regular files can be downloaded');
+    return this.enqueueRemoteMutation(session, () => this.downloadFile(session, projectId, sessionId, source, target));
+  }
+
+  cancelRemoteTransfer(projectId: string, sessionId: string, transferId: string) {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const transfer = session.remoteTransfers.get(transferId);
+    if (!transfer) return false;
+    transfer.canceled = true;
+    return true;
+  }
+
+  assertAgentRemoteFileSession(projectId: string, sessionId: string) {
+    this.requireAgentRemoteSession(projectId, sessionId);
+    return true;
+  }
+
+  recordRemoteFileAudit(projectId: string, input: Omit<ShellFileAuditInput, 'projectId'>) {
+    const session = this.requireSession(projectId, input.sessionId);
+    return this.remoteFileAuditRepository(projectId).save({ ...input, assetId: input.assetId ?? session.value.assetId, projectId });
+  }
+
+  listRemoteFileAudits(projectId: string, limit?: number) {
+    return this.remoteFileAuditRepository(projectId).list(limit);
+  }
+
+  private requireRemoteSession(projectId: string, sessionId: string) {
+    const session = this.requireSession(projectId, sessionId);
+    if (session.value.kind !== 'ssh' || session.value.capabilities.fileAccess !== 'sftp') throw new Error('SFTP file access is available only for SSH sessions');
+    if (session.value.state !== 'ready' && session.value.state !== 'agent_locked') throw new Error('SSH session is not ready');
+    if (!session.sshClient) throw new Error('SSH transport is unavailable');
+    return session;
+  }
+
+  private requireAgentRemoteSession(projectId: string, sessionId: string) {
+    const session = this.requireRemoteSession(projectId, sessionId);
+    const profile = session.value.profileId
+      ? this.listProfiles(projectId).find((candidate) => candidate.id === session.value.profileId)
+      : undefined;
+    if (!profile || profile.kind !== 'ssh' || profile.assetRole !== 'target' || !session.value.assetId) {
+      throw new Error('Agent file access requires a target-bound SSH session');
+    }
+    this.assertAgentTarget(projectId, session.value.assetId);
+    return session;
+  }
+
+  private async getSftp(session: InternalSession): Promise<SFTPWrapper> {
+    if (session.sftp) return session.sftp;
+    if (session.sftpOpening) return session.sftpOpening;
+    if (!session.sshClient) throw new Error('SSH transport is unavailable');
+    session.sftpOpening = new Promise<SFTPWrapper>((resolve, reject) => {
+      session.sshClient?.sftp((error, sftp) => error ? reject(error) : resolve(sftp));
+    }).then((sftp) => {
+      if ((session.value.state !== 'ready' && session.value.state !== 'agent_locked') || !session.sshClient) {
+        sftp.end();
+        throw new Error('SSH session is disconnected');
+      }
+      session.sftp = sftp;
+      session.sftpOpening = undefined;
+      return sftp;
+    }).catch((error) => {
+      session.sftpOpening = undefined;
+      throw error;
+    });
+    return session.sftpOpening;
+  }
+
+  private enqueueRemoteMutation<T>(session: InternalSession, operation: () => Promise<T>) {
+    const previous = session.remoteMutation.catch(() => undefined);
+    let release!: () => void;
+    session.remoteMutation = new Promise<void>((resolve) => { release = resolve; });
+    return previous.then(() => {
+      if ((session.value.state !== 'ready' && session.value.state !== 'agent_locked') || !session.sshClient) {
+        throw new Error('SSH session is disconnected');
+      }
+      return operation();
+    }).finally(release);
+  }
+
+  private async replaceRemoteFile(sftp: SFTPWrapper, temporary: string, target: string, replacing: boolean) {
+    if (replacing) {
+      if (typeof sftp.ext_openssh_rename !== 'function') throw new Error('Remote server does not support safe file replacement');
+      await callSftp<void>(sftp, 'ext_openssh_rename', temporary, target);
+      return;
+    }
+    await callSftp<void>(sftp, 'rename', temporary, target);
+  }
+
+  private async unlinkRemoteQuietly(sftp: SFTPWrapper, remotePath: string) {
+    try { await callSftp<void>(sftp, 'unlink', remotePath); } catch { /* best effort cleanup */ }
+  }
+
+  private async remoteExists(session: InternalSession, remotePath: string) {
+    try { await callSftp<Stats>(await this.getSftp(session), 'lstat', remotePath); return true; } catch (error) {
+      if (isMissingRemotePath(error)) return false;
+      throw error;
+    }
+  }
+
+  private async summarizeRemoteTree(sftp: SFTPWrapper, remotePath: string, stats: Stats): Promise<{ entries: number; bytes: number }> {
+    if (!stats.isDirectory?.() || stats.isSymbolicLink?.()) return { entries: 1, bytes: Number(stats.size ?? 0) };
+    const entries = await callSftp<FileEntryWithStats[]>(sftp, 'readdir', remotePath);
+    let summary = { entries: 1, bytes: 0 };
+    for (const entry of entries) {
+      const childStats = await callSftp<Stats>(sftp, 'lstat', path.posix.join(remotePath, entry.filename));
+      const child = await this.summarizeRemoteTree(sftp, path.posix.join(remotePath, entry.filename), childStats);
+      summary = { entries: summary.entries + child.entries, bytes: summary.bytes + child.bytes };
+    }
+    return summary;
+  }
+
+  private async deleteRemoteTree(sftp: SFTPWrapper, remotePath: string, recursive: boolean) {
+    const stats = await callSftp<Stats>(sftp, 'lstat', remotePath);
+    if (stats.isDirectory?.() && !stats.isSymbolicLink?.()) {
+      const entries = await callSftp<FileEntryWithStats[]>(sftp, 'readdir', remotePath);
+      if (entries.length > 0 && !recursive) throw new Error('Recursive confirmation is required');
+      for (const entry of entries) await this.deleteRemoteTree(sftp, path.posix.join(remotePath, entry.filename), true);
+      await callSftp<void>(sftp, 'rmdir', remotePath);
+      return;
+    }
+    await callSftp<void>(sftp, 'unlink', remotePath);
+  }
+
+  private async uploadFiles(
+    session: InternalSession,
+    projectId: string,
+    sessionId: string,
+    remoteDirectory: string,
+    files: Array<{ localPath: string; name: string; size: number; conflict: boolean }>,
+    overwrite: boolean,
+    exactTarget?: string,
+  ) {
+    const transferId = createShellId('transfer');
+    const transfer = { canceled: false, temporaryPaths: [] as string[] };
+    session.remoteTransfers.set(transferId, transfer);
+    const results: Array<{ name: string; size: number; status: 'completed' | 'canceled' }> = [];
+    try {
+      for (const file of files) {
+        if (transfer.canceled) break;
+        const target = exactTarget ?? path.posix.join(remoteDirectory, file.name);
+        const targetExists = await this.remoteExists(session, target);
+        if ((file.conflict || targetExists) && !overwrite) throw new Error(`Remote upload target already exists: ${target}`);
+        const replacing = targetExists;
+        const temporary = `${target}.hexestra-${transferId}`;
+        transfer.temporaryPaths.push(temporary);
+        const sftp = await this.getSftp(session);
+        this.emitTransfer({ projectId, sessionId, transferId, direction: 'upload', name: file.name, transferred: 0, total: file.size, status: 'running' });
+        try {
+          await callSftp<void>(sftp, 'fastPut', file.localPath, temporary, {
+            fileSize: file.size,
+            step: (_total: number, transferred: number) => this.emitTransfer({ projectId, sessionId, transferId, direction: 'upload', name: file.name, transferred, total: file.size, status: 'running' }),
+          });
+          if (transfer.canceled) break;
+          await this.replaceRemoteFile(sftp, temporary, target, replacing);
+          results.push({ name: file.name, size: file.size, status: 'completed' });
+          this.emitTransfer({ projectId, sessionId, transferId, direction: 'upload', name: file.name, transferred: file.size, total: file.size, status: 'completed' });
+          this.emitFileChanged({ projectId, sessionId, directory: remoteDirectory });
+        } finally {
+          await this.unlinkRemoteQuietly(sftp, temporary);
+        }
+      }
+      if (transfer.canceled) this.emitTransfer({ projectId, sessionId, transferId, direction: 'upload', name: '', transferred: 0, total: 0, status: 'canceled' });
+      return { transferId, results, canceled: transfer.canceled };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (transfer.canceled) {
+        this.emitTransfer({ projectId, sessionId, transferId, direction: 'upload', name: '', transferred: 0, total: 0, status: 'canceled' });
+        return { transferId, results, canceled: true };
+      }
+      this.emitTransfer({ projectId, sessionId, transferId, direction: 'upload', name: '', transferred: 0, total: 0, status: 'failed', error: message });
+      throw error;
+    } finally {
+      session.remoteTransfers.delete(transferId);
+    }
+  }
+
+  private async downloadFile(session: InternalSession, projectId: string, sessionId: string, source: string, destination: string) {
+    const transferId = createShellId('transfer');
+    const transfer = { canceled: false, temporaryPaths: [] as string[] };
+    session.remoteTransfers.set(transferId, transfer);
+    const temporary = `${destination}.hexestra-${transferId}.part`;
+    transfer.temporaryPaths.push(temporary);
+    try {
+      const stat = await callSftp<Stats>(await this.getSftp(session), 'lstat', source);
+      this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred: 0, total: Number(stat.size), status: 'running' });
+      await callSftp<void>(await this.getSftp(session), 'fastGet', source, temporary, {
+        fileSize: Number(stat.size),
+        step: (_total: number, transferred: number) => this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred, total: Number(stat.size), status: 'running' }),
+      });
+      if (transfer.canceled) {
+        this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred: 0, total: Number(stat.size), status: 'canceled' });
+        return { transferId, canceled: true };
+      }
+      replaceLocalFile(temporary, destination, transferId);
+      this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred: Number(stat.size), total: Number(stat.size), status: 'completed' });
+      return { transferId, canceled: false, path: destination, size: Number(stat.size) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (transfer.canceled) {
+        this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred: 0, total: 0, status: 'canceled' });
+        return { transferId, canceled: true };
+      }
+      this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred: 0, total: 0, status: 'failed', error: message });
+      throw error;
+    } finally {
+      try { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); } catch { /* best effort cleanup */ }
+      session.remoteTransfers.delete(transferId);
+    }
+  }
+
+  private emitFileChanged(payload: ShellFileChangedEvent) {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send(SHELL_IPC.FILE_CHANGED, payload);
+    }
+  }
+
+  private emitTransfer(payload: ShellFileTransferEvent) {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send(SHELL_IPC.FILE_TRANSFER, payload);
+    }
+  }
+
   destroyProject(projectId: string) {
     for (const listener of [...this.listeners.values()]) {
       if (listener.projectId === projectId) void this.stopListener(projectId, listener.profile.id);
@@ -678,6 +1155,7 @@ export class ShellService {
     }
     this.webshellHealthRepositories.get(projectId)?.close();
     this.webshellHealthRepositories.delete(projectId);
+    this.remoteFileAuditRepositories.delete(projectId);
   }
 
   disconnectProjectSessions(projectId: string) {
@@ -693,6 +1171,7 @@ export class ShellService {
     this.webshellResolutions.clear();
     for (const repository of this.webshellHealthRepositories.values()) repository.close();
     this.webshellHealthRepositories.clear();
+    this.remoteFileAuditRepositories.clear();
   }
 
   private createInternalSession(projectId: string, profile: ShellProfile, ownerWindowId?: number, ownerTabId?: string): InternalSession {
@@ -715,6 +1194,7 @@ export class ShellService {
           agentExecute: profile.kind === 'webshell'
             ? profile.assetRole === 'target'
             : profile.assetRole === 'target' || profile.kind !== 'ssh',
+          fileAccess: profile.kind === 'ssh' ? 'sftp' : 'none',
         },
         ownerWindowId,
         ownerTabId,
@@ -723,6 +1203,8 @@ export class ShellService {
       },
       transcript: '',
       previewBytes: 0,
+      remoteMutation: Promise.resolve(),
+      remoteTransfers: new Map(),
     };
   }
 
@@ -1228,13 +1710,15 @@ export class ShellService {
         revision: 0,
         peer: { address: socket.remoteAddress ?? 'unknown', port: socket.remotePort ?? 0 },
         shellFlavor: profile.shellFlavor,
-        capabilities: { resize: false, interrupt: true, exitCode: false, agentExecute: false },
+      capabilities: { resize: false, interrupt: true, exitCode: false, agentExecute: false, fileAccess: 'none' },
         createdAt: now,
         lastActivityAt: now,
       },
       transcript: '',
       socket,
       previewBytes: 0,
+      remoteMutation: Promise.resolve(),
+      remoteTransfers: new Map(),
     };
     this.sessions.set(session.value.id, session);
     socket.on('data', (data) => this.handleData(session, data.toString('utf8')));
@@ -1338,6 +1822,7 @@ export class ShellService {
   }
 
   private handleDisconnect(session: InternalSession) {
+    this.closeRemoteResources(session);
     if (session.activeCommand) this.completeCommand(session, 'disconnected');
     if (session.value.state !== 'failed' && session.value.state !== 'disconnected' && !isFinal(session.value.state)) {
       this.transition(session, 'disconnected');
@@ -1346,6 +1831,7 @@ export class ShellService {
   }
 
   private fail(session: InternalSession, error: unknown) {
+    this.closeRemoteResources(session);
     session.value.error = errorMessage(error);
     if (session.activeCommand) this.completeCommand(session, 'unknown');
     if (session.value.state !== 'failed' && session.value.state !== 'disconnected' && !isFinal(session.value.state)) {
@@ -1376,15 +1862,27 @@ export class ShellService {
       session.webshell.activeHumanCommand = undefined;
     }
     if (session.pty) terminatePtyProcessTree(session.pty);
+    this.closeRemoteResources(session);
     session.sshChannel?.close();
     session.sshClient?.end();
     session.jumpClient?.end();
     session.socket?.destroy();
     session.pty = undefined;
     session.sshChannel = undefined;
+    session.sftp = undefined;
+    session.sftpOpening = undefined;
+    session.sftpHome = undefined;
     session.sshClient = undefined;
     session.jumpClient = undefined;
     session.socket = undefined;
+  }
+
+  private closeRemoteResources(session: InternalSession) {
+    for (const transfer of session.remoteTransfers.values()) transfer.canceled = true;
+    session.sftp?.end();
+    session.sftp = undefined;
+    session.sftpOpening = undefined;
+    session.sftpHome = undefined;
   }
 
   private appendTranscript(session: InternalSession, data: string) {
@@ -1451,6 +1949,100 @@ export class ShellService {
     this.webshellHealthRepositories.set(projectId, repository);
     return repository;
   }
+
+  private remoteFileAuditRepository(projectId: string) {
+    const existing = this.remoteFileAuditRepositories.get(projectId);
+    if (existing) return existing;
+    const repository = new ShellFileAuditRepository(sessionService.getSessionPath(projectId));
+    this.remoteFileAuditRepositories.set(projectId, repository);
+    return repository;
+  }
+}
+
+function callSftp<T>(sftp: SFTPWrapper, method: string, ...args: unknown[]): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const fn = (sftp as unknown as Record<string, unknown>)[method];
+    if (typeof fn !== 'function') {
+      reject(new Error(`SFTP operation is unavailable: ${method}`));
+      return;
+    }
+    (fn as (...values: unknown[]) => void).call(sftp, ...args, (error: unknown, value: unknown) => {
+      if (error) reject(error);
+      else resolve(value as T);
+    });
+  });
+}
+
+function normalizeRemotePath(value: string) {
+  if (typeof value !== 'string' || !value.trim() || value.includes('\0')) throw new Error('Invalid remote path');
+  const replaced = value.replace(/\\/g, '/');
+  if (!replaced.startsWith('/')) throw new Error('Remote paths must be absolute');
+  const normalized = path.posix.normalize(replaced);
+  if (normalized === '.' || normalized.includes('\0')) throw new Error('Invalid remote path');
+  return normalized;
+}
+
+function remoteEntryType(attrs: Pick<Stats, 'isDirectory' | 'isFile' | 'isSymbolicLink' | 'mode'>) {
+  if (attrs.isSymbolicLink?.()) return 'symlink' as const;
+  if (attrs.isDirectory?.()) return 'directory' as const;
+  if (attrs.isFile?.()) return 'file' as const;
+  return 'other' as const;
+}
+
+function remoteStatsType(stats: Stats) {
+  return remoteEntryType(stats);
+}
+
+function remoteRevision(buffer: Buffer, stats: Pick<Stats, 'size' | 'mtime'>) {
+  return `${Number(stats.size)}:${Number(stats.mtime)}:${crypto.createHash('sha256').update(buffer).digest('hex')}`;
+}
+
+function isBinaryBuffer(buffer: Buffer) {
+  if (buffer.includes(0)) return true;
+  try {
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    return Buffer.from(decoded, 'utf8').compare(buffer) !== 0;
+  } catch {
+    return true;
+  }
+}
+
+function isMissingRemotePath(error: unknown) {
+  const candidate = error as { code?: unknown; message?: unknown };
+  const text = `${String(candidate?.code ?? '')} ${String(candidate?.message ?? error)}`.toLowerCase();
+  return text.includes('no such file') || text.includes('enoent') || text.includes('ssh_fx_no_such_file');
+}
+
+function assertLocalFile(value: string) {
+  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) throw new Error('Local file path must be absolute');
+  const resolved = fs.realpathSync(value);
+  const stat = fs.statSync(resolved);
+  if (!stat.isFile()) throw new Error('Only regular local files can be transferred');
+  return resolved;
+}
+
+function assertLocalDestination(value: string, overwrite: boolean) {
+  if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0')) throw new Error('Local file path must be absolute');
+  const resolved = path.resolve(value);
+  if (fs.existsSync(resolved) && !overwrite) throw new Error('Local download target already exists');
+  if (!fs.existsSync(path.dirname(resolved))) throw new Error('Local download directory does not exist');
+  return resolved;
+}
+
+function replaceLocalFile(temporary: string, destination: string, transferId: string) {
+  if (!fs.existsSync(destination)) {
+    fs.renameSync(temporary, destination);
+    return;
+  }
+  const backup = `${destination}.hexestra-backup-${transferId}`;
+  fs.renameSync(destination, backup);
+  try {
+    fs.renameSync(temporary, destination);
+  } catch (error) {
+    try { if (!fs.existsSync(destination) && fs.existsSync(backup)) fs.renameSync(backup, destination); } catch { /* best effort restore */ }
+    throw error;
+  }
+  try { if (fs.existsSync(backup)) fs.unlinkSync(backup); } catch { /* best effort cleanup */ }
 }
 
 function ptyCommand(profile: ShellProfile) {

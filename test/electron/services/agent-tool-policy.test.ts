@@ -3,6 +3,7 @@ import {
   isManagedRecordFileMutation,
   isReadOnlyHexestraTool,
   sanitizeAgentToolInputForDisplay,
+  sanitizeAgentToolOutputForDisplay,
 } from '@electron/services/agent-tool-policy';
 
 describe('Agent tool policy', () => {
@@ -21,6 +22,9 @@ describe('Agent tool policy', () => {
     expect(isReadOnlyHexestraTool('task_list')).toBe(true);
     expect(isReadOnlyHexestraTool('traffic_capture_status')).toBe(true);
     expect(isReadOnlyHexestraTool('shell_profile_status')).toBe(true);
+    expect(isReadOnlyHexestraTool('shell_file_list')).toBe(true);
+    expect(isReadOnlyHexestraTool('shell_file_read')).toBe(true);
+    expect(isReadOnlyHexestraTool('shell_file_delete_preview')).toBe(true);
     expect(isReadOnlyHexestraTool('proxy_status')).toBe(true);
     expect(isReadOnlyHexestraTool('proxy_nodes_list')).toBe(true);
     expect(isReadOnlyHexestraTool('proxy_chains_list')).toBe(true);
@@ -51,6 +55,12 @@ describe('Agent tool policy', () => {
     expect(isReadOnlyHexestraTool('proxy_chain_delete')).toBe(false);
     expect(isReadOnlyHexestraTool('proxy_enforcement_set')).toBe(false);
     expect(isReadOnlyHexestraTool('proxy_runtime_stop')).toBe(false);
+    expect(isReadOnlyHexestraTool('shell_file_write')).toBe(false);
+    expect(isReadOnlyHexestraTool('shell_file_mkdir')).toBe(false);
+    expect(isReadOnlyHexestraTool('shell_file_rename')).toBe(false);
+    expect(isReadOnlyHexestraTool('shell_file_delete')).toBe(false);
+    expect(isReadOnlyHexestraTool('shell_file_upload')).toBe(false);
+    expect(isReadOnlyHexestraTool('shell_file_download')).toBe(false);
   });
 
   it('redacts write-only proxy node values before approval display', () => {
@@ -76,5 +86,23 @@ describe('Agent tool policy', () => {
     expect(isManagedRecordFileMutation('Edit', { file_path: '/mnt/d/project/reports/final.md' })).toBe(true);
     expect(isManagedRecordFileMutation('Write', { file_path: 'notes/scan.txt' })).toBe(false);
     expect(isManagedRecordFileMutation('Bash', { command: 'echo test' })).toBe(false);
+  });
+
+  it('replaces remote file contents with length and hash in approval display', () => {
+    const displayed = sanitizeAgentToolInputForDisplay('shell_file_write', {
+      projectId: 'project-1', sessionId: 'ssh-1', remotePath: '/tmp/secret.txt',
+      content: 'do not persist this body', encoding: 'utf8',
+    });
+    expect(displayed).toMatchObject({ projectId: 'project-1', remotePath: '/tmp/secret.txt' });
+    expect(displayed.content).toMatch(/^\[\d+ bytes; sha256:[a-f0-9]{64}\]$/);
+  });
+
+  it('redacts remote file bodies from persisted tool output while retaining metadata', () => {
+    const displayed = sanitizeAgentToolOutputForDisplay('shell_file_read', JSON.stringify({
+      path: '/tmp/secret.txt', content: 'do not persist this body', encoding: 'utf8', size: 23,
+    }));
+    expect(displayed).not.toContain('do not persist this body');
+    expect(displayed).toContain('sha256:');
+    expect(JSON.parse(displayed)).toMatchObject({ path: '/tmp/secret.txt', size: 23 });
   });
 });

@@ -31,8 +31,22 @@ export const SHELL_IPC = {
   AUDIT_READ: 'shell:audit:read',
   AUDIT_DELETE: 'shell:audit:delete',
   SAVE_EVIDENCE: 'shell:save-evidence',
+  FILE_HOME: 'shell:file:home',
+  FILE_LIST: 'shell:file:list',
+  FILE_READ: 'shell:file:read',
+  FILE_WRITE: 'shell:file:write',
+  FILE_MKDIR: 'shell:file:mkdir',
+  FILE_RENAME: 'shell:file:rename',
+  FILE_DELETE_PREVIEW: 'shell:file:delete-preview',
+  FILE_DELETE: 'shell:file:delete',
+  FILE_UPLOAD_PICK: 'shell:file:upload-pick',
+  FILE_UPLOAD_START: 'shell:file:upload-start',
+  FILE_DOWNLOAD: 'shell:file:download',
+  FILE_TRANSFER_CANCEL: 'shell:file:transfer-cancel',
   OUTPUT: 'shell:output',
   CHANGED: 'shell:changed',
+  FILE_CHANGED: 'shell:file:changed',
+  FILE_TRANSFER: 'shell:file:transfer',
 } as const;
 
 export const LOCAL_OPERATOR_ASSET_ID = 'local-operator';
@@ -181,6 +195,7 @@ export interface ShellSessionCapabilities {
   interrupt: boolean;
   exitCode: boolean;
   agentExecute: boolean;
+  fileAccess?: 'none' | 'sftp';
 }
 
 export interface ShellAgentLease {
@@ -324,6 +339,61 @@ export interface ShellChangedEvent {
   sessionId?: string;
   listenerId?: string;
   profiles?: boolean;
+}
+
+export type ShellRemoteFileType = 'file' | 'directory' | 'symlink' | 'other';
+
+export interface ShellRemoteFileEntry {
+  name: string;
+  path: string;
+  type: ShellRemoteFileType;
+  size: number;
+  modifiedAt: string;
+  mode?: number;
+}
+
+export interface ShellRemoteFileContent {
+  path: string;
+  content?: string;
+  encoding?: 'utf8' | 'base64';
+  binary: boolean;
+  size: number;
+  modifiedAt: string;
+  revision: string;
+}
+
+export interface ShellRemoteDeletePreview {
+  token: string;
+  path: string;
+  type: ShellRemoteFileType;
+  entries: number;
+  bytes: number;
+  recursive: boolean;
+  expiresAt: string;
+}
+
+export interface ShellRemoteUploadPlan {
+  selectionId: string;
+  files: Array<{ name: string; size: number; conflict: boolean }>;
+  expiresAt: string;
+}
+
+export interface ShellFileTransferEvent {
+  projectId: string;
+  sessionId: string;
+  transferId: string;
+  direction: 'upload' | 'download';
+  name: string;
+  transferred: number;
+  total: number;
+  status: 'running' | 'completed' | 'failed' | 'canceled';
+  error?: string;
+}
+
+export interface ShellFileChangedEvent {
+  projectId: string;
+  sessionId: string;
+  directory?: string;
 }
 
 export interface ShellOutputEvent {

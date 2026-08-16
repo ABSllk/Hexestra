@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 const READ_ONLY_HEXESTRA_TOOLS = new Set([
   'browser_read',
   'browser_tabs',
@@ -21,6 +23,9 @@ const READ_ONLY_HEXESTRA_TOOLS = new Set([
   'shell_sessions',
   'shell_read',
   'shell_audit_list',
+  'shell_file_list',
+  'shell_file_read',
+  'shell_file_delete_preview',
   'shell_profile_status',
   'proxy_status',
   'proxy_nodes_list',
@@ -50,6 +55,14 @@ export function sanitizeAgentToolInputForDisplay(
   input: Record<string, unknown>,
 ): Record<string, unknown> {
   const localName = toolName.replace(/^mcp__[^_]+__/, '');
+  if (localName === 'shell_file_write' && typeof input.content === 'string') {
+    const encoding = input.encoding === 'base64' ? 'base64' : 'utf8';
+    const content = Buffer.from(input.content, encoding);
+    return {
+      ...input,
+      content: `[${content.byteLength} bytes; sha256:${crypto.createHash('sha256').update(content).digest('hex')}]`,
+    };
+  }
   const looksLikeProxyNodeInput = PROXY_NODE_INPUT_SOURCES.has(String(input.source))
     && Object.prototype.hasOwnProperty.call(input, 'value');
   if (!WRITE_ONLY_PROXY_NODE_TOOLS.has(localName) && !looksLikeProxyNodeInput) return input;
@@ -60,6 +73,23 @@ export function sanitizeAgentToolInputForDisplay(
     ...(typeof input.name === 'string' ? { name: input.name } : {}),
     ...(Object.prototype.hasOwnProperty.call(input, 'value') ? { value: '[REDACTED]' } : {}),
   };
+}
+
+export function sanitizeAgentToolOutputForDisplay(toolName: string, output: string) {
+  const localName = toolName.replace(/^mcp__[^_]+__/, '');
+  if (localName !== 'shell_file_read' && localName !== 'shell_file_write') return output;
+  try {
+    const parsed = JSON.parse(output) as Record<string, unknown>;
+    if (typeof parsed.content !== 'string') return output;
+    const encoding = parsed.encoding === 'base64' ? 'base64' : 'utf8';
+    const content = Buffer.from(parsed.content, encoding);
+    return JSON.stringify({
+      ...parsed,
+      content: `[${content.byteLength} bytes; sha256:${crypto.createHash('sha256').update(content).digest('hex')}]`,
+    });
+  } catch {
+    return output;
+  }
 }
 
 const DIRECT_FILE_MUTATION_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);

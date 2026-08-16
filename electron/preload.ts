@@ -30,6 +30,9 @@ const INVOKE_CHANNELS = new Set([
   'shell:connect-template:list', 'shell:connect-command:build', 'shell:public-ip:detect',
   'shell:reverse:bind', 'shell:reverse:reject',
   'shell:audit:list', 'shell:audit:read', 'shell:audit:delete', 'shell:save-evidence',
+  'shell:file:home', 'shell:file:list', 'shell:file:read', 'shell:file:write',
+  'shell:file:mkdir', 'shell:file:rename', 'shell:file:delete-preview', 'shell:file:delete',
+  'shell:file:upload-pick', 'shell:file:upload-start', 'shell:file:download', 'shell:file:transfer-cancel',
   'netmap:get', 'netmap:layout:get', 'netmap:layout:update',
   'tools:inventory', 'tools:run', 'tools:kill', 'tools:status', 'tools:runs',
   'agent:activate', 'agent:send', 'agent:branch', 'agent:branch:activate', 'agent:conversation:new',
@@ -65,6 +68,7 @@ const EVENT_CHANNELS = new Set([
   'agent:commands-changed',
   'egress-proxy:changed',
   'shell:output', 'shell:changed',
+  'shell:file:changed', 'shell:file:transfer',
   'menu:open-folder', 'menu:create-project-folder',
   'app:settings:changed', 'dialog:requested',
 ]);

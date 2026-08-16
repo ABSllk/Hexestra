@@ -181,6 +181,23 @@ describe('AgentTimelineBuilder', () => {
     expect(JSON.stringify(snapshot)).not.toContain('batch-secret-must-not-be-persisted');
   });
 
+  it('redacts remote file bodies from persisted tool activities', () => {
+    const timeline = new AgentTimelineBuilder('turn-remote-file');
+    timeline.consume(sdkMessage({
+      type: 'assistant', uuid: 'assistant-remote-file', message: {
+        content: [{ type: 'tool_use', id: 'remote-read', name: 'mcp__hexestra__shell_file_read', input: { remotePath: '/tmp/secret.txt' } }],
+      },
+    }));
+    timeline.consume(sdkMessage({
+      type: 'user', message: {
+        content: [{ type: 'tool_result', tool_use_id: 'remote-read', content: JSON.stringify({ path: '/tmp/secret.txt', content: 'remote-secret-body', encoding: 'utf8', size: 18 }) }],
+      },
+    }));
+    const snapshot = timeline.snapshot();
+    expect(JSON.stringify(snapshot)).not.toContain('remote-secret-body');
+    expect(snapshot[0].output).toContain('sha256:');
+  });
+
   it('projects local slash-command output and manual compaction confirmation', () => {
     const timeline = new AgentTimelineBuilder('turn-command');
 

@@ -45,6 +45,16 @@ describe('useTabStore project workspaces', () => {
     ]);
   });
 
+  it('omits transient remote editor tabs from project workspace state', () => {
+    const workspace = serializeProjectWorkspace({
+      tabs: [{ id: 'remote-1', type: 'editor', title: 'remote.txt', closable: true, transient: true, data: { fileSource: 'remote', filePath: '/tmp/remote.txt' } }],
+      activeTabId: 'remote-1',
+      nextTabNumber: 2,
+    });
+    expect(workspace.tabs).toEqual([]);
+    expect(workspace.activeTabId).toBeNull();
+  });
+
   it('opens one reusable detail tab per traffic flow', () => {
     const summary = {
       id: 'flow-1',

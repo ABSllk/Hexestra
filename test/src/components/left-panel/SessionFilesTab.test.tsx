@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   rootFiles: [{ name: 'docs', path: 'docs', type: 'directory', size: 0, modifiedAt: 'now' }] as SessionFileEntry[],
   loadFiles: vi.fn(),
   openTab: vi.fn(),
+  invoke: vi.fn(),
   changeListener: undefined as ((payload: unknown) => void) | undefined,
 }));
 
@@ -28,10 +29,11 @@ describe('SessionFilesTab', () => {
   beforeEach(() => {
     mocks.changeListener = undefined;
     mocks.loadFiles.mockReset();
+    mocks.invoke.mockReset();
     Object.defineProperty(window, 'hexestra', {
       configurable: true,
       value: {
-        invoke: vi.fn(),
+        invoke: mocks.invoke,
         on: vi.fn((channel: string, listener: (payload: unknown) => void) => {
           if (channel === 'session:data-changed') mocks.changeListener = listener;
           return () => {};
@@ -75,5 +77,19 @@ describe('SessionFilesTab', () => {
     expect(screen.queryByText('/docs')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Project Two' })).toBeInTheDocument();
     expect(screen.getByText('fresh.py')).toBeInTheDocument();
+  });
+
+  it('offers ready SSH sessions without changing the default Project source', async () => {
+    mocks.invoke.mockImplementation((channel: string) => channel === 'shell:session:list'
+      ? Promise.resolve([{
+        id: 'ssh-1', projectId: 'project-1', kind: 'ssh', title: 'Staging SSH', state: 'ready', revision: 1,
+        shellFlavor: 'posix', capabilities: { resize: true, interrupt: true, exitCode: true, agentExecute: true, fileAccess: 'sftp' },
+        createdAt: 'now', lastActivityAt: 'now',
+      }])
+      : Promise.resolve(undefined));
+    render(<SessionFilesTab />);
+    expect(screen.getByRole('option', { name: 'Project' })).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: 'Staging SSH · SSH' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'File source' })).toHaveValue('project');
   });
 });
