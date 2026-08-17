@@ -46,12 +46,9 @@ export interface BrowserNavigateRequest extends BrowserIdentity {
   url: string;
 }
 
-export type BrowserScopeState = 'in_scope' | 'out_of_scope';
-
 export interface BrowserLocationState {
   url: string;
   title: string;
-  scopeState: BrowserScopeState;
 }
 
 export interface BrowserState {
@@ -61,7 +58,6 @@ export interface BrowserState {
   canGoBack: boolean;
   canGoForward: boolean;
   visible: boolean;
-  scopeState: BrowserScopeState;
   error: string | null;
 }
 
@@ -76,7 +72,6 @@ export interface BrowserTabDescriptor extends BrowserIdentity {
 export interface BrowserPageSnapshot {
   url: string;
   title: string;
-  scopeState: BrowserScopeState;
   text: string;
   elements: Array<{ ref: string; tag: string; text: string; type?: string }>;
 }

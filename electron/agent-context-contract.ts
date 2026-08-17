@@ -22,7 +22,6 @@ export interface TrafficFlowAgentContextRef {
   preview?: string;
   statusCode?: number;
   state: string;
-  scopeState: 'in_scope' | 'out_of_scope';
 }
 
 export interface ShellCommandAgentContextRef {
@@ -85,7 +84,6 @@ function normalizeAgentContextRef(value: unknown, expectedProjectId?: string): A
   }
   if (value.kind === 'traffic-flow') {
     if (!isIdentifier(value.flowId) || typeof value.method !== 'string' || typeof value.url !== 'string') return null;
-    if (value.scopeState !== 'in_scope' && value.scopeState !== 'out_of_scope') return null;
     return {
       kind: 'traffic-flow', projectId: value.projectId, flowId: value.flowId,
       method: value.method.slice(0, 32), url: value.url.slice(0, 8_192),
@@ -93,7 +91,6 @@ function normalizeAgentContextRef(value: unknown, expectedProjectId?: string): A
       preview: optionalString(value.preview)?.slice(0, 2_000),
       statusCode: typeof value.statusCode === 'number' && Number.isInteger(value.statusCode) ? value.statusCode : undefined,
       state: typeof value.state === 'string' ? value.state.slice(0, 64) : 'unknown',
-      scopeState: value.scopeState,
     };
   }
   if (value.kind === 'browser-page' && isIdentifier(value.tabId)

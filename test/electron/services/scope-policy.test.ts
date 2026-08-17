@@ -1,50 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import { deriveScopedAssetStatus, isValueInScope } from '@electron/services/scope-policy';
+import { isValueExcluded, isValueInScope, scopeAdvisoryForValues, scopeAnnotationForValues } from '@electron/services/scope-policy';
 
-describe('scope policy', () => {
-  const scope = { inScope: ['example.com', '192.0.2.0/24'], outOfScope: ['auth.example.com', '192.0.2.200'] };
-
-  it('matches domains, subdomains, URLs, and CIDRs with exclusions winning', () => {
-    expect(isValueInScope(scope, 'api.example.com')).toBe(true);
+describe('scope policy annotations', () => {
+  it('matches whitelist domains, URLs, and CIDRs as authorized', () => {
+    const scope = { mode: 'whitelist' as const, allowRules: ['example.com', '192.0.2.0/24'], excludeRules: ['auth.example.com'] };
+    expect(scopeAnnotationForValues(scope, ['api.example.com'])).toBe('authorized');
     expect(isValueInScope(scope, 'https://shop.example.com/login')).toBe(true);
-    expect(isValueInScope(scope, 'auth.example.com')).toBe(false);
+    expect(isValueInScope(scope, 'auth.example.com')).toBe(true);
     expect(isValueInScope(scope, '192.0.2.10')).toBe(true);
-    expect(isValueInScope(scope, '192.0.2.200')).toBe(false);
-    expect(isValueInScope(scope, '198.51.100.1')).toBe(false);
+    expect(isValueExcluded(scope, 'auth.example.com')).toBe(false);
   });
 
-  it('defaults to deny when scope is missing', () => {
+  it('matches blacklist exclusions without changing authorization semantics', () => {
+    const scope = { mode: 'blacklist' as const, allowRules: ['example.com'], excludeRules: ['auth.example.com', '192.0.2.200'] };
+    expect(scopeAnnotationForValues(scope, ['auth.example.com'])).toBe('excluded');
+    expect(scopeAnnotationForValues(scope, ['api.example.com'])).toBeUndefined();
+    expect(isValueExcluded(scope, 'auth.example.com')).toBe(true);
+    expect(isValueInScope(scope, 'api.example.com')).toBe(false);
+  });
+
+  it('defaults to an empty blacklist when scope is missing', () => {
+    expect(scopeAnnotationForValues(undefined, ['example.com'])).toBeUndefined();
     expect(isValueInScope(undefined, 'example.com')).toBe(false);
   });
 
-  it('derives scope visibility without replacing the operational status', () => {
-    expect(deriveScopedAssetStatus(scope, ['api.example.com'], 'scanned')).toBe('scanned');
-    expect(deriveScopedAssetStatus(scope, ['other.example.net'], 'scanned')).toBe('out_of_scope');
-    expect(deriveScopedAssetStatus(scope, ['api.example.com'], 'out_of_scope')).toBe('untested');
-  });
-
-  it('accepts explicitly listed scope targets while exclusions still win', () => {
-    const targeted = { inScope: [], outOfScope: ['blocked.example.net'], targets: ['api.example.net'] };
-    expect(isValueInScope(targeted, 'api.example.net')).toBe(true);
-    expect(isValueInScope(targeted, 'blocked.example.net')).toBe(false);
-    expect(deriveScopedAssetStatus(
-      { inScope: ['192.0.2.0/24'], outOfScope: ['blocked.example.net'] },
-      ['192.0.2.10', 'blocked.example.net'],
-      'scanned',
-    )).toBe('out_of_scope');
-  });
-
-  it('normalizes IPv4 and IPv6 CIDRs and applies exclusions first', () => {
-    const dualStack = {
-      inScope: ['192.0.2.129/24', '2001:0db8:1234::/48'],
-      outOfScope: ['192.0.2.200', '2001:db8:1234::dead'],
+  it('normalizes IPv4 and IPv6 CIDRs', () => {
+    const scope = {
+      mode: 'whitelist' as const,
+      allowRules: ['192.0.2.129/24', '2001:0db8:1234::/48'],
+      excludeRules: [],
     };
-    expect(isValueInScope(dualStack, '192.0.2.10')).toBe(true);
-    expect(isValueInScope(dualStack, '192.0.2.200')).toBe(false);
-    expect(isValueInScope(dualStack, '2001:db8:1234:1::42')).toBe(true);
-    expect(isValueInScope(dualStack, '2001:db8:1234:5678::/64')).toBe(true);
-    expect(isValueInScope(dualStack, '192.0.2.128/25')).toBe(true);
-    expect(isValueInScope(dualStack, 'https://[2001:db8:1234::dead]/')).toBe(false);
-    expect(isValueInScope(dualStack, '2001:db8:9999::1')).toBe(false);
+    expect(isValueInScope(scope, '192.0.2.10')).toBe(true);
+    expect(isValueInScope(scope, '2001:db8:1234:1::42')).toBe(true);
+    expect(isValueInScope(scope, '2001:db8:9999::1')).toBe(false);
+  });
+
+  it('returns advisory labels without turning scope into an execution gate', () => {
+    const whitelist = { mode: 'whitelist' as const, allowRules: ['example.com'], excludeRules: [] };
+    expect(scopeAdvisoryForValues(whitelist, ['api.example.com'])).toBe('included');
+    expect(scopeAdvisoryForValues(whitelist, ['other.test'])).toBe('unlisted');
+
+    const blacklist = { mode: 'blacklist' as const, allowRules: [], excludeRules: ['blocked.example.com'] };
+    expect(scopeAdvisoryForValues(blacklist, ['blocked.example.com'])).toBe('excluded');
+    expect(scopeAdvisoryForValues(blacklist, ['other.example.com'])).toBe('neutral');
   });
 });

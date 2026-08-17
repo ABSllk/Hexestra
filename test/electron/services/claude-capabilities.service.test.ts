@@ -29,18 +29,21 @@ const settings: AgentConnectionSettings = {
 let root = '';
 let home = '';
 let project = '';
+let userData = '';
 let service: ClaudeCapabilitiesService;
 
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-capabilities-'));
   home = path.join(root, 'home');
   project = path.join(root, 'project');
+  userData = path.join(root, 'user-data');
   fs.mkdirSync(home, { recursive: true });
   fs.mkdirSync(project, { recursive: true });
   service = new ClaudeCapabilitiesService({
     getSettings: () => settings,
     getSessionPath: () => project,
     resolveRuntimeHome: async () => home,
+    getGlobalUserPath: () => path.join(userData, 'user'),
   }, false);
 });
 
@@ -57,14 +60,14 @@ describe('Claude capability management', () => {
       content: '---\nname: recon-helper\ndescription: Recon workflow\n---\n\n# Recon',
     });
     expect(created.description).toBe('Recon workflow');
-    fs.writeFileSync(path.join(project, '.claude', 'skills', 'recon-helper', 'template.md'), 'preserved');
+    fs.writeFileSync(path.join(project, '.hexestra', 'user', 'skills', 'recon-helper', 'template.md'), 'preserved');
 
     const listed = await service.listSkills('session-1');
     expect(listed.items).toEqual([expect.objectContaining({ name: 'recon-helper', scope: 'project', enabled: true })]);
 
     const disabled = await service.toggleSkill({ sessionId: 'session-1', scope: 'project', name: 'recon-helper', enabled: true });
     expect(disabled.enabled).toBe(false);
-    expect(fs.readFileSync(path.join(project, '.claude', 'skills-disabled', 'recon-helper', 'template.md'), 'utf8')).toBe('preserved');
+    expect(fs.readFileSync(path.join(project, '.hexestra', 'user', 'skills-disabled', 'recon-helper', 'template.md'), 'utf8')).toBe('preserved');
 
     const enabled = await service.toggleSkill({ sessionId: 'session-1', scope: 'project', name: 'recon-helper', enabled: false });
     expect(enabled.enabled).toBe(true);
@@ -72,15 +75,12 @@ describe('Claude capability management', () => {
     expect((await service.listSkills('session-1')).items).toHaveLength(0);
   });
 
-  it('lists personal Skills without an engagement and rejects project writes', async () => {
-    await service.saveSkill({
-      scope: 'personal',
-      name: 'personal-skill',
-      content: '---\nname: personal-skill\ndescription: Personal\n---\n',
-    });
+  it('supports global Skills without a project and requires one for project Skills', async () => {
     const listed = await service.listSkills(null);
     expect(listed.projectAvailable).toBe(false);
-    expect(listed.items[0]).toMatchObject({ name: 'personal-skill', scope: 'personal' });
+    expect(listed.items).toHaveLength(0);
+    await service.saveSkill({ scope: 'global', name: 'shared', content: '# shared' });
+    expect((await service.listSkills(null)).items).toEqual([expect.objectContaining({ name: 'shared', scope: 'global' })]);
     await expect(service.saveSkill({ scope: 'project', name: 'blocked', content: '# blocked' }))
       .rejects.toThrow('Open a project folder');
   });
@@ -91,6 +91,7 @@ describe('Claude capability management', () => {
       getSettings: () => settings,
       getSessionPath: () => project,
       resolveRuntimeHome,
+      getGlobalUserPath: () => path.join(userData, 'user'),
     }, false);
 
     await cachedService.listSkills(null);
@@ -158,7 +159,7 @@ describe('Claude capability management', () => {
   });
 
   it('validates names and MCP transport requirements at the Electron boundary', async () => {
-    await expect(service.saveSkill({ scope: 'personal', name: '../escape', content: '# bad' })).rejects.toThrow('Name must');
+    await expect(service.saveSkill({ scope: 'global', name: '../escape', content: '# bad' })).rejects.toThrow('Name must');
     await expect(service.saveMcpServer({ scope: 'user', name: 'broken', definition: { type: 'stdio' } })).rejects.toThrow('requires a command');
     await expect(service.saveMcpServer({ scope: 'user', name: 'broken-http', definition: { type: 'http', url: 'file:///tmp/x' } })).rejects.toThrow('HTTP(S)');
   });

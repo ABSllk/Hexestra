@@ -3,7 +3,7 @@ import type { TrafficFlow } from '@electron/contracts/traffic';
 import { burpMcpEndpointCandidates, deriveBurpEdition, mapBurpOperation, normalizeCollaboratorCustomData, rawHttp1Request } from '@electron/services/burp-provider';
 
 const flow: TrafficFlow = {
-  id: 'flow-1', projectId: 'project-1', revision: 0, state: 'completed', scopeState: 'in_scope', source: 'browser',
+  id: 'flow-1', projectId: 'project-1', revision: 0, state: 'completed', source: 'browser',
   request: {
     method: 'POST', url: 'https://example.test:8443/api?q=1', httpVersion: 'h2',
     headers: [{ name: 'Content-Type', value: 'application/json' }],

@@ -20,7 +20,6 @@ function pausedFlow(): TrafficFlow {
     projectId: 'project-1',
     revision: 2,
     state: 'request_paused',
-    scopeState: 'in_scope',
     source: 'browser',
     request: {
       method: 'POST',

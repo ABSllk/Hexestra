@@ -23,5 +23,6 @@ describe('Electron development startup', () => {
     expect(launcher).toContain('`--user-data-dir=${userDataPath}`');
     expect(launcher).toContain("path.join(appDataRoot, 'hexestra')");
     expect(launcher).toContain('HEXESTRA_USER_DATA: applicationDataPath');
+    expect(launcher).toContain('HEXESTRA_HOME: process.env.HEXESTRA_HOME ?? projectRoot');
   });
 });

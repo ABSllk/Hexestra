@@ -23,7 +23,7 @@ describe('Agent project knowledge', () => {
       id: 'project-a',
       name: 'Project A',
       status: 'active',
-      scope: { inScope: ['example.com'], outOfScope: [], targets: ['example.com'] },
+      scope: { mode: 'whitelist', allowRules: ['example.com'], excludeRules: [] },
     });
     sessionService.listTargets.mockReturnValue([]);
     sessionService.listAssets.mockReturnValue([]);
@@ -46,7 +46,7 @@ describe('Agent project knowledge', () => {
       conversationIsolation: 'chat_history_only',
       completeness: 'bounded_snapshot_use_hexestra_list_tools_for_full_records',
     }));
-    expect(knowledge.project.scope.inScope).toEqual(['example.com']);
+    expect(knowledge.project.scope).toMatchObject({ mode: 'whitelist', allowRules: ['example.com'], excludeRules: [] });
     expect(sessionService.listFindings).toHaveBeenCalledWith('project-a');
     expect(sessionService.listVulnerabilities).toHaveBeenCalledWith('project-a');
     expect(sessionService.listEvidence).toHaveBeenCalledWith('project-a');

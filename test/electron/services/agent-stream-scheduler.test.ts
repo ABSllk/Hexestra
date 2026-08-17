@@ -31,4 +31,22 @@ describe('AgentStreamScheduler', () => {
     vi.advanceTimersByTime(100);
     expect(emit).toHaveBeenCalledTimes(1);
   });
+
+  it('publishes the latest accumulated projection on the trailing update', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-31T00:00:00.000Z'));
+    const projections: string[] = [];
+    let latest = 'first';
+    const scheduler = new AgentStreamScheduler();
+    const publish = () => projections.push(latest);
+
+    scheduler.schedule(publish);
+    latest = 'intermediate';
+    scheduler.schedule(publish);
+    latest = 'latest';
+    scheduler.schedule(publish);
+    vi.advanceTimersByTime(100);
+
+    expect(projections).toEqual(['first', 'latest']);
+  });
 });

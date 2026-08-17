@@ -12,7 +12,7 @@ const profile: BurpProfile = {
 };
 const flow: TrafficFlow = {
   id: 'mirror-flow-1', projectId: 'project-1', revision: 2, state: 'completed',
-  scopeState: 'in_scope', source: 'browser',
+  source: 'browser',
   request: {
     method: 'POST', url: 'https://example.test:8443/path?q=1', httpVersion: 'h2',
     headers: [

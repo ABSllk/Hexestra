@@ -46,7 +46,7 @@ export async function buildAgentProjectKnowledge(sessionId: string) {
   const sortedReports = [...reports].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   const sortedTasks = [...tasks].sort((left, right) => (
     taskPriority(left.status) - taskPriority(right.status)
-    || left.stage.localeCompare(right.stage)
+    || left.primaryTacticId.localeCompare(right.primaryTacticId)
   ));
   const sortedRuns = [...scanRuns].sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   const sortedChanges = [...changes].sort((left, right) => right.observedAt.localeCompare(left.observedAt));
@@ -83,6 +83,7 @@ export async function buildAgentProjectKnowledge(sessionId: string) {
         hostname: target.hostname,
         domains: target.domains.slice(0, 20),
         status: target.status,
+        scopeAnnotation: target.scopeAnnotation,
         openPorts: target.ports
           .filter((port) => port.state === 'open')
           .slice(0, 24)
@@ -106,6 +107,7 @@ export async function buildAgentProjectKnowledge(sessionId: string) {
         type: asset.type,
         label: asset.label,
         status: asset.status,
+        scopeAnnotation: asset.scopeAnnotation,
         properties: compactProperties(asset.properties, asset.type === 'identity'),
         tags: asset.tags.slice(0, 12),
         vulnCount: asset.vulnCount,
@@ -171,12 +173,17 @@ export async function buildAgentProjectKnowledge(sessionId: string) {
     })),
     tasks: sortedTasks.slice(0, LIMITS.tasks).map((task) => ({
       id: task.id,
-      parentId: task.parentId,
-      stage: task.stage,
+      kind: task.kind,
+      ...(task.kind === 'step' ? { parentId: task.parentId, order: task.order, resultSummary: clip(task.resultSummary, 500), blockedReason: clip(task.blockedReason, 500) } : {}),
+      primaryTacticId: task.primaryTacticId,
+      tacticIds: task.tacticIds,
+      techniqueIds: task.techniqueIds,
       title: task.title,
       description: clip(task.description, 400),
       status: task.status,
-      findingIds: task.findingIds.slice(0, 20),
+      targetAssetIds: task.targetAssetIds.slice(0, 20),
+      requiredCapabilities: task.requiredCapabilities.slice(0, 20),
+      successCriteria: task.successCriteria.slice(0, 20),
     })),
     recentActivity: {
       scanRuns: sortedRuns.slice(0, LIMITS.scanRuns).map((run) => ({
@@ -227,16 +234,15 @@ function compactProperties(
   ]));
 }
 
-function compactScope(scope: { inScope: string[]; outOfScope: string[]; targets: string[] } | undefined) {
-  const value = scope ?? { inScope: [], outOfScope: [], targets: [] };
+function compactScope(scope: { mode: 'whitelist' | 'blacklist'; allowRules: string[]; excludeRules: string[] } | undefined) {
+  const value = scope ?? { mode: 'blacklist' as const, allowRules: [], excludeRules: [] };
   return {
-    inScope: value.inScope.slice(0, LIMITS.scopeValues),
-    outOfScope: value.outOfScope.slice(0, LIMITS.scopeValues),
-    targets: value.targets.slice(0, LIMITS.scopeValues),
+    mode: value.mode,
+    allowRules: value.allowRules.slice(0, LIMITS.scopeValues),
+    excludeRules: value.excludeRules.slice(0, LIMITS.scopeValues),
     omitted: {
-      inScope: omitted(value.inScope.length, LIMITS.scopeValues),
-      outOfScope: omitted(value.outOfScope.length, LIMITS.scopeValues),
-      targets: omitted(value.targets.length, LIMITS.scopeValues),
+      allowRules: omitted(value.allowRules.length, LIMITS.scopeValues),
+      excludeRules: omitted(value.excludeRules.length, LIMITS.scopeValues),
     },
   };
 }

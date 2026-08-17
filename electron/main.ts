@@ -17,6 +17,7 @@ import { dialogOverlayService } from './services/dialog-overlay.service';
 import { getPlatformCapabilities } from './contracts/platform';
 import { mitmproxyRuntimeService } from './services/mitmproxy-runtime.service';
 import { egressProxyService } from './services/egress-proxy.service';
+import { workflowService } from './services/workflow.service';
 
 console.log('[Hexestra] Starting Electron main process...');
 console.log('[Hexestra] ELECTRON_RUN_AS_NODE =', process.env.ELECTRON_RUN_AS_NODE);
@@ -171,3 +172,4 @@ void appSettingsService;
 void dialogOverlayService;
 void mitmproxyRuntimeService;
 void egressProxyService;
+void workflowService;

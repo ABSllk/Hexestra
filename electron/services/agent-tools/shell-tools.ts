@@ -282,12 +282,12 @@ export function createShellAgentTools({ sender, sessionId, permissionMode }: Age
     ),
     createAgentTool(
       'shell_profile_create',
-      `Create or update a saved Shell profile. For kind=webshell, webshell is required. adapterId=generic requires exactly one ${WEBSHELL_COMMAND_PLACEHOLDER} or ${WEBSHELL_COMMAND_BASE64_PLACEHOLDER} across URL and bodyTemplate. Generic GET example: URL ends with ?cmd=${WEBSHELL_COMMAND_PLACEHOLDER}, bodyKind=none, no bodyTemplate. Generic POST JSON example: URL has no placeholder, bodyKind=json, bodyTemplate={"cmd":${WEBSHELL_COMMAND_PLACEHOLDER}}. commandMode describes what the endpoint evaluates and is separate from shellFlavor: auto tries direct OS commands and then PHP eval; os is for system/passthru endpoints; php_eval is for eval/assert endpoints and requires ${WEBSHELL_COMMAND_PLACEHOLDER}. ${WEBSHELL_COMMAND_BASE64_PLACEHOLDER} remains available for a custom language adapter, for example bodyTemplate=x=base64_decode('${WEBSHELL_COMMAND_BASE64_PLACEHOLDER}');passthru($x); with commandMode=os. adapterId=antsword.v2.php requires runtime=php, method=POST, bodyKind=form, no URL/body placeholder, and antsword.passwordParameter plus antsword.encoder. WebShell shellFlavor must be auto, posix, powershell, or cmd, never raw. A target profile requires an in-scope assetId.`,
+      `Create or update a saved Shell profile. For kind=webshell, webshell is required. adapterId=generic requires exactly one ${WEBSHELL_COMMAND_PLACEHOLDER} or ${WEBSHELL_COMMAND_BASE64_PLACEHOLDER} across URL and bodyTemplate. Generic GET example: URL ends with ?cmd=${WEBSHELL_COMMAND_PLACEHOLDER}, bodyKind=none, no bodyTemplate. Generic POST JSON example: URL has no placeholder, bodyKind=json, bodyTemplate={"cmd":${WEBSHELL_COMMAND_PLACEHOLDER}}. commandMode describes what the endpoint evaluates and is separate from shellFlavor: auto tries direct OS commands and then PHP eval; os is for system/passthru endpoints; php_eval is for eval/assert endpoints and requires ${WEBSHELL_COMMAND_PLACEHOLDER}. ${WEBSHELL_COMMAND_BASE64_PLACEHOLDER} remains available for a custom language adapter, for example bodyTemplate=x=base64_decode('${WEBSHELL_COMMAND_BASE64_PLACEHOLDER}');passthru($x); with commandMode=os. adapterId=antsword.v2.php requires runtime=php, method=POST, bodyKind=form, no URL/body placeholder, and antsword.passwordParameter plus antsword.encoder. WebShell shellFlavor must be auto, posix, powershell, or cmd, never raw. A target profile requires an existing assetId.`,
       {
         id: z.string().max(200).optional(),
         name: z.string().min(1).max(100),
         kind: z.enum(['local', 'wsl', 'ssh', 'webshell']),
-        assetId: z.string().max(200).optional().describe('Required for target SSH and WebShell profiles; must reference an in-scope asset.'),
+        assetId: z.string().max(200).optional().describe('Required for target SSH and WebShell profiles; must reference an existing project asset.'),
         assetRole: z.enum(['target', 'infrastructure']).optional().describe('Defaults to target.'),
         shellFlavor: z.enum(['auto', 'posix', 'powershell', 'cmd', 'raw']).optional().describe('WebShell supports auto, posix, powershell, or cmd; raw is invalid.'),
         executable: z.string().max(1_000).optional(),
@@ -308,7 +308,6 @@ export function createShellAgentTools({ sender, sessionId, permissionMode }: Age
         }
         if ((profile.kind === 'ssh' || profile.kind === 'webshell') && profile.assetRole !== 'infrastructure') {
           if (!profile.assetId) throw new Error('Agent-created target profiles require an assetId');
-          requireAgentShellAssetInScope(sessionId, profile.assetId);
         }
         if (profile.kind === 'webshell' && profile.shellFlavor === 'raw') {
           throw new Error('WebShell profiles require auto, posix, powershell, or cmd flavor');
@@ -335,7 +334,7 @@ export function createShellAgentTools({ sender, sessionId, permissionMode }: Age
     ),
     createAgentTool(
       'shell_connect',
-      'Connect or reuse one saved Shell profile. Target SSH profiles must reference an in-scope asset; infrastructure profiles are route-only.',
+      'Connect or reuse one saved Shell profile. Target profiles must reference an existing project asset; infrastructure profiles are route-only.',
       { profileId: z.string().min(1).max(200) },
       async ({ profileId }) => {
         if (!sessionId) throw new Error('No active engagement');
@@ -343,7 +342,6 @@ export function createShellAgentTools({ sender, sessionId, permissionMode }: Age
         if (!profile) throw new Error('Shell profile not found');
         if ((profile.kind === 'ssh' || profile.kind === 'webshell') && profile.assetRole === 'target') {
           if (!profile.assetId) throw new Error('Shell profile is not linked to an asset');
-          requireAgentShellAssetInScope(sessionId, profile.assetId);
         }
         return { content: [{ type: 'text', text: JSON.stringify(await shellService.connect(sessionId, profileId), null, 2) }] };
       },
@@ -384,11 +382,11 @@ export function createShellAgentTools({ sender, sessionId, permissionMode }: Age
     ),
     createAgentTool(
       'shell_reverse_bind',
-      'Bind a quarantined reverse Shell to an existing in-scope asset before any command can be sent.',
+      'Bind a quarantined reverse Shell to an existing project asset before any command can be sent.',
       { shellSessionId: z.string().min(1).max(200), assetId: z.string().min(1).max(200) },
       async ({ shellSessionId, assetId }) => {
         if (!sessionId) throw new Error('No active engagement');
-        requireAgentShellAssetInScope(sessionId, assetId);
+        requireAgentShellAssetExists(sessionId, assetId);
         const bound = shellService.bindReverseSession(sessionId, shellSessionId, assetId);
         return { content: [{ type: 'text', text: JSON.stringify(bound, null, 2) }] };
       },
@@ -476,13 +474,10 @@ export function createShellAgentTools({ sender, sessionId, permissionMode }: Age
   ];
 }
 
-function requireAgentShellAssetInScope(sessionId: string, assetId: string) {
+function requireAgentShellAssetExists(sessionId: string, assetId: string) {
   const target = sessionService.getTarget(sessionId, assetId);
   const asset = sessionService.listAssets(sessionId).find((item) => item.id === assetId);
   if (!target && !asset) throw new Error('Shell target asset was not found');
-  if ((target?.status ?? asset?.status) === 'out_of_scope') {
-    throw new Error('Shell target asset is outside the active engagement scope');
-  }
 }
 
 function errorMessage(error: unknown) {

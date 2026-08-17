@@ -61,16 +61,16 @@ describe('AssetGraphRepository', () => {
     expect(repository.listRelations()[0].metadata?.evidenceCount).toBe('2');
   });
 
-  it('never persists the scope-derived out-of-scope projection', () => {
+  it('persists operational status independently from scope annotations', () => {
     const target = repository.upsertTarget({
-      id: 'host-scope', ip: '198.51.100.10', domains: [], status: 'out_of_scope', tags: [],
+      id: 'host-scope', ip: '198.51.100.10', domains: [], status: 'scanned', tags: [],
       ports: [], services: [], vulnCount: 0, firstSeen: now, lastUpdated: now,
     });
     const candidate = createAssetRecord('domain', 'outside.example.net');
-    const asset = repository.upsertAsset({ ...candidate, status: 'out_of_scope' });
+    const asset = repository.upsertAsset({ ...candidate, status: 'scanned' });
 
-    expect(target.status).toBe('untested');
-    expect(asset.status).toBe('untested');
+    expect(target.status).toBe('scanned');
+    expect(asset.status).toBe('scanned');
   });
 
   it('persists the Domain graph layout state', () => {
@@ -89,7 +89,7 @@ describe('AssetGraphRepository', () => {
     });
   });
 
-  it('migrates v3 data to v4 with a backup, materialized Port and Service assets, and preserved records', () => {
+  it('migrates v3 data through v5 with a backup, materialized Port and Service assets, and preserved records', () => {
     const migrationDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-v3-migration-'));
     const legacy = new AssetGraphRepository(migrationDirectory);
     const host = legacy.upsertTarget({
@@ -140,7 +140,7 @@ describe('AssetGraphRepository', () => {
       const versionProbe = new DatabaseSync(databasePath);
       const schemaVersion = (versionProbe.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
       versionProbe.close();
-      expect(schemaVersion).toBe(4);
+      expect(schemaVersion).toBe(5);
       expect(migrated.getTarget(host.id)).toMatchObject({ id: host.id, ports: [expect.objectContaining({ port: 443, service: 'https' })] });
       expect(migrated.listAssets()).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: domain.id, type: 'domain' }),
@@ -152,6 +152,39 @@ describe('AssetGraphRepository', () => {
       expect(migrated.listVulnerabilities().map((item) => item.id)).toContain(vulnerability.id);
       expect(migrated.listReports().map((item) => item.id)).toContain(report.id);
       expect(migrated.getLayoutState('domain')).toMatchObject({ view: { x: 7, y: 9, scale: 1.3 }, positions: { [domain.id]: { x: 50, y: 60 } } });
+    } finally {
+      migrated.close();
+      fs.rmSync(migrationDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('upgrades a v4 database with multiple graph perspectives without rerunning the v4 migration', () => {
+    const migrationDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-v4-migration-'));
+    const legacy = new AssetGraphRepository(migrationDirectory);
+    const host = legacy.upsertTarget({
+      id: 'legacy-v4-host', ip: '203.0.113.20', domains: [], status: 'scanned', tags: [],
+      ports: [], services: [], vulnCount: 0, firstSeen: now, lastUpdated: now,
+    });
+    legacy.updateLayoutState({ perspective: 'domain', view: { x: 1, y: 2, scale: 1.1 } });
+    legacy.updateLayoutState({ perspective: 'network', view: { x: 3, y: 4, scale: 1.2 } });
+    legacy.updateLayoutState({ perspective: 'application', view: { x: 5, y: 6, scale: 1.3 } });
+    const databasePath = legacy.databasePath;
+    legacy.close();
+
+    const downgrade = new DatabaseSync(databasePath);
+    downgrade.exec('PRAGMA user_version = 4;');
+    downgrade.close();
+
+    const migrated = new AssetGraphRepository(migrationDirectory);
+    try {
+      const versionProbe = new DatabaseSync(databasePath);
+      const schemaVersion = (versionProbe.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
+      versionProbe.close();
+      expect(schemaVersion).toBe(5);
+      expect(migrated.getTarget(host.id)?.status).toBe('scanned');
+      expect(migrated.getLayoutState('domain').view).toEqual({ x: 1, y: 2, scale: 1.1 });
+      expect(migrated.getLayoutState('network').view).toEqual({ x: 3, y: 4, scale: 1.2 });
+      expect(migrated.getLayoutState('application').view).toEqual({ x: 5, y: 6, scale: 1.3 });
     } finally {
       migrated.close();
       fs.rmSync(migrationDirectory, { recursive: true, force: true });

@@ -1,7 +1,8 @@
-import { ipcMain } from 'electron';
+import { app, ipcMain } from 'electron';
 import { spawn, type ChildProcess } from 'child_process';
 import { v4 as uuid } from 'uuid';
 import { projectProxyEnvironment } from './project-egress';
+import { defaultToolCatalog, loadToolCatalog } from './tool-catalog.service';
 
 interface ToolRun {
   id: string;
@@ -19,23 +20,31 @@ interface ToolRun {
 class ToolExecutor {
   private runs: Map<string, ToolRun> = new Map();
 
-  // Tool inventory — mirrors pentest-tools.yaml
-  readonly inventory: Array<{
-    id: string;
-    name: string;
-    binary: string;
-    category: string;
-    description: string;
-  }> = [
-    { id: 'nmap', name: 'Nmap', binary: 'nmap', category: 'scanning', description: 'Network discovery and port scanning' },
-    { id: 'gobuster', name: 'Gobuster', binary: 'gobuster', category: 'scanning', description: 'Directory/file brute-forcing' },
-    { id: 'ffuf', name: 'FFUF', binary: 'ffuf', category: 'fuzzing', description: 'Web fuzzer' },
-    { id: 'nuclei', name: 'Nuclei', binary: 'nuclei', category: 'scanning', description: 'Template-based vulnerability scanner' },
-    { id: 'sqlmap', name: 'SQLMap', binary: 'sqlmap', category: 'exploitation', description: 'SQL injection tool' },
-    { id: 'nikto', name: 'Nikto', binary: 'nikto', category: 'scanning', description: 'Web server scanner' },
-    { id: 'curl', name: 'cURL', binary: 'curl', category: 'utility', description: 'HTTP client' },
-    { id: 'python3', name: 'Python 3', binary: 'python3', category: 'utility', description: 'Python interpreter' },
-  ];
+  // Inventory is resolved from the ATT&CK-aware catalog.
+  get inventory() {
+    try {
+      return this.catalogInventory(loadToolCatalog(app.getPath('userData')));
+    } catch {
+      return this.catalogInventory(defaultToolCatalog());
+    }
+  }
+
+  private catalogInventory(tools: ReturnType<typeof defaultToolCatalog>) {
+    return tools.map((tool) => ({
+      id: tool.id,
+      name: tool.name,
+      binary: tool.executable ?? tool.id,
+      category: tool.capabilities[0] ?? tool.risk,
+      description: tool.description,
+      capabilities: tool.capabilities,
+      tacticIds: tool.tacticIds,
+      techniqueIds: tool.techniqueIds,
+      risk: tool.risk,
+      channel: tool.channel,
+      disabled: tool.disabled ?? false,
+      available: tool.available,
+    }));
+  }
 
   constructor() {
     this.registerHandlers();
@@ -64,10 +73,14 @@ class ToolExecutor {
   }
 
   execute(tool: string, args: string[], cwd?: string, projectId?: string): string {
+    const definition = this.inventory.find((candidate) => candidate.id === tool || candidate.binary === tool);
+    if (!definition || definition.disabled) throw new Error(`Tool ${tool} is not enabled in the tool catalog`);
+    if (definition.available === false) throw new Error(`Tool ${tool} is unavailable; probe or install it in the local Agent Runtime first`);
+    const executable = definition.binary;
     const id = `run-${uuid().slice(0, 8)}`;
-    console.log(`[Tool] Starting ${tool} ${args.join(' ')} (${id})`);
+    console.log(`[Tool] Starting ${executable} ${args.join(' ')} (${id})`);
 
-    const child = spawn(tool, args, {
+    const child = spawn(executable, args, {
       cwd: cwd || process.cwd(),
       shell: false,
       env: {
@@ -78,7 +91,7 @@ class ToolExecutor {
 
     const run: ToolRun = {
       id,
-      tool,
+      tool: definition.id,
       args,
       status: 'running',
       process: child,
@@ -105,14 +118,14 @@ class ToolExecutor {
       run.exitCode = code ?? undefined;
       run.completedAt = new Date().toISOString();
       this.emitComplete(id, code ?? 1, run.stdout, run.stderr);
-      console.log(`[Tool] ${tool} finished with code ${code} (${id})`);
+      console.log(`[Tool] ${executable} finished with code ${code} (${id})`);
     });
 
     child.on('error', (err) => {
       run.status = 'failed';
       run.completedAt = new Date().toISOString();
       this.emitComplete(id, 1, run.stdout, err.message);
-      console.error(`[Tool] ${tool} error: ${err.message} (${id})`);
+      console.error(`[Tool] ${executable} error: ${err.message} (${id})`);
     });
 
     this.runs.set(id, run);

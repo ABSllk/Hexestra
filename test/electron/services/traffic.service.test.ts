@@ -46,7 +46,6 @@ function pausedFlow(): TrafficFlow {
     projectId: 'project-1',
     revision: 3,
     state: 'request_paused',
-    scopeState: 'out_of_scope',
     source: 'browser',
     request: {
       method: 'GET', url: 'https://example.test/orphan', httpVersion: 'http/1.1',

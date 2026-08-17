@@ -34,7 +34,6 @@ export type TrafficFlowState =
   | 'failed';
 
 export type TrafficProtocol = 'http/1.1' | 'h2' | 'websocket';
-export type TrafficScopeState = 'in_scope' | 'out_of_scope';
 export type TrafficBodyEncoding = 'utf8' | 'base64';
 export type BurpIntegrationMode = 'mirror';
 export type BurpMirrorState = 'pending' | 'synced' | 'failed';
@@ -80,7 +79,6 @@ export interface TrafficFlow {
   projectId: string;
   revision: number;
   state: TrafficFlowState;
-  scopeState: TrafficScopeState;
   source: 'browser' | 'replay';
   parentFlowId?: string;
   request: TrafficRequest;
@@ -100,7 +98,6 @@ export interface TrafficSummary {
   id: string;
   revision: number;
   state: TrafficFlowState;
-  scopeState: TrafficScopeState;
   source: TrafficFlow['source'];
   parentFlowId?: string;
   method: string;
@@ -123,7 +120,6 @@ export interface TrafficListQuery {
   query?: string;
   state?: TrafficFlowState;
   states?: TrafficFlowState[];
-  scopeState?: TrafficScopeState;
   source?: TrafficFlow['source'];
   host?: string;
   method?: string;

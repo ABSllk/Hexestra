@@ -14,7 +14,7 @@ afterEach(() => {
 function sourceFlow(): TrafficFlow {
   return {
     id: 'source-flow', projectId: 'project-1', revision: 1, state: 'completed',
-    scopeState: 'out_of_scope', source: 'browser',
+    source: 'browser',
     request: {
       method: 'POST', url: 'https://example.test/api', httpVersion: 'h2',
       headers: [{ name: 'Content-Length', value: '3' }],

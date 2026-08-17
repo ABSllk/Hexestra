@@ -18,7 +18,7 @@ export class BrowserAutomationSession {
     private readonly getBounds: () => Rectangle,
   ) {}
 
-  async snapshot(): Promise<Omit<BrowserPageSnapshot, 'scopeState'>> {
+  async snapshot(): Promise<BrowserPageSnapshot> {
     const page = await this.getPage();
     const generation = ++this.snapshotGeneration;
     return page.evaluate(({ generation }) => {

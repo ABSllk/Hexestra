@@ -26,12 +26,10 @@ import {
   type BrowserReconcileRequest,
   type BrowserState,
   type BrowserStateChangedEvent,
-  type BrowserScopeState,
   type BrowserStorageSnapshot,
   type BrowserTabDescriptor,
 } from '../contracts/browser';
 import { BrowserAutomationSession } from './browser-automation.service';
-import { sessionService } from './session.service';
 import {
   isCertificateTrustedByAuthority,
   loadPinnedCertificateAuthority,
@@ -125,7 +123,6 @@ class BrowserService {
         canGoBack: false,
         canGoForward: false,
         visible: false,
-        scopeState: this.scopeState(request.projectId, initialUrl),
         error: null,
       },
     };
@@ -369,7 +366,7 @@ class BrowserService {
 
   private async readRuntime(runtime: BrowserRuntime): Promise<BrowserPageSnapshot> {
     const snapshot = await this.automation(runtime).snapshot();
-    return { ...snapshot, scopeState: this.scopeState(runtime.projectId, snapshot.url) };
+    return snapshot;
   }
 
   private getAgentRuntime(ownerId: number, projectId?: string, tabId?: string): BrowserRuntime {
@@ -425,12 +422,8 @@ class BrowserService {
     return runtime.automation;
   }
 
-  private scopeState(projectId: string, url: string): BrowserScopeState {
-    return sessionService.valueIsInScope(projectId, url) ? 'in_scope' : 'out_of_scope';
-  }
-
   private locationState(runtime: BrowserRuntime): BrowserLocationState {
-    return { url: runtime.state.url, title: runtime.state.title, scopeState: runtime.state.scopeState };
+    return { url: runtime.state.url, title: runtime.state.title };
   }
 
   private async runAgentAction<T>(runtime: BrowserRuntime, action: () => Promise<T>): Promise<T> {
@@ -600,7 +593,6 @@ class BrowserService {
       loading: contents.isLoadingMainFrame(),
       canGoBack: contents.navigationHistory.canGoBack(),
       canGoForward: contents.navigationHistory.canGoForward(),
-      scopeState: this.scopeState(runtime.projectId, contents.getURL() || runtime.state.url),
     };
     this.emitState(runtime);
   }

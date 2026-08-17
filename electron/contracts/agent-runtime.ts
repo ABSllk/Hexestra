@@ -182,6 +182,8 @@ export interface AgentActivity {
   output?: string;
   outputSummary?: string;
   elapsedSeconds?: number;
+  /** Task node that first observed this activity; never rewritten on focus changes. */
+  pttTaskId?: string;
   subagentRunId?: string;
   agentType?: string;
   subagentDescription?: string;

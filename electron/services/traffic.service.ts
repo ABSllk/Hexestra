@@ -597,7 +597,6 @@ export class TrafficService {
 
   private ingest(projectId: string, flow: TrafficFlow) {
     if (flow.projectId !== projectId) return;
-    flow.scopeState = sessionService.valueIsInScope(projectId, flow.request.url) ? 'in_scope' : 'out_of_scope';
     const runtime = this.runtimes.get(projectId);
     if (runtime?.profile.burp.enabled) {
       flow.route = {

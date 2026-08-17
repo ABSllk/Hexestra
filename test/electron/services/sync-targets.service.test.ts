@@ -18,6 +18,7 @@ vi.mock('electron', () => ({
 describe('AI asset registration', () => {
   let appData: string;
   let previousAppData: string | undefined;
+  let previousHexestraHome: string | undefined;
   let sessionService: typeof import('@electron/services/session.service').sessionService;
   let syncTargetsService: typeof import('@electron/services/sync-targets.service').syncTargetsService;
   let sessionId: string;
@@ -26,7 +27,9 @@ describe('AI asset registration', () => {
   beforeAll(async () => {
     appData = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-ai-assets-'));
     previousAppData = process.env.APPDATA;
+    previousHexestraHome = process.env.HEXESTRA_HOME;
     process.env.APPDATA = appData;
+    process.env.HEXESTRA_HOME = appData;
     vi.resetModules();
     sessionService = (await import('@electron/services/session.service')).sessionService;
     syncTargetsService = (await import('@electron/services/sync-targets.service')).syncTargetsService;
@@ -41,6 +44,7 @@ describe('AI asset registration', () => {
   afterAll(async () => {
     sessionService.close();
     process.env.APPDATA = previousAppData;
+    process.env.HEXESTRA_HOME = previousHexestraHome;
     fs.rmSync(appData, { recursive: true, force: true });
   });
 
@@ -167,7 +171,7 @@ describe('AI asset registration', () => {
     expect(certificate.type).toBe('certificate');
     expect(identity).toMatchObject({
       type: 'identity',
-      status: 'out_of_scope',
+      status: 'scanned',
       properties: { credential_token: 'first-token' },
     });
 

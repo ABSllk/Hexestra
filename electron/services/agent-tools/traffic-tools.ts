@@ -33,7 +33,6 @@ export function createTrafficAgentTools({ sender, sessionId }: AgentToolContext)
       {
         query: z.string().max(500).optional(),
         state: z.enum(['captured', 'request_paused', 'forwarding', 'response_paused', 'completed', 'dropped', 'failed']).optional(),
-        scopeState: z.enum(['in_scope', 'out_of_scope']).optional(),
         offset: z.number().int().min(0).max(100_000).optional(),
         limit: z.number().int().min(1).max(200).optional(),
       },
@@ -66,7 +65,7 @@ export function createTrafficAgentTools({ sender, sessionId }: AgentToolContext)
     ),
     createAgentTool(
       'traffic_forward',
-      'Forward a paused in-scope request or response, optionally applying a validated message patch.',
+      'Forward a paused request or response, optionally applying a validated message patch.',
       {
         flowId: z.string().min(1).max(200),
         expectedRevision: z.number().int().min(0),
@@ -81,25 +80,23 @@ export function createTrafficAgentTools({ sender, sessionId }: AgentToolContext)
       },
       async ({ flowId, expectedRevision, message }) => {
         if (!sessionId) throw new Error('No active engagement');
-        requireAgentFlowInScope(sessionId, flowId);
         await trafficService.decide(sessionId, { flowId, expectedRevision, action: 'forward', message });
         return { content: [{ type: 'text', text: `Forwarded traffic flow ${flowId}` }] };
       },
     ),
     createAgentTool(
       'traffic_drop',
-      'Drop one paused in-scope request or response.',
+      'Drop one paused request or response.',
       { flowId: z.string().min(1).max(200), expectedRevision: z.number().int().min(0) },
       async ({ flowId, expectedRevision }) => {
         if (!sessionId) throw new Error('No active engagement');
-        requireAgentFlowInScope(sessionId, flowId);
         await trafficService.decide(sessionId, { flowId, expectedRevision, action: 'drop' });
         return { content: [{ type: 'text', text: `Dropped traffic flow ${flowId}` }] };
       },
     ),
     createAgentTool(
       'traffic_replay',
-      'Replay one persisted in-scope HTTP(S) flow through the active Hexestra/Burp route, optionally with a validated request patch.',
+      'Replay one persisted HTTP(S) flow through the active Hexestra/Burp route, optionally with a validated request patch.',
       {
         flowId: z.string().min(1).max(200),
         message: z.object({
@@ -111,7 +108,6 @@ export function createTrafficAgentTools({ sender, sessionId }: AgentToolContext)
       },
       async ({ flowId, message }) => {
         if (!sessionId) throw new Error('No active engagement');
-        requireAgentFlowInScope(sessionId, flowId);
         const replaySession = trafficService.openReplaySession(sessionId, flowId);
         const result = await trafficService.replay(sessionId, { parentFlowId: flowId, replaySessionId: replaySession.id, message });
         return { content: [{ type: 'text', text: JSON.stringify(result) }] };
@@ -123,7 +119,6 @@ export function createTrafficAgentTools({ sender, sessionId }: AgentToolContext)
       { flowId: z.string().min(1).max(200) },
       async ({ flowId }) => {
         if (!sessionId) throw new Error('No active engagement');
-        requireAgentFlowInScope(sessionId, flowId);
         const evidence = await trafficService.saveEvidence(sessionId, flowId, sender);
         return { content: [{ type: 'text', text: `Saved traffic Evidence ${evidence.id}` }] };
       },
@@ -149,22 +144,20 @@ export function createTrafficAgentTools({ sender, sessionId }: AgentToolContext)
     ),
     createAgentTool(
       'burp_open_repeater',
-      'Open one stored in-scope flow in Burp Repeater through the official MCP.',
+      'Open one stored flow in Burp Repeater through the official MCP.',
       { flowId: z.string().min(1).max(200) },
       async ({ flowId }) => {
         if (!sessionId) throw new Error('No active engagement');
-        requireAgentFlowInScope(sessionId, flowId);
         const result = await trafficService.callBurp(sessionId, { operation: 'open_repeater', flowId });
         return { content: [{ type: 'text', text: result || `Opened ${flowId} in Burp Repeater` }] };
       },
     ),
     createAgentTool(
       'burp_send_intruder',
-      'Send one stored in-scope flow to Burp Intruder through the official MCP.',
+      'Send one stored flow to Burp Intruder through the official MCP.',
       { flowId: z.string().min(1).max(200) },
       async ({ flowId }) => {
         if (!sessionId) throw new Error('No active engagement');
-        requireAgentFlowInScope(sessionId, flowId);
         const result = await trafficService.callBurp(sessionId, { operation: 'send_intruder', flowId });
         return { content: [{ type: 'text', text: result || `Sent ${flowId} to Burp Intruder` }] };
       },
@@ -181,12 +174,4 @@ function trafficCaptureState(state: ReturnType<typeof trafficService.getProfile>
     listenPort: state.profile.listenPort,
     error: state.error,
   };
-}
-
-function requireAgentFlowInScope(sessionId: string, flowId: string) {
-  const flow = trafficService.read(sessionId, flowId);
-  if (!sessionService.valueIsInScope(sessionId, flow.request.url)) {
-    throw new Error('Traffic operation target is outside the active engagement scope');
-  }
-  return flow;
 }

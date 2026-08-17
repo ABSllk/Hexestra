@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import type { ScopeAnnotation } from '../contracts/session';
 
 export type AssetType =
   | 'domain'
@@ -12,7 +13,7 @@ export type AssetType =
   | 'certificate'
   | 'identity';
 export type OperationalAssetStatus = 'untested' | 'in_progress' | 'scanned' | 'vulnerable' | 'compromised';
-export type AssetStatus = OperationalAssetStatus | 'out_of_scope';
+export type AssetStatus = OperationalAssetStatus;
 
 export interface AssetRecord {
   id: string;
@@ -20,6 +21,7 @@ export interface AssetRecord {
   type: AssetType;
   label: string;
   status: AssetStatus;
+  scopeAnnotation?: ScopeAnnotation;
   properties: Record<string, string | number | boolean | string[]>;
   tags: string[];
   vulnCount: number;

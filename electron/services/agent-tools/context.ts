@@ -6,4 +6,5 @@ export interface AgentToolContext {
   sessionId?: string;
   selectedTargetId?: string;
   permissionMode: AgentPermissionMode;
+  taskGuard?: (toolName: string) => Promise<void> | void;
 }

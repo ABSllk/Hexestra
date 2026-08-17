@@ -19,6 +19,8 @@ describe('Agent tool policy', () => {
     expect(isReadOnlyHexestraTool('vulnerability_list')).toBe(true);
     expect(isReadOnlyHexestraTool('evidence_list')).toBe(true);
     expect(isReadOnlyHexestraTool('report_list')).toBe(true);
+    expect(isReadOnlyHexestraTool('attack_catalog_list')).toBe(true);
+    expect(isReadOnlyHexestraTool('attack_catalog_search')).toBe(true);
     expect(isReadOnlyHexestraTool('task_list')).toBe(true);
     expect(isReadOnlyHexestraTool('traffic_capture_status')).toBe(true);
     expect(isReadOnlyHexestraTool('shell_profile_status')).toBe(true);

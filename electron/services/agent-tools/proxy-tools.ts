@@ -19,8 +19,8 @@ export function createProxyAgentTools({ sessionId }: AgentToolContext) {
   };
   return [
     createAgentTool('proxy_status', 'Read project proxy state, latency, exit IP, and errors; secrets are omitted.', {}, async () => text(withoutCapabilities(await egressProxyService.status(projectId(), false)))),
-    createAgentTool('proxy_nodes_list', 'List global proxy node identities without credentials or capability flags; complete Mihomo objects are never returned.', {}, () => text(egressProxyService.nodesList().map(withoutCapabilities))),
-    createAgentTool('proxy_node_import', 'Import a proxy node from a URI, form object, or Mihomo proxy YAML. Credentials are write-only; stored secrets and raw input are not returned.', nodeInput, async (input) => text(withoutCapabilities(await egressProxyService.nodeSave(input as EgressProxyNodeInput)))),
+    createAgentTool('proxy_nodes_list', 'List global proxy node identities without credentials or capability flags.', {}, () => text(egressProxyService.nodesList().map(withoutCapabilities))),
+    createAgentTool('proxy_node_import', 'Import a proxy node from a URI, form object, or Mihomo proxy YAML. Credentials are write-only.', nodeInput, async (input) => text(withoutCapabilities(await egressProxyService.nodeSave(input as EgressProxyNodeInput)))),
     createAgentTool('proxy_nodes_import', 'Atomically import 1-200 proxy node URIs, one per non-empty line. Blank lines are ignored; any invalid line rejects the batch. Input is write-only.', {
       value: z.string().min(1).max(500_000).describe('Write-only proxy URIs, one per line; URI fragments may set node names.'),
     }, async ({ value }) => text((await egressProxyService.nodesImportBatch(value)).map(withoutCapabilities))),
@@ -32,7 +32,7 @@ export function createProxyAgentTools({ sessionId }: AgentToolContext) {
       nodeId: z.string().min(1).max(200),
     }, async ({ nodeId }) => text({ nodeId, deleted: await egressProxyService.nodeDelete(nodeId) })),
     createAgentTool('proxy_nodes_test', 'Test saved nodes from the host; return latency in milliseconds or null on timeout. Uses a temporary Mihomo runtime and makes network requests.', {}, async () => text(await egressProxyService.nodesTest())),
-    createAgentTool('proxy_chains_list', 'List project proxy chains as ordered node IDs without node secrets.', {}, () => text(egressProxyService.chainsList(projectId()))),
+    createAgentTool('proxy_chains_list', 'List project proxy chains as ordered node IDs.', {}, () => text(egressProxyService.chainsList(projectId()))),
     createAgentTool('proxy_chain_test', 'Validate the active chain and return total and per-hop latency. Makes network requests through selected nodes.', { chainId: z.string().min(1).max(200) }, async ({ chainId }) => text(withoutCapabilities(await egressProxyService.chainTest(projectId(), chainId)))),
     createAgentTool('proxy_chain_save', 'Validate and save a linear 1-8 hop chain from node IDs.', {
       id: z.string().min(1).max(200).optional(),

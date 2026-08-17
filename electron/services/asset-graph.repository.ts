@@ -13,7 +13,7 @@ import type { ManagedRecordKind } from '../contracts/records';
 import { projectDataPath } from './project-registry';
 
 export const LOCAL_ASSET_ID = 'local-operator';
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const DEFAULT_LAYOUT_KEY: GraphPerspective = 'domain';
 
 export type RelationType = 'belongs_to' | 'resolves_to' | 'connected_to' | 'attack_path';
@@ -262,7 +262,7 @@ export class AssetGraphRepository {
     try {
       this.db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 3000;');
       const versionRow = this.db.prepare('PRAGMA user_version').get() as unknown as { user_version: number };
-      if (![0, 1, 2, 3, SCHEMA_VERSION].includes(versionRow.user_version)) {
+      if (![0, 1, 2, 3, 4, SCHEMA_VERSION].includes(versionRow.user_version)) {
         throw new Error(`Unsupported engagement database schema ${versionRow.user_version}; expected ${SCHEMA_VERSION}`);
       }
       if (versionRow.user_version === 0 || versionRow.user_version === SCHEMA_VERSION) {
@@ -273,7 +273,8 @@ export class AssetGraphRepository {
         this.ensureColumn('evidence', 'updated_at', "TEXT NOT NULL DEFAULT ''");
         this.ensureColumn('reports', 'vulnerability_ids_json', "TEXT NOT NULL DEFAULT '[]'");
         if (versionRow.user_version < 3) this.removeGeneratedRegistrationEvidence();
-        this.migrateSchemaV4();
+        if (versionRow.user_version < 4) this.migrateSchemaV4();
+        if (versionRow.user_version < 5) this.migrateSchemaV5();
         this.createSchema();
       }
       this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -455,6 +456,44 @@ export class AssetGraphRepository {
       `);
       const violations = this.db.prepare('PRAGMA foreign_key_check').all();
       if (violations.length) throw new Error('Schema v4 migration left invalid foreign keys');
+      this.db.exec('COMMIT; PRAGMA foreign_keys = ON;');
+    } catch (error) {
+      try { this.db.exec('ROLLBACK'); } catch { /* transaction may already be closed */ }
+      this.db.exec('PRAGMA foreign_keys = ON;');
+      throw error;
+    }
+  }
+
+  private migrateSchemaV5() {
+    // Scope annotations are projections, never durable asset status. Rebuild
+    // the asset table so the final CHECK constraint cannot accept the legacy
+    // projection again, while preserving every canonical asset column and ID.
+    this.db.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE;');
+    try {
+      this.db.exec(`
+        CREATE TABLE assets_v5 (
+          id TEXT PRIMARY KEY,
+          semantic_key TEXT NOT NULL UNIQUE,
+          type TEXT NOT NULL CHECK(type IN ('local','host','domain','subnet','port','service','webapp','api','endpoint','parameter','certificate','identity')),
+          label TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('untested','in_progress','scanned','vulnerable','compromised')),
+          properties_json TEXT NOT NULL DEFAULT '{}',
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          vuln_count INTEGER NOT NULL DEFAULT 0,
+          ai_summary TEXT,
+          first_seen TEXT NOT NULL,
+          last_updated TEXT NOT NULL
+        );
+        INSERT INTO assets_v5
+          SELECT id, semantic_key, type, label,
+            CASE WHEN status = 'out_of_scope' THEN 'untested' ELSE status END,
+            properties_json, tags_json, vuln_count, ai_summary, first_seen, last_updated
+          FROM assets;
+        DROP TABLE assets;
+        ALTER TABLE assets_v5 RENAME TO assets;
+      `);
+      const violations = this.db.prepare('PRAGMA foreign_key_check').all();
+      if (violations.length) throw new Error('Schema v5 migration left invalid foreign keys');
       this.db.exec('COMMIT; PRAGMA foreign_keys = ON;');
     } catch (error) {
       try { this.db.exec('ROLLBACK'); } catch { /* transaction may already be closed */ }
@@ -1058,7 +1097,7 @@ export class AssetGraphRepository {
         semantic_key TEXT NOT NULL UNIQUE,
         type TEXT NOT NULL CHECK(type IN ('local','host','domain','subnet','port','service','webapp','api','endpoint','parameter','certificate','identity')),
         label TEXT NOT NULL,
-        status TEXT NOT NULL CHECK(status IN ('untested','in_progress','scanned','vulnerable','compromised','out_of_scope')),
+        status TEXT NOT NULL CHECK(status IN ('untested','in_progress','scanned','vulnerable','compromised')),
         properties_json TEXT NOT NULL DEFAULT '{}',
         tags_json TEXT NOT NULL DEFAULT '[]',
         vuln_count INTEGER NOT NULL DEFAULT 0,

@@ -178,7 +178,12 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
         interrupt: vi.fn(async () => undefined),
         close,
         async *[Symbol.asyncIterator]() {
-          yield { type: 'system', subtype: 'init', session_id: `claude-session-${closes.length}`, model: 'deepseek-v4-pro' };
+          yield {
+            type: 'system',
+            subtype: 'init',
+            session_id: `claude-session-${closes.length}`,
+            model: 'deepseek-v4-pro',
+          };
           for await (const _prompt of params.prompt) {
             yield { type: 'result', subtype: 'success', result: 'done' };
           }
@@ -238,5 +243,118 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
     }));
     const queryInput = sdk.query.mock.calls[0]?.[0];
     expect(queryInput.options.abortController.signal.aborted).toBe(true);
+  });
+
+  it('runs restriction classification as a one-turn tool-free query and validates catalog IDs', async () => {
+    sdk.query.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'result',
+          subtype: 'success',
+          result: JSON.stringify({
+            kind: 'attack',
+            tacticIds: [],
+            techniqueIds: ['T1595.001', 'T9999'],
+            confidence: 'high',
+            reason: '规则明确限制扫描 IP 地址段。',
+          }),
+        };
+      },
+    });
+
+    const result = await new ClaudeAgentAdapter().classifyRestriction({
+      text: '扫描网段时速率不得超过每秒 10 个地址',
+      cwd: 'D:\\project',
+      projectId: 'project-1',
+    });
+
+    expect(result.selector).toEqual({ kind: 'attack', tacticIds: [], techniqueIds: ['T1595.001'] });
+    expect(result.matchedTechniques).toEqual([{ id: 'T1595.001', name: 'Scanning IP Blocks' }]);
+    expect(result.confidence).toBe('high');
+    expect(sdk.query).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        tools: [],
+        maxTurns: 1,
+        persistSession: false,
+      }),
+    }));
+  });
+
+  it('keeps the configured user runtime source for isolated refinement', async () => {
+    sdk.query.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'result', subtype: 'success', result: JSON.stringify({ candidates: [], ignoredSummary: [] }) };
+      },
+    });
+
+    await new ClaudeAgentAdapter().distillKnowledge({
+      cwd: 'D:\\project',
+      projectId: 'project-1',
+      sourceName: 'manual.md',
+      chunks: [{ anchor: { kind: 'line', label: 'Line 1' }, text: 'Do not retry a blocked request.' }],
+      existing: { restrictions: [], skills: [], workflows: [] },
+    });
+
+    expect(sdk.query).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        pathToClaudeCodeExecutable: sdk.executable,
+        env: { PATH: sdk.path },
+        settingSources: ['user'],
+        tools: [],
+        persistSession: false,
+      }),
+    }));
+    expect(sdk.query.mock.calls[0]?.[0].options).not.toHaveProperty('maxTurns');
+  });
+
+  it('keeps visible streamed and final refinery model output for task-local debugging', async () => {
+    const debug: Array<{ kind: string; text: string; attempt: number }> = [];
+    const final = JSON.stringify({ candidates: [], ignoredSummary: [] });
+    sdk.query.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '{"candidates":' } } };
+        yield { type: 'result', subtype: 'success', result: final };
+      },
+    });
+
+    await new ClaudeAgentAdapter().distillKnowledge({
+      cwd: 'D:\\project',
+      projectId: 'project-1',
+      sourceName: 'manual.md',
+      chunks: [{ anchor: { kind: 'line', label: 'Line 1' }, text: 'Always verify the result.' }],
+      existing: { restrictions: [], skills: [], workflows: [] },
+      attempt: 2,
+      onDebug: (entry) => debug.push(entry),
+    });
+
+    expect(debug).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'stream', text: '{"candidates":', attempt: 2 }),
+      expect.objectContaining({ kind: 'result', text: final, attempt: 2 }),
+    ]));
+    expect(sdk.query).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({ includePartialMessages: true, persistSession: false }),
+    }));
+  });
+
+  it('records a failed refinery result once instead of duplicating the SDK error', async () => {
+    const debug: Array<{ kind: string; text: string }> = [];
+    sdk.query.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'result', subtype: 'error', errors: ['Reached maximum number of turns (1)'] };
+      },
+    });
+
+    await expect(new ClaudeAgentAdapter().distillKnowledge({
+      cwd: 'D:\\project',
+      projectId: 'project-1',
+      sourceName: 'manual.md',
+      chunks: [{ anchor: { kind: 'line', label: 'Line 1' }, text: 'Always verify the result.' }],
+      existing: { restrictions: [], skills: [], workflows: [] },
+      onDebug: (entry) => debug.push(entry),
+    })).rejects.toThrow('Reached maximum number of turns (1)');
+
+    expect(debug.filter((entry) => entry.kind === 'error')).toEqual([
+      expect.objectContaining({ text: 'Reached maximum number of turns (1)' }),
+    ]);
   });
 });

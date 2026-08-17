@@ -33,6 +33,8 @@ export interface SubagentUsage {
 export interface SubagentRun {
   id: string;
   taskId: string;
+  /** Hexestra PTT task identity; distinct from the provider/SDK taskId. */
+  pttTaskId?: string;
   messageId?: string;
   toolUseId?: string;
   agentId?: string;
@@ -52,6 +54,7 @@ export interface SubagentRun {
   error?: string;
   usage?: SubagentUsage;
   activities: SubagentActivity[];
+  hiddenActivityCount?: number;
 }
 
 export interface AgentSubagentUpdateEvent {

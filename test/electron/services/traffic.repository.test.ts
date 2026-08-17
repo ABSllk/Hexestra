@@ -17,7 +17,6 @@ function flow(id: string, overrides: Partial<TrafficFlow> = {}): TrafficFlow {
     projectId: 'project-1',
     revision: 0,
     state: 'completed',
-    scopeState: 'in_scope',
     source: 'browser',
     request: {
       method: 'GET', url: `https://example.test/${id}`, httpVersion: 'h2',
@@ -39,10 +38,9 @@ describe('TrafficRepository', () => {
     roots.push(root);
     const repository = new TrafficRepository(root);
     repository.upsert(flow('flow-a'));
-    repository.upsert(flow('flow-b', { scopeState: 'out_of_scope' }));
+    repository.upsert(flow('flow-b'));
     expect(repository.read('flow-a')?.response?.body.data).toBe('ok');
     expect(repository.list({ query: 'flow-a', limit: 999 }).items).toHaveLength(1);
-    expect(repository.list({ scopeState: 'out_of_scope' }).items[0].id).toBe('flow-b');
     expect(repository.list({ states: ['completed'], source: 'browser', host: 'example.test', method: 'GET' }).total).toBe(2);
     const persisted = fs.readFileSync(path.join(root, '.hexestra', 'traffic', 'flows', '2026-08-01', 'flow-a.json'), 'utf8');
     expect(persisted).toContain('"data": "ok"');

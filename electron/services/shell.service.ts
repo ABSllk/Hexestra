@@ -546,7 +546,7 @@ export class ShellService {
 
   write(projectId: string, sessionId: string, data: string) {
     const session = this.requireSession(projectId, sessionId);
-    if (session.value.state === 'quarantined') throw new Error('Reverse shell must be bound to an in-scope asset first');
+    if (session.value.state === 'quarantined') throw new Error('Reverse shell must be bound to a project asset first');
     if (session.value.state === 'agent_locked') throw new Error('Agent owns the session input; take over before typing');
     if (session.value.state !== 'ready') throw new Error('Shell session is not ready');
     if (typeof data !== 'string' || Buffer.byteLength(data, 'utf8') > 1024 * 1024) throw new Error('Invalid shell input');
@@ -1927,7 +1927,6 @@ export class ShellService {
     const target = sessionService.getTarget(projectId, assetId);
     const asset = sessionService.listAssets(projectId).find((item) => item.id === assetId);
     if (!target && !asset) throw new Error('Target asset not found');
-    if ((target?.status ?? asset?.status) === 'out_of_scope') throw new Error('Target asset is outside project Scope');
   }
 
   private assertSessionAsset(projectId: string, session: InternalSession, assetId: string) {

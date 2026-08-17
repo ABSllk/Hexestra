@@ -12,6 +12,8 @@ const READ_ONLY_HEXESTRA_TOOLS = new Set([
   'vulnerability_list',
   'evidence_list',
   'report_list',
+  'attack_catalog_list',
+  'attack_catalog_search',
   'task_list',
   'traffic_list',
   'traffic_search',

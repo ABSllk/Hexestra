@@ -31,7 +31,6 @@ export class TrafficRepository {
         project_id TEXT NOT NULL,
         revision INTEGER NOT NULL,
         state TEXT NOT NULL,
-        scope_state TEXT NOT NULL,
         source TEXT NOT NULL,
         parent_flow_id TEXT,
         method TEXT NOT NULL,
@@ -50,23 +49,24 @@ export class TrafficRepository {
       );
       CREATE INDEX IF NOT EXISTS idx_traffic_started ON traffic_index(started_at DESC);
       CREATE INDEX IF NOT EXISTS idx_traffic_state ON traffic_index(state);
-      CREATE INDEX IF NOT EXISTS idx_traffic_scope ON traffic_index(scope_state);
       CREATE INDEX IF NOT EXISTS idx_traffic_host ON traffic_index(host);
     `);
     this.ensureColumn('burp_mode', 'TEXT');
     this.ensureColumn('burp_mirror_state', 'TEXT');
     this.ensureColumn('burp_mirror_error', 'TEXT');
+    this.db.exec('DROP INDEX IF EXISTS idx_traffic_scope');
     this.rebuildMissingIndex();
   }
 
   upsert(flow: TrafficFlow) {
-    assertTrafficId(flow.id);
-    const relativePath = this.relativeFlowPath(flow);
+    const normalized = stripLegacyScopeState(flow);
+    assertTrafficId(normalized.id);
+    const relativePath = this.relativeFlowPath(normalized);
     const absolutePath = path.join(this.root, relativePath);
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-    writeJsonAtomic(absolutePath, flow);
-    this.upsertIndex(flow, relativePath);
-    return flow;
+    writeJsonAtomic(absolutePath, normalized);
+    this.upsertIndex(normalized, relativePath);
+    return normalized;
   }
 
   read(id: string): TrafficFlow | null {
@@ -104,10 +104,6 @@ export class TrafficRepository {
       clauses.push('state = ?');
       values.push(query.state);
     }
-    if (query.scopeState) {
-      clauses.push('scope_state = ?');
-      values.push(query.scopeState);
-    }
     if (query.source) {
       clauses.push('source = ?');
       values.push(query.source);
@@ -132,7 +128,7 @@ export class TrafficRepository {
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const count = this.db.prepare(`SELECT COUNT(*) AS count FROM traffic_index ${where}`).get(...values) as { count: number };
     const rows = this.db.prepare(`
-      SELECT id, revision, state, scope_state, source, parent_flow_id, method, url, host,
+      SELECT id, revision, state, source, parent_flow_id, method, url, host,
              status_code, content_type, request_bytes, response_bytes, started_at,
              duration_ms, burp_routed, burp_mode, burp_mirror_state,
              burp_mirror_error, error
@@ -183,14 +179,14 @@ export class TrafficRepository {
     const summary = summarizeTrafficFlow(flow);
     this.db.prepare(`
       INSERT INTO traffic_index (
-        id, project_id, revision, state, scope_state, source, parent_flow_id,
+        id, project_id, revision, state, source, parent_flow_id,
         method, url, host, status_code, content_type, request_bytes,
         response_bytes, started_at, duration_ms, burp_routed, burp_mode,
         burp_mirror_state, burp_mirror_error, error, file_path, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         revision = excluded.revision, state = excluded.state,
-        scope_state = excluded.scope_state, source = excluded.source,
+        source = excluded.source,
         parent_flow_id = excluded.parent_flow_id, method = excluded.method,
         url = excluded.url, host = excluded.host, status_code = excluded.status_code,
         content_type = excluded.content_type, request_bytes = excluded.request_bytes,
@@ -202,7 +198,7 @@ export class TrafficRepository {
         error = excluded.error, file_path = excluded.file_path,
         updated_at = excluded.updated_at
     `).run(
-      flow.id, flow.projectId, flow.revision, flow.state, flow.scopeState, flow.source,
+      flow.id, flow.projectId, flow.revision, flow.state, flow.source,
       flow.parentFlowId ?? null, summary.method, summary.url, summary.host,
       summary.statusCode ?? null, summary.contentType ?? null, summary.requestBytes,
       summary.responseBytes ?? null, summary.startedAt, summary.durationMs ?? null,
@@ -233,7 +229,6 @@ export function summarizeTrafficFlow(flow: TrafficFlow): TrafficSummary {
     id: flow.id,
     revision: flow.revision,
     state: flow.state,
-    scopeState: flow.scopeState,
     source: flow.source,
     parentFlowId: flow.parentFlowId,
     method: flow.request.method,
@@ -257,7 +252,6 @@ interface TrafficIndexRow {
   id: string;
   revision: number;
   state: TrafficSummary['state'];
-  scope_state: TrafficSummary['scopeState'];
   source: TrafficSummary['source'];
   parent_flow_id: string | null;
   method: string;
@@ -281,7 +275,6 @@ function summaryFromRow(row: TrafficIndexRow): TrafficSummary {
     id: row.id,
     revision: row.revision,
     state: row.state,
-    scopeState: row.scope_state,
     source: row.source,
     parentFlowId: row.parent_flow_id ?? undefined,
     method: row.method,
@@ -302,13 +295,18 @@ function summaryFromRow(row: TrafficIndexRow): TrafficSummary {
 }
 
 function parseFlow(source: string, expectedId?: string): TrafficFlow {
-  const value = JSON.parse(source) as TrafficFlow;
+  const value = stripLegacyScopeState(JSON.parse(source) as TrafficFlow & { scopeState?: unknown });
   assertTrafficId(value?.id);
   if (expectedId && value.id !== expectedId) throw new Error('Traffic file identity mismatch');
   if (!value.request || typeof value.request.url !== 'string' || typeof value.revision !== 'number') {
     throw new Error('Invalid traffic flow file');
   }
   return value;
+}
+
+function stripLegacyScopeState(flow: TrafficFlow & { scopeState?: unknown }): TrafficFlow {
+  const { scopeState: _legacyScopeState, ...normalized } = flow;
+  return normalized;
 }
 
 function writeJsonAtomic(filePath: string, value: unknown) {

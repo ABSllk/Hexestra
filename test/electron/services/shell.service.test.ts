@@ -137,7 +137,9 @@ describe('ShellService local session and Agent lease', () => {
       await vi.advanceTimersByTimeAsync(1_000);
 
       await expect(resultPromise).resolves.toMatchObject({
-        outcome: 'completed_unverified', output: 'hello\r\n', exitCode: undefined,
+        outcome: 'completed_unverified',
+        output: 'hello\r\n',
+        exitCode: undefined,
       });
       expect(pty.write).not.toHaveBeenCalledWith('\x03');
       expect(service.listSessions('project-1')[0]).toMatchObject({ state: 'ready' });

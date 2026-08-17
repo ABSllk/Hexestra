@@ -31,8 +31,10 @@ const expectedToolNames = [
   'proxy_runtime_start', 'proxy_runtime_stop',
   'target_list', 'asset_get', 'scope_update', 'asset_register', 'asset_relation_upsert', 'target_update_summary',
   'asset_update_summary', 'evidence_list', 'evidence_upsert', 'finding_list', 'finding_upsert',
-  'vulnerability_list', 'vulnerability_upsert', 'report_list', 'report_upsert', 'task_list',
-  'task_upsert', 'task_update_status',
+  'vulnerability_list', 'vulnerability_upsert', 'report_list', 'report_upsert',
+  'attack_catalog_list', 'attack_catalog_search', 'task_list',
+  'task_upsert', 'task_plan_create', 'task_steps_plan', 'task_step_upsert', 'task_step_delete', 'task_step_reorder', 'task_delete', 'task_focus', 'task_context_get', 'task_update_criterion', 'task_update_status',
+  'tool_catalog_list', 'tool_catalog_probe', 'restriction_list', 'restriction_upsert', 'restriction_delete',
 ] as const;
 
 describe('Hexestra Agent tool factories', () => {
@@ -70,6 +72,24 @@ describe('Hexestra Agent tool factories', () => {
     expect(register.description).toContain('immediately call asset_get');
     expect(tools.find((tool) => tool.name === 'asset_get')).toMatchObject({ riskLevel: 'read' });
     expect(tools.find((tool) => tool.name === 'asset_relation_upsert')?.description).toContain('child to parent');
+  });
+
+  it('exposes the pinned ATT&CK catalog through read-only list and paginated search tools', async () => {
+    const tools = createHexestraAgentTools({ sender: {} as never, permissionMode: 'default' });
+    const list = tools.find((tool) => tool.name === 'attack_catalog_list')!;
+    const search = tools.find((tool) => tool.name === 'attack_catalog_search')!;
+
+    expect(list.riskLevel).toBe('read');
+    expect(search.riskLevel).toBe('read');
+    const listResult = await list.execute({});
+    const searchResult = await search.execute({ query: 'Scanning IP Blocks', tacticId: 'TA0043', limit: 1 });
+    const listPayload = JSON.parse(listResult.content[0].type === 'text' ? listResult.content[0].text : '{}');
+    const searchPayload = JSON.parse(searchResult.content[0].type === 'text' ? searchResult.content[0].text : '{}');
+
+    expect(listPayload).toMatchObject({ catalogVersion: '19.1', tacticCount: 15, techniqueCount: 697 });
+    expect(searchPayload.techniques).toEqual([expect.objectContaining({ id: 'T1595.001', name: 'Scanning IP Blocks' })]);
+    expect(tools.find((tool) => tool.name === 'task_upsert')?.description).toContain('attack_catalog_list/search');
+    expect(tools.find((tool) => tool.name === 'restriction_upsert')?.description).toContain('attack_catalog_list/search');
   });
 
 });

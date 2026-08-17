@@ -20,6 +20,8 @@ import type {
 import { agentSettingsService } from './agent-settings.service';
 import { sessionService } from './session.service';
 import { windowsPathToWsl } from './wsl-agent-runtime';
+import { globalUserSkillRoot, HEXESTRA_CORE_SKILL_NAMES, projectUserSkillRoot, syncProjectUserSkills } from './pentest-skill';
+import YAML from 'yaml';
 
 const MAX_SKILL_BYTES = 512 * 1024;
 const MAX_MCP_DEFINITION_BYTES = 512 * 1024;
@@ -33,12 +35,14 @@ interface RuntimeContext {
   runtimeLabel: string;
   projectPath: string | null;
   projectKey: string | null;
+  globalUserPath: string;
 }
 
 interface ClaudeCapabilitiesDependencies {
   getSettings: () => AgentConnectionSettings;
   getSessionPath: (sessionId: string) => string;
   resolveRuntimeHome: (settings: AgentConnectionSettings) => Promise<string>;
+  getGlobalUserPath: () => string;
 }
 
 export class ClaudeCapabilitiesService {
@@ -53,6 +57,7 @@ export class ClaudeCapabilitiesService {
       getSettings: dependencies.getSettings ?? (() => agentSettingsService.getClaudeSettings()),
       getSessionPath: dependencies.getSessionPath ?? ((sessionId) => sessionService.getSessionPath(sessionId)),
       resolveRuntimeHome: dependencies.resolveRuntimeHome ?? resolveClaudeRuntimeHome,
+      getGlobalUserPath: dependencies.getGlobalUserPath ?? (() => sessionService.getGlobalUserPath()),
     };
     if (registerIpc) this.registerHandlers();
   }
@@ -61,14 +66,26 @@ export class ClaudeCapabilitiesService {
     const context = await this.context(sessionId);
     const errors: ClaudeCapabilitySourceError[] = [];
     const items: ClaudeSkillDescriptor[] = [];
-    for (const scope of ['personal', 'project'] as const) {
-      if (scope === 'project' && !context.projectPath) continue;
+    for (const enabled of [true, false]) {
+      try {
+        items.push(...this.readSkillDirectory(this.skillRoot(context, 'global', enabled), 'global', enabled));
+      } catch (error) {
+        errors.push({ source: 'global user skills', detail: errorMessage(error) });
+      }
+    }
+    if (context.projectPath) {
       for (const enabled of [true, false]) {
         try {
-          items.push(...this.readSkillDirectory(this.skillRoot(context, scope, enabled), scope, enabled));
+          items.push(...this.readSkillDirectory(this.skillRoot(context, 'project', enabled), 'project', enabled));
         } catch (error) {
-          errors.push({ source: `${scope} skills`, detail: errorMessage(error) });
+          errors.push({ source: 'project user skills', detail: errorMessage(error) });
         }
+      }
+      try {
+        items.push(...this.readSkillDirectory(this.skillRoot(context, 'core', true), 'core', true)
+          .filter((item) => HEXESTRA_CORE_SKILL_NAMES.includes(item.name as typeof HEXESTRA_CORE_SKILL_NAMES[number])));
+      } catch (error) {
+        errors.push({ source: 'Hexestra core skills', detail: errorMessage(error) });
       }
     }
     items.sort((left, right) =>
@@ -95,6 +112,7 @@ export class ClaudeCapabilitiesService {
   async saveSkill(raw: ClaudeSkillSaveInput): Promise<ClaudeSkillDocument> {
     const input = normalizeSkillSaveInput(raw);
     const context = await this.context(input.sessionId);
+    if (input.scope === 'core') throw new Error('Hexestra core Skills are read-only');
     const enabled = input.enabled !== false;
     const root = this.skillRoot(context, input.scope, enabled);
     fs.mkdirSync(root, { recursive: true });
@@ -108,12 +126,14 @@ export class ClaudeCapabilitiesService {
     fs.mkdirSync(directory, { recursive: true });
     const file = path.join(directory, 'SKILL.md');
     atomicWriteText(file, input.content);
+    this.syncRuntime(context);
     return { ...skillDescriptor(file, input.scope, input.name, enabled, input.content), content: input.content };
   }
 
   async toggleSkill(raw: ClaudeSkillReference): Promise<ClaudeSkillDocument> {
     const input = normalizeSkillReference(raw);
     const context = await this.context(input.sessionId);
+    if (input.scope === 'core') throw new Error('Hexestra core Skills cannot be disabled');
     const source = path.dirname(this.skillFile(context, input.scope, input.name, input.enabled));
     const targetRoot = this.skillRoot(context, input.scope, !input.enabled);
     const target = path.join(targetRoot, input.name);
@@ -121,6 +141,7 @@ export class ClaudeCapabilitiesService {
     if (fs.existsSync(target)) throw new Error(`A ${input.enabled ? 'disabled' : 'enabled'} copy of ${input.name} already exists`);
     fs.mkdirSync(targetRoot, { recursive: true });
     fs.renameSync(source, target);
+    this.syncRuntime(context);
     const file = path.join(target, 'SKILL.md');
     const content = readBoundedText(file, MAX_SKILL_BYTES, 'Skill exceeds the 512 KB editor limit');
     return { ...skillDescriptor(file, input.scope, input.name, !input.enabled, content), content };
@@ -129,9 +150,11 @@ export class ClaudeCapabilitiesService {
   async deleteSkill(raw: ClaudeSkillReference): Promise<void> {
     const input = normalizeSkillReference(raw);
     const context = await this.context(input.sessionId);
+    if (input.scope === 'core') throw new Error('Hexestra core Skills cannot be deleted');
     const directory = path.dirname(this.skillFile(context, input.scope, input.name, input.enabled));
     if (!fs.existsSync(directory)) throw new Error(`Skill ${input.name} was not found`);
     fs.rmSync(directory, { recursive: true, force: false });
+    this.syncRuntime(context);
   }
 
   async listMcpServers(sessionId?: string | null): Promise<ClaudeMcpListResult> {
@@ -229,12 +252,19 @@ export class ClaudeCapabilitiesService {
       runtimeLabel: settings.executionMode === 'wsl' ? `WSL · ${settings.wslDistribution}` : 'Native',
       projectPath,
       projectKey,
+      globalUserPath: this.dependencies.getGlobalUserPath(),
     };
   }
 
   private skillRoot(context: RuntimeContext, scope: ClaudeSkillScope, enabled: boolean) {
-    const base = scope === 'personal' ? context.runtimeHome : requireProjectPath(context);
-    return path.join(base, '.claude', enabled ? 'skills' : 'skills-disabled');
+    if (scope === 'global') return globalUserSkillRoot(context.globalUserPath, enabled);
+    const projectPath = requireProjectPath(context);
+    if (scope === 'project') return projectUserSkillRoot(projectPath, enabled);
+    return path.join(projectPath, '.claude', 'skills');
+  }
+
+  private syncRuntime(context: RuntimeContext) {
+    if (context.projectPath) syncProjectUserSkills(context.projectPath, context.globalUserPath);
   }
 
   private skillFile(context: RuntimeContext, scope: ClaudeSkillScope, name: string, enabled: boolean) {
@@ -356,7 +386,7 @@ function assertCapabilityName(value: unknown) {
 }
 
 function assertSkillScope(value: unknown): ClaudeSkillScope {
-  if (value !== 'personal' && value !== 'project') throw new Error('Invalid Skill scope');
+  if (value !== 'global' && value !== 'project' && value !== 'core') throw new Error('Invalid Skill scope');
   return value;
 }
 
@@ -395,18 +425,24 @@ function skillDescriptor(
     scope,
     enabled,
     sourcePath: file,
+    metadata: metadata.metadata,
   };
 }
 
 function parseSkillMetadata(content: string) {
   const match = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
-  if (!match) return { name: '', description: '' };
-  const values: Record<string, string> = {};
-  for (const line of match[1].split(/\r?\n/)) {
-    const pair = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (pair) values[pair[1]] = unquote(pair[2].trim());
+  if (!match) return { name: '', description: '', metadata: {} };
+  try {
+    const values = YAML.parse(match[1]) as Record<string, unknown> | null;
+    const metadata = isRecord(values?.metadata) ? Object.fromEntries(Object.entries(values.metadata).filter(([, value]) => typeof value === 'string').map(([key, value]) => [key, value as string])) : {};
+    return {
+      name: typeof values?.name === 'string' ? values.name : '',
+      description: typeof values?.description === 'string' ? values.description : '',
+      metadata,
+    };
+  } catch {
+    return { name: '', description: '', metadata: {} };
   }
-  return { name: values.name ?? '', description: values.description ?? '' };
 }
 
 function unquote(value: string) {

@@ -1,4 +1,4 @@
-export type ClaudeSkillScope = 'personal' | 'project';
+export type ClaudeSkillScope = 'global' | 'project' | 'core';
 export type ClaudeMcpScope = 'user' | 'project' | 'local';
 
 export interface ClaudeSkillDescriptor {
@@ -8,6 +8,7 @@ export interface ClaudeSkillDescriptor {
   scope: ClaudeSkillScope;
   enabled: boolean;
   sourcePath: string;
+  metadata?: Record<string, string>;
 }
 
 export interface ClaudeSkillListResult {

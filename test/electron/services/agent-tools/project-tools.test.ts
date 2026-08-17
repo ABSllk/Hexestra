@@ -13,6 +13,7 @@ vi.mock('electron', () => ({
 describe('Agent fine-grained registration smoke', () => {
   let appData: string;
   let previousAppData: string | undefined;
+  let previousHexestraHome: string | undefined;
   let projectPath: string;
   let sessionId: string;
   let sessionService: typeof import('@electron/services/session.service').sessionService;
@@ -21,7 +22,9 @@ describe('Agent fine-grained registration smoke', () => {
   beforeAll(async () => {
     appData = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-agent-graph-smoke-'));
     previousAppData = process.env.APPDATA;
+    previousHexestraHome = process.env.HEXESTRA_HOME;
     process.env.APPDATA = appData;
+    process.env.HEXESTRA_HOME = appData;
     vi.resetModules();
     sessionService = (await import('@electron/services/session.service')).sessionService;
     const { createProjectAgentTools } = await import('@electron/services/agent-tools/project-tools');
@@ -41,6 +44,7 @@ describe('Agent fine-grained registration smoke', () => {
   afterAll(() => {
     sessionService.close();
     process.env.APPDATA = previousAppData;
+    process.env.HEXESTRA_HOME = previousHexestraHome;
     fs.rmSync(appData, { recursive: true, force: true });
   });
 
@@ -93,7 +97,29 @@ describe('Agent fine-grained registration smoke', () => {
     const version = (database.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
     const portDetail = database.prepare('SELECT port_asset_id, port FROM endpoints WHERE port_asset_id = ?').get(portId);
     database.close();
-    expect(version).toBe(4);
+    expect(version).toBe(5);
     expect(portDetail).toMatchObject({ port_asset_id: portId, port: 443 });
+  });
+
+  it('atomically creates catalog-backed Agent Tasks under Tactic and Technique headings', async () => {
+    const planTool = tools.find((candidate) => candidate.name === 'task_plan_create');
+    expect(planTool).toBeDefined();
+    const result = await planTool!.execute({
+      groups: [{
+        tacticId: 'TA0043',
+        techniqueId: 'T1595.001',
+        tasks: [
+          { title: 'Enumerate exposed IP blocks', successCriteria: [{ text: 'Record candidate ranges' }] },
+          { title: 'Validate responsive hosts', successCriteria: [{ text: 'Confirm live hosts' }] },
+        ],
+      }],
+    });
+    const planned = JSON.parse(result.content[0].type === 'text' ? result.content[0].text : '[]') as Array<{ kind: string; techniqueIds: string[]; status: string }>;
+    expect(planned).toHaveLength(2);
+    expect(planned.every((task) => task.kind === 'objective' && task.status === 'pending' && task.techniqueIds[0] === 'T1595.001')).toBe(true);
+    const markdown = fs.readFileSync(path.join(projectPath, 'ptt.md'), 'utf8');
+    expect(markdown).toContain('## TA0043 Reconnaissance');
+    expect(markdown).toContain('### T1595.001 Scanning IP Blocks');
+    expect((await sessionService.listTasks(sessionId)).filter((task) => task.kind === 'objective')).toHaveLength(2);
   });
 });

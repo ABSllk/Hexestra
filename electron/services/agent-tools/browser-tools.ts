@@ -7,7 +7,7 @@ export function createBrowserAgentTools({ sender, sessionId }: AgentToolContext)
   return [
     createAgentTool(
       'browser_tabs',
-      'List project browser tabs. The visible tab is the default when tabId is omitted. scopeState is informational and never blocks browser access.',
+      'List project browser tabs. Tools default to the visible tab when tabId is omitted.',
       {},
       async () => ({
         content: [{ type: 'text', text: JSON.stringify(browserService.listTabs(sender.id, sessionId), null, 2) }],
@@ -15,7 +15,7 @@ export function createBrowserAgentTools({ sender, sessionId }: AgentToolContext)
     ),
     createAgentTool(
       'browser_read',
-      'Read the visible browser page. Returns bounded text and element references valid until navigation or the next snapshot. Out-of-scope pages remain accessible.',
+      'Read the visible browser page. Returns bounded text and element references valid until navigation or the next snapshot.',
       { tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab') },
       async ({ tabId }) => ({
         content: [{ type: 'text', text: JSON.stringify(await browserService.readPage(sender.id, sessionId, tabId), null, 2) }],
@@ -23,7 +23,7 @@ export function createBrowserAgentTools({ sender, sessionId }: AgentToolContext)
     ),
     createAgentTool(
       'browser_cookies',
-      'Read all cookies in the project browser partition, including raw values and HttpOnly metadata. Does not require Traffic Capture or an open tab.',
+      'Read all cookies in the project browser partition, including HttpOnly metadata. Does not require Traffic Capture or an open tab.',
       {},
       async () => ({
         content: [{ type: 'text', text: JSON.stringify(await browserService.readCookies(sessionId), null, 2) }],
@@ -31,7 +31,7 @@ export function createBrowserAgentTools({ sender, sessionId }: AgentToolContext)
     ),
     createAgentTool(
       'browser_storage',
-      'Read localStorage and sessionStorage key/value pairs from the selected tab's origin.',
+      "Read localStorage and sessionStorage from the selected tab's origin.",
       { tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab') },
       async ({ tabId }) => ({
         content: [{ type: 'text', text: JSON.stringify(await browserService.readStorage(sender.id, sessionId, tabId), null, 2) }],
@@ -39,7 +39,7 @@ export function createBrowserAgentTools({ sender, sessionId }: AgentToolContext)
     ),
     createAgentTool(
       'browser_evaluate',
-      'Execute JavaScript in the selected tab's main page and return a serializable result. It can modify page, storage, navigation, and network state.',
+      "Execute JavaScript in the selected tab's main page and return a serializable result. It can modify page, storage, navigation, and network state.",
       {
         source: z.string().min(1).max(100_000).describe('JavaScript source to execute in the page'),
         tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab'),
@@ -50,7 +50,7 @@ export function createBrowserAgentTools({ sender, sessionId }: AgentToolContext)
     ),
     createAgentTool(
       'browser_navigate',
-      'Navigate a browser tab to any HTTP(S) URL. Create a tab if none exists. The returned scopeState is informational and does not block navigation.',
+      'Navigate a browser tab to any HTTP(S) URL. Create a tab if none exists.',
       {
         url: z.string().describe('Destination URL'),
         tabId: z.string().optional().describe('Browser tab ID; defaults to the visible browser tab'),
@@ -169,7 +169,7 @@ export function createBrowserAgentTools({ sender, sessionId }: AgentToolContext)
       async ({ tabId }) => {
         const screenshot = await browserService.screenshot(sender.id, sessionId, tabId);
         return { content: [
-          { type: 'text', text: JSON.stringify({ url: screenshot.url, title: screenshot.title, scopeState: screenshot.scopeState }) },
+          { type: 'text', text: JSON.stringify({ url: screenshot.url, title: screenshot.title }) },
           { type: 'image', data: screenshot.base64, mimeType: screenshot.mimeType },
         ] };
       },

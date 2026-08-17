@@ -1,7 +1,11 @@
+export type ScopeMode = 'whitelist' | 'blacklist';
+export type ScopeAnnotation = 'authorized' | 'excluded';
+export type ScopeAdvisory = 'included' | 'unlisted' | 'excluded' | 'neutral';
+
 export interface SessionScopePayload {
-  inScope: string[];
-  outOfScope: string[];
-  targets: string[];
+  mode: ScopeMode;
+  allowRules: string[];
+  excludeRules: string[];
 }
 
 export interface SessionDataChangedEvent {

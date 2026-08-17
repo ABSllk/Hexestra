@@ -2,6 +2,7 @@ import { BrowserWindow, dialog, ipcMain } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { installHexestraSkills, resolvePentestSkillSource } from './pentest-skill';
+import { resolveGlobalUserPath } from './hexestra-home';
 import {
   normalizeOperationalAssetStatus,
   normalizeStoredAsset,
@@ -9,7 +10,6 @@ import {
 } from './asset-record';
 import {
   AssetGraphRepository,
-  LOCAL_ASSET_ID,
   type GraphLayoutState,
   type GraphRelation,
   type GraphPerspective,
@@ -29,18 +29,46 @@ import {
   type ProjectStatePatch,
 } from './project-state';
 import {
+  deletePttTask,
+  deletePttStep,
+  insertPttStep,
+  parsePttDocument,
   normalizePttMarkdown,
   parsePttMarkdown,
+  planPttTasks,
+  planPttSteps,
   updatePttTaskStatus,
+  updatePttStep,
   upsertPttTask,
   type PentestTask,
   type PttTaskInput,
   type TaskStatus,
 } from './ptt-markdown';
-import { deriveScopedAssetStatus, isValueExcluded, isValueInScope } from './scope-policy';
+import { ATTACK_CATALOG_VERSION, getTactic, getTechnique } from './attack-catalog';
+import { ATTACK_TACTICS } from '../contracts/tasks';
+import type { ExecutionStep, PentestObjective, TaskContextPackage, TaskPlanGroupInput, TaskStepInput, TaskStepPlanInput, TaskTraceEntry, TaskTracePackage } from '../contracts/tasks';
+import {
+  applyRestrictionImport,
+  deleteRestriction as deleteRestrictionDocument,
+  listRestrictionDocuments,
+  previewRestrictionImport,
+  globalRestrictionsPath,
+  projectRestrictionsPath,
+  readRestrictionDocument,
+  resolveRestrictions,
+  seedGlobalRestrictions,
+  serializeRestrictionDocument,
+  upsertRestriction as upsertRestrictionDocument,
+  type RestrictionImportPreview,
+  type RestrictionScope,
+  type RestrictionUpsertInput,
+} from './restriction.service';
+import { deleteTool, loadToolCatalog, probeToolCatalog, upsertTool, type ToolDefinition } from './tool-catalog.service';
+import { normalizeScopePolicy, scopeAdvisoryForValues, scopeAnnotationForValues } from './scope-policy';
+import { AgentHistoryRepository } from './agent-history.repository';
 import { isManagedRecordKind, RECORDS_IPC, type RecordExportResult } from '../contracts/records';
 import { managedRecordFilename, managedRecordMarkdown } from './record-export';
-import type { SessionDataChangedEvent } from '../contracts/session';
+import type { ScopeAnnotation, SessionDataChangedEvent } from '../contracts/session';
 import {
   createProjectMetadata,
   normalizeProjectPath,
@@ -62,6 +90,7 @@ interface Target {
   domains: string[];
   os?: string;
   status: string;
+  scopeAnnotation?: ScopeAnnotation;
   tags: string[];
   ports: Array<{
     id: string;
@@ -105,9 +134,12 @@ interface SessionFileEntry {
 }
 
 class SessionService {
+  private readonly userDataPath: string;
+  private readonly globalUserPath: string;
   private readonly registry: ProjectRegistry;
   private readonly projectPaths = new Map<string, string>();
   private repositories = new Map<string, AssetGraphRepository>();
+  private historyRepositories = new Map<string, AgentHistoryRepository>();
   private taskWatchers = new Map<string, fs.FSWatcher>();
   private taskWatchTimers = new Map<string, NodeJS.Timeout>();
   private fileWatchers = new Map<string, fs.FSWatcher>();
@@ -119,8 +151,18 @@ class SessionService {
         process.env.APPDATA || path.join(process.env.HOME || '~', '.config'),
         'hexestra',
       );
+    this.userDataPath = userDataPath;
+    this.globalUserPath = resolveGlobalUserPath();
     this.registry = new ProjectRegistry(path.join(userDataPath, 'recent-projects.json'));
     this.registerHandlers();
+  }
+
+  getUserDataPath() {
+    return this.userDataPath;
+  }
+
+  getGlobalUserPath() {
+    return this.globalUserPath;
   }
 
   private registerHandlers() {
@@ -194,6 +236,29 @@ class SessionService {
     ipcMain.handle('tasks:upsert', async (_event, sessionId: string, task: PttTaskInput) => {
       return this.upsertTask(sessionId, task);
     });
+    ipcMain.handle('tasks:plan', async (_event, sessionId: string, groups: TaskPlanGroupInput[]) => this.planTasks(sessionId, groups));
+
+    ipcMain.handle('tasks:delete', async (_event, sessionId: string, taskId: string) => this.deleteTask(sessionId, taskId));
+    ipcMain.handle('tasks:focus', async (_event, sessionId: string, taskId: string | null) => this.focusTask(sessionId, taskId));
+    ipcMain.handle('tasks:context', async (_event, sessionId: string, taskId?: string) => this.resolveTaskContext(sessionId, taskId));
+    ipcMain.handle('tasks:criterion', async (_event, sessionId: string, taskId: string, criterionId: string, completed: boolean) => this.updateTaskCriterion(sessionId, taskId, criterionId, completed));
+    ipcMain.handle('tasks:steps-plan', async (_event, sessionId: string, input: TaskStepPlanInput) => this.planTaskSteps(sessionId, input));
+    ipcMain.handle('tasks:step-upsert', async (_event, sessionId: string, input: TaskStepInput) => this.upsertTaskStep(sessionId, input));
+    ipcMain.handle('tasks:step-delete', async (_event, sessionId: string, stepId: string) => this.deleteTaskStep(sessionId, stepId));
+    ipcMain.handle('tasks:step-reorder', async (_event, sessionId: string, parentId: string, stepIds: string[]) => this.reorderTaskSteps(sessionId, parentId, stepIds));
+    ipcMain.handle('tasks:trace', async (_event, sessionId: string, nodeId: string) => this.getTaskTrace(sessionId, nodeId));
+    ipcMain.handle('tasks:document-status', async (_event, sessionId: string) => this.getPttDocumentStatus(sessionId));
+    ipcMain.handle('tasks:rebuild', async (_event, sessionId: string) => this.rebuildPtt(sessionId));
+    ipcMain.handle('restrictions:list', async (_event, sessionId: string) => this.getRestrictions(sessionId));
+    ipcMain.handle('restrictions:upsert', async (_event, sessionId: string, scope: RestrictionScope, input: RestrictionUpsertInput) => this.upsertRestriction(sessionId, scope, input, true));
+    ipcMain.handle('restrictions:delete', async (_event, sessionId: string, scope: RestrictionScope, id: string) => this.deleteRestriction(sessionId, scope, id, true));
+    ipcMain.handle('restrictions:import-preview', async (_event, sessionId: string, scope: RestrictionScope, yamlText: string) => this.previewRestrictionImport(sessionId, scope, yamlText));
+    ipcMain.handle('restrictions:import-apply', async (_event, sessionId: string, scope: RestrictionScope, preview: RestrictionImportPreview) => this.applyRestrictionImport(sessionId, scope, preview));
+    ipcMain.handle('restrictions:export', async (event, sessionId: string, scope: RestrictionScope) => this.exportRestrictions(event, sessionId, scope));
+    ipcMain.handle('tools:catalog:list', async () => loadToolCatalog(this.globalUserPath));
+    ipcMain.handle('tools:catalog:probe', async () => probeToolCatalog(this.globalUserPath));
+    ipcMain.handle('tools:catalog:upsert', async (_event, tool: ToolDefinition) => upsertTool(this.globalUserPath, tool));
+    ipcMain.handle('tools:catalog:delete', async (_event, toolId: string) => deleteTool(this.globalUserPath, toolId));
 
     ipcMain.handle('asm:scan-runs', async (_event, sessionId: string) => {
       return this.listScanRuns(sessionId);
@@ -361,6 +426,7 @@ class SessionService {
     if (!fs.existsSync(path.join(sessionPath, 'ptt.md'))) this.writePttTemplate(sessionPath, session);
     if (!fs.existsSync(path.join(sessionPath, 'targets.md'))) this.writeTargetsManifest(sessionPath, []);
     this.getRepository(metadata.id);
+    this.getAgentHistory(metadata.id);
     session = {
       ...this.reconcileProjectCounts(metadata.id, metadata),
       basePath: sessionPath,
@@ -368,7 +434,8 @@ class SessionService {
     if (!fs.existsSync(path.join(projectDataPath(sessionPath), 'project-state.json'))) {
       this.writeProjectState(sessionPath, createDefaultProjectState());
     }
-    if (isNew) this.ensureHexestraSkills(sessionPath);
+    this.ensureHexestraSkills(sessionPath);
+    seedGlobalRestrictions(this.globalUserPath);
     this.registry.remember(session, sessionPath);
     console.log(`[Project] ${isNew ? 'Initialized' : 'Opened'}:`, metadata.id, sessionPath);
     return session;
@@ -401,6 +468,7 @@ class SessionService {
     this.stopFileWatcher(id);
     this.repositories.get(id)?.close();
     this.repositories.delete(id);
+    this.historyRepositories.delete(id);
     this.projectPaths.delete(id);
     this.registry.remove(id);
     console.log('[Project] Removed from recent:', id);
@@ -445,12 +513,58 @@ class SessionService {
     if (!fs.existsSync(statePath)) {
       const state = createDefaultProjectState();
       if (fs.existsSync(sessionPath)) this.writeProjectState(sessionPath, state);
+      this.getAgentHistory(sessionId).ensureBranches(state.agent.branches);
       return state;
     }
+    let raw: unknown;
     try {
-      return normalizeProjectState(JSON.parse(fs.readFileSync(statePath, 'utf8')));
+      raw = JSON.parse(fs.readFileSync(statePath, 'utf8')) as unknown;
     } catch {
-      return createDefaultProjectState();
+      const state = createDefaultProjectState();
+      this.getAgentHistory(sessionId).ensureBranches(state.agent.branches);
+      return state;
+    }
+    let normalized: ProjectState;
+    try {
+      normalized = normalizeProjectState(raw);
+    } catch {
+      const state = createDefaultProjectState();
+      this.getAgentHistory(sessionId).ensureBranches(state.agent.branches);
+      return state;
+    }
+    if (isLegacyProjectState(raw)) {
+      // Migration errors intentionally escape: the original v9 file remains intact and
+      // the next open can retry after the underlying filesystem issue is fixed.
+      const repository = this.getAgentHistory(sessionId);
+      const backupPath = path.join(projectDataPath(sessionPath), 'project-state.v9.pre-agent-history.json');
+      if (!fs.existsSync(backupPath)) {
+        fs.copyFileSync(statePath, backupPath);
+        try { fs.chmodSync(backupPath, 0o444); } catch { /* best effort on filesystems without POSIX modes */ }
+      }
+      repository.migrateLegacyState(normalized);
+      const migrated = stripLegacyHistory(normalized, repository);
+      this.writeProjectState(sessionPath, migrated);
+      return migrated;
+    }
+    this.getAgentHistory(sessionId).ensureBranches(normalized.agent.branches);
+    return normalized;
+  }
+
+  getAgentHistory(sessionId: string) {
+    const existing = this.historyRepositories.get(sessionId);
+    if (existing) return existing;
+    const repository = new AgentHistoryRepository(this.getSessionPath(sessionId));
+    this.historyRepositories.set(sessionId, repository);
+    return repository;
+  }
+
+  clearAgentHistory(sessionId: string) {
+    const repository = this.getAgentHistory(sessionId);
+    repository.clear();
+    const backupPath = path.join(projectDataPath(this.getSessionPath(sessionId)), 'project-state.v9.pre-agent-history.json');
+    if (fs.existsSync(backupPath)) {
+      try { fs.chmodSync(backupPath, 0o666); } catch { /* best effort */ }
+      fs.rmSync(backupPath, { force: true });
     }
   }
 
@@ -461,15 +575,20 @@ class SessionService {
     }
     const state = mergeProjectState(this.getProjectState(sessionId), patch);
     this.writeProjectState(sessionPath, state);
+    this.getAgentHistory(sessionId).ensureBranches(state.agent.branches);
     return state;
   }
 
   valueIsInScope(sessionId: string, value: string) {
-    return isValueInScope(readProjectMetadata(this.getSessionPath(sessionId))?.scope, value);
+    return this.scopeAnnotation(sessionId, value) === 'authorized';
+  }
+
+  scopeAnnotation(sessionId: string, value: string) {
+    return scopeAnnotationForValues(readProjectMetadata(this.getSessionPath(sessionId))?.scope, [value]);
   }
 
   async updateScope(sessionId: string, scope: SessionMeta['scope']) {
-    const updated = await this.updateSession(sessionId, { scope });
+    const updated = await this.updateSession(sessionId, { scope: normalizeScopePolicy(scope) });
     this.refreshGraphArtifacts(sessionId);
     return updated;
   }
@@ -751,9 +870,40 @@ class SessionService {
     }
     const source = fs.readFileSync(pttPath, 'utf8');
     const normalized = normalizePttMarkdown(source);
-    if (normalized.changed) this.writePtt(sessionPath, normalized.markdown);
+    if (normalized.changed) {
+      const backup = path.join(sessionPath, `ptt.pre-technique.${Date.now()}.md`);
+      fs.copyFileSync(pttPath, backup);
+      try { fs.chmodSync(backup, 0o444); } catch { /* best effort */ }
+      try {
+        this.writePtt(sessionPath, normalized.markdown);
+      } catch (error) {
+        // Keep the original source intact if the migration cannot be committed.
+        try { fs.copyFileSync(backup, pttPath); } catch { /* preserve diagnostic below */ }
+        throw new Error(`PTT migration failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     this.ensureTaskWatcher(sessionId);
     return normalized.tasks;
+  }
+
+  getPttDocumentStatus(sessionId: string) {
+    const sessionPath = this.getSessionPath(sessionId);
+    const pttPath = path.join(sessionPath, 'ptt.md');
+    if (!fs.existsSync(pttPath)) return { kind: 'missing' as const, tasks: [], diagnostics: [] };
+    return parsePttDocument(fs.readFileSync(pttPath, 'utf8'));
+  }
+
+  async rebuildPtt(sessionId: string) {
+    const sessionPath = this.getSessionPath(sessionId);
+    const pttPath = path.join(sessionPath, 'ptt.md');
+    const status = this.getPttDocumentStatus(sessionId);
+    if (status.kind !== 'legacy_unsupported') throw new Error('PTT rebuild is only available for retired Stage-format files');
+    const backup = path.join(sessionPath, `ptt.legacy.${Date.now()}.md`);
+    fs.copyFileSync(pttPath, backup);
+    try { fs.chmodSync(backup, 0o444); } catch { /* best-effort on filesystems without POSIX modes */ }
+    const session = await this.loadSession(sessionId);
+    this.writePttTemplate(sessionPath, session);
+    return { rebuilt: true, backup };
   }
 
   async updateTaskStatus(sessionId: string, taskId: string, status: TaskStatus) {
@@ -765,13 +915,385 @@ class SessionService {
     return result.task;
   }
 
-  async upsertTask(sessionId: string, task: PttTaskInput) {
+  async planTaskSteps(sessionId: string, input: TaskStepPlanInput) {
+    this.assertObjectiveFocused(sessionId, input.objectiveId);
     const sessionPath = this.getSessionPath(sessionId);
     const pttPath = path.join(sessionPath, 'ptt.md');
     await this.listTasks(sessionId);
+    const result = planPttSteps(fs.readFileSync(pttPath, 'utf8'), input);
+    this.writePtt(sessionPath, result.markdown);
+    return result.steps;
+  }
+
+  async upsertTaskStep(sessionId: string, input: TaskStepInput) {
+    const sessionPath = this.getSessionPath(sessionId);
+    const pttPath = path.join(sessionPath, 'ptt.md');
+    const tasks = await this.listTasks(sessionId);
+    const markdown = fs.readFileSync(pttPath, 'utf8');
+    if (!input.id) {
+      this.assertObjectiveFocused(sessionId, input.parentId);
+      const result = insertPttStep(markdown, input);
+      this.writePtt(sessionPath, result.markdown);
+      return result.step;
+    }
+
+    const existing = tasks.find((task): task is ExecutionStep => task.kind === 'step' && task.id === input.id);
+    if (!existing) throw new Error(`Step ${input.id} not found`);
+    const result = updatePttStep(markdown, input);
+    const criterionDefinitionsSame = sameCriterionDefinitions(existing.successCriteria, result.step.successCriteria);
+    const definitionChanged = existing.title !== result.step.title
+      || existing.description !== result.step.description
+      || existing.order !== result.step.order
+      || !criterionDefinitionsSame;
+    const lifecycleChanged = existing.status !== result.step.status
+      || existing.resultSummary !== result.step.resultSummary
+      || existing.blockedReason !== result.step.blockedReason
+      || (criterionDefinitionsSame && !sameCriterionCompletion(existing.successCriteria, result.step.successCriteria));
+
+    if (definitionChanged && lifecycleChanged) {
+      throw new Error('Change Step structure while its Objective is focused, then focus the Step before updating execution state');
+    }
+    if (definitionChanged) this.assertObjectiveFocused(sessionId, input.parentId);
+    else if (lifecycleChanged) this.assertStepFocused(sessionId, input.id);
+    else this.assertObjectiveOrStepFocused(sessionId, input.parentId, input.id);
+    this.writePtt(sessionPath, result.markdown);
+    return result.step;
+  }
+
+  async deleteTaskStep(sessionId: string, stepId: string) {
+    const sessionPath = this.getSessionPath(sessionId);
+    const pttPath = path.join(sessionPath, 'ptt.md');
+    await this.listTasks(sessionId);
+    const step = (await this.listTasks(sessionId)).find((task): task is ExecutionStep => task.kind === 'step' && task.id === stepId);
+    if (!step) throw new Error(`Step ${stepId} not found`);
+    this.assertObjectiveFocused(sessionId, step.parentId);
+    const state = this.getProjectState(sessionId);
+    const hasActivity = state.agent.branches.some((branch) => this.getAgentHistory(sessionId).getMessages(branch.id).some((message) => (message.activities ?? []).some((activity) => activity.pttTaskId === stepId)));
+    if (hasActivity) throw new Error('Steps with activity records cannot be deleted');
+    this.writePtt(sessionPath, deletePttStep(fs.readFileSync(pttPath, 'utf8'), stepId));
+    return { deleted: stepId };
+  }
+
+  async reorderTaskSteps(sessionId: string, parentId: string, stepIds: string[]) {
+    this.assertObjectiveFocused(sessionId, parentId);
+    const tasks = await this.listTasks(sessionId);
+    const siblings = tasks.filter((task): task is ExecutionStep => task.kind === 'step' && task.parentId === parentId);
+    if (siblings.some((step) => step.status !== 'pending')) throw new Error('Started Steps cannot be reordered');
+    if (siblings.length !== stepIds.length || new Set(stepIds).size !== stepIds.length || stepIds.some((id) => !siblings.some((step) => step.id === id))) {
+      throw new Error('Reorder must include every pending Step exactly once');
+    }
+    let markdown = fs.readFileSync(path.join(this.getSessionPath(sessionId), 'ptt.md'), 'utf8');
+    for (const [order, id] of stepIds.entries()) {
+      const step = siblings.find((candidate) => candidate.id === id)!;
+      markdown = updatePttStep(markdown, { id, parentId, title: step.title, order }).markdown;
+    }
+    this.writePtt(this.getSessionPath(sessionId), markdown);
+    return (await this.listTasks(sessionId)).filter((task): task is ExecutionStep => task.kind === 'step' && task.parentId === parentId).sort((a, b) => a.order - b.order);
+  }
+
+  async upsertTask(sessionId: string, task: PttTaskInput) {
+    const sessionPath = this.getSessionPath(sessionId);
+    const pttPath = path.join(sessionPath, 'ptt.md');
+    const currentTasks = await this.listTasks(sessionId);
+    if (task.id && task.primaryTacticId && task.techniqueIds?.length === 1) {
+      const existing = currentTasks.find((candidate) => candidate.id === task.id && candidate.kind === 'objective');
+      if (existing && (existing.primaryTacticId !== task.primaryTacticId || existing.techniqueIds[0] !== task.techniqueIds[0])) {
+        const hasActivity = this.getProjectState(sessionId).agent.branches.some((branch) => this.getAgentHistory(sessionId).getMessages(branch.id).some((message) => (message.activities ?? []).some((activity) => activity.pttTaskId === task.id)));
+        if (hasActivity) throw new Error('Agent Tasks with activity records cannot be reclassified');
+      }
+    }
     const result = upsertPttTask(fs.readFileSync(pttPath, 'utf8'), task);
     this.writePtt(sessionPath, result.markdown);
     return result.task;
+  }
+
+  async planTasks(sessionId: string, groups: TaskPlanGroupInput[]) {
+    const sessionPath = this.getSessionPath(sessionId);
+    const pttPath = path.join(sessionPath, 'ptt.md');
+    await this.listTasks(sessionId);
+    const result = planPttTasks(fs.readFileSync(pttPath, 'utf8'), groups);
+    this.writePtt(sessionPath, result.markdown);
+    return result.tasks;
+  }
+
+  async deleteTask(sessionId: string, taskId: string) {
+    const sessionPath = this.getSessionPath(sessionId);
+    const pttPath = path.join(sessionPath, 'ptt.md');
+    await this.listTasks(sessionId);
+    const state = this.getProjectState(sessionId);
+    const tasks = await this.listTasks(sessionId);
+    const focusedIds = new Set(state.agent.branches.map((branch) => branch.focusedTaskId).filter((id): id is string => Boolean(id)));
+    if (focusedIds.has(taskId) || tasks.some((task) => task.kind === 'step' && task.parentId === taskId && focusedIds.has(task.id))) throw new Error('Cannot delete a task focused by an active conversation branch');
+    const markdown = deletePttTask(fs.readFileSync(pttPath, 'utf8'), taskId);
+    this.writePtt(sessionPath, markdown);
+    return { deleted: taskId };
+  }
+
+  async focusTask(sessionId: string, taskId: string | null) {
+    const state = this.getProjectState(sessionId);
+    const branchId = state.agent.activeBranchId;
+    const currentTaskId = state.agent.branches.find((branch) => branch.id === branchId)?.focusedTaskId ?? null;
+    const context = taskId ? await this.resolveTaskContext(sessionId, taskId) : null;
+    if (currentTaskId === taskId) return context;
+    if (context?.blockers.length) throw new Error(`Task cannot be focused: ${context.blockers.join('; ')}`);
+    const branches = state.agent.branches.map((branch) => branch.id === branchId ? { ...branch, focusedTaskId: taskId } : branch);
+    this.updateProjectState(sessionId, { agent: { branches } });
+    return context;
+  }
+
+  async updateTaskCriterion(sessionId: string, taskId: string, criterionId: string, completed: boolean) {
+    const tasks = await this.listTasks(sessionId);
+    const task = tasks.find((candidate) => candidate.id === taskId);
+    if (!task) throw new Error(`Task ${taskId} not found`);
+    const criterion = task.successCriteria.find((candidate) => candidate.id === criterionId);
+    if (!criterion) throw new Error(`Criterion ${criterionId} not found`);
+    const criteria = task.successCriteria.map((candidate) => candidate.id === criterionId ? { ...candidate, completed } : candidate);
+    if (task.kind === 'step') return this.upsertTaskStep(sessionId, { id: task.id, parentId: task.parentId, title: task.title, successCriteria: criteria });
+    return this.upsertTask(sessionId, { ...task, successCriteria: criteria });
+  }
+
+  getRestrictions(sessionId: string) {
+    const documents = listRestrictionDocuments(
+      globalRestrictionsPath(this.globalUserPath),
+      projectRestrictionsPath(this.getSessionPath(sessionId)),
+    );
+    return {
+      version: 1 as const,
+      global: documents.global,
+      project: documents.project,
+      diagnostics: [...documents.global.diagnostics, ...documents.project.diagnostics],
+    };
+  }
+
+  private restrictionFilePath(sessionId: string, scope: RestrictionScope) {
+    return scope === 'global'
+      ? globalRestrictionsPath(this.globalUserPath)
+      : projectRestrictionsPath(this.getSessionPath(sessionId));
+  }
+
+  upsertRestriction(sessionId: string, scope: RestrictionScope, input: RestrictionUpsertInput, confirmed = false) {
+    if (!confirmed) throw new Error('Restriction changes require explicit operator confirmation');
+    const filePath = this.restrictionFilePath(sessionId, scope);
+    upsertRestrictionDocument(filePath, scope, input);
+    return this.getRestrictions(sessionId);
+  }
+
+  deleteRestriction(sessionId: string, scope: RestrictionScope, id: string, confirmed = false) {
+    if (!confirmed) throw new Error('Restriction changes require explicit operator confirmation');
+    const filePath = this.restrictionFilePath(sessionId, scope);
+    deleteRestrictionDocument(filePath, scope, id);
+    return this.getRestrictions(sessionId);
+  }
+
+  previewRestrictionImport(sessionId: string, scope: RestrictionScope, yamlText: string) {
+    const filePath = this.restrictionFilePath(sessionId, scope);
+    return previewRestrictionImport(filePath, scope, yamlText);
+  }
+
+  applyRestrictionImport(sessionId: string, scope: RestrictionScope, preview: RestrictionImportPreview) {
+    const filePath = this.restrictionFilePath(sessionId, scope);
+    applyRestrictionImport(filePath, preview);
+    return this.getRestrictions(sessionId);
+  }
+
+  private async exportRestrictions(event: Electron.IpcMainInvokeEvent, sessionId: string, scope: RestrictionScope) {
+    const document = readRestrictionDocument(this.restrictionFilePath(sessionId, scope), scope).document;
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const result = owner
+      ? await dialog.showSaveDialog(owner, { title: 'Export restrictions YAML', defaultPath: 'restrictions.yaml', filters: [{ name: 'YAML', extensions: ['yaml', 'yml'] }] })
+      : await dialog.showSaveDialog({ title: 'Export restrictions YAML', defaultPath: 'restrictions.yaml', filters: [{ name: 'YAML', extensions: ['yaml', 'yml'] }] });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    fs.writeFileSync(result.filePath, serializeRestrictionDocument(document), 'utf8');
+    return { canceled: false, filePath: result.filePath };
+  }
+
+  async resolveTaskContext(sessionId: string, taskId?: string, selectedTargetId?: string): Promise<TaskContextPackage> {
+    const state = this.getProjectState(sessionId);
+    const focusedTaskId = taskId ?? state.agent.branches.find((branch) => branch.id === state.agent.activeBranchId)?.focusedTaskId ?? undefined;
+    const tasks = await this.listTasks(sessionId);
+    if (!focusedTaskId) return {
+      objective: null,
+      activeStep: undefined,
+      catalogVersion: ATTACK_CATALOG_VERSION,
+      tactic: null,
+      techniques: [],
+      targets: [],
+      restrictions: [],
+      skills: [],
+      tools: [],
+      dependencies: [],
+      blockers: [],
+      notices: [],
+      related: { findings: [], vulnerabilities: [], evidence: [] },
+    };
+    const focused = tasks.find((candidate) => candidate.id === focusedTaskId);
+    if (!focused) throw new Error(`Task ${focusedTaskId} not found`);
+    const objective = focused.kind === 'objective' ? focused : tasks.find((candidate): candidate is PentestObjective => candidate.kind === 'objective' && candidate.id === focused.parentId);
+    if (!objective) throw new Error(`Parent Objective for ${focusedTaskId} not found`);
+    const activeStep = focused.kind === 'step' ? focused : undefined;
+    const blockers: string[] = [];
+    const notices: Array<{ code: string; message: string; severity: 'info' | 'warning'; targetId?: string }> = [];
+    if (objective.diagnostics?.length) blockers.push(...objective.diagnostics);
+    if (objective.techniqueIds.length !== 1) blockers.push('Agent Task must reference exactly one valid ATT&CK technique');
+    if (!objective.successCriteria.length) blockers.push('At least one success criterion is required');
+    const scope = normalizeScopePolicy(readProjectMetadata(this.getSessionPath(sessionId))?.scope);
+    const allTargets = [...this.listTargets(sessionId), ...this.listAssets(sessionId)];
+    const targetById = new Map(allTargets.map((asset) => [asset.id, asset]));
+    const contextTargetIds = objective.targetAssetIds.length
+      ? [...objective.targetAssetIds]
+      : selectedTargetId && targetById.has(selectedTargetId) ? [selectedTargetId] : [];
+    const targets = contextTargetIds.flatMap((id) => {
+      const asset = targetById.get(id);
+      if (!asset) {
+        notices.push({ code: 'target_missing', message: `Task target ${id} does not exist in the project.`, severity: 'warning', targetId: id });
+        return [];
+      }
+      const label = 'ip' in asset ? asset.ip : asset.label;
+      const values = 'ip' in asset
+        ? [asset.id, asset.ip, asset.hostname, ...asset.domains, asset.os]
+        : [asset.id, asset.label, ...Object.values(asset.properties).flatMap((value) => Array.isArray(value) ? value : [String(value)])];
+      const scopeAdvisory = scopeAdvisoryForValues(scope, values);
+      if (scopeAdvisory === 'unlisted' || scopeAdvisory === 'excluded') {
+        notices.push({ code: scopeAdvisory === 'unlisted' ? 'target_unlisted' : 'target_excluded', message: `${label} is ${scopeAdvisory} under the current Scope mode; advisory.`, severity: 'warning', targetId: id });
+      }
+      return [{ id: asset.id, label, status: asset.status, scopeAnnotation: asset.scopeAnnotation, scopeAdvisory }];
+    });
+    if (!objective.targetAssetIds.length) notices.push({ code: 'task_unbound', message: 'No task target; selection is a context hint.', severity: 'info' });
+    if (selectedTargetId && objective.targetAssetIds.length && !objective.targetAssetIds.includes(selectedTargetId)) {
+      notices.push({ code: 'selected_target_outside_task', message: 'Selected target is outside this task; selection remains a priority hint.', severity: 'info', targetId: selectedTargetId });
+    }
+    const dependencies = objective.dependsOnTaskIds.map((id) => tasks.find((candidate) => candidate.id === id)).filter((candidate): candidate is PentestTask => Boolean(candidate));
+    if (dependencies.length !== objective.dependsOnTaskIds.length) blockers.push('One or more task dependencies do not exist');
+    if (dependencies.some((dependency) => dependency.status !== 'completed' && dependency.status !== 'skipped')) blockers.push('All task dependencies must be completed or skipped');
+    if (hasDependencyCycle(objective, tasks)) blockers.push('Task dependency graph contains a cycle');
+    if (activeStep?.diagnostics?.length) blockers.push(...activeStep.diagnostics);
+    if (activeStep && activeStep.status === 'completed') blockers.push('The focused Step is already completed');
+    const restrictionContext = resolveRestrictions(
+      globalRestrictionsPath(this.globalUserPath),
+      projectRestrictionsPath(this.getSessionPath(sessionId)),
+      objective.primaryTacticId,
+      objective.techniqueIds,
+    );
+    const restrictions = restrictionContext.rules;
+    blockers.push(...restrictionContext.diagnostics);
+    let skills: Array<{ id: string; name: string; match: 'preferred' | 'technique' | 'capability' | 'tactic' | 'other' }> = [];
+    try {
+      const { claudeCapabilitiesService } = await import('./claude-capabilities.service');
+      const skillItems = (await claudeCapabilitiesService.listSkills(sessionId)).items;
+      const projectSkillNames = new Set(skillItems.filter((item) => item.scope === 'project').map((item) => item.name));
+      const availableSkills = skillItems.filter((item) => item.enabled && (item.scope !== 'global' || !projectSkillNames.has(item.name)));
+      skills = availableSkills.map((skill) => {
+        const metadata = skill.metadata ?? {};
+        const techniques = (metadata['hexestra-techniques'] ?? '').split(',').map((value) => value.trim()).filter(Boolean);
+        const tactics = (metadata['hexestra-tactics'] ?? '').split(',').map((value) => value.trim()).filter(Boolean);
+        const capabilities = (metadata['hexestra-capabilities'] ?? '').split(',').map((value) => value.trim()).filter(Boolean);
+        const match: 'preferred' | 'technique' | 'capability' | 'tactic' | 'other' = objective.preferredSkillIds.includes(skill.id) || objective.preferredSkillIds.includes(skill.name)
+          ? 'preferred'
+          : techniques.some((id) => objective.techniqueIds.includes(id))
+            ? 'technique'
+            : capabilities.some((id) => objective.requiredCapabilities.includes(id))
+              ? 'capability'
+              : tactics.includes(objective.primaryTacticId)
+                ? 'tactic'
+                : 'other';
+        return { id: skill.id, name: skill.name, match };
+      }).sort((left, right) => matchPriority(left.match) - matchPriority(right.match));
+    } catch {
+      skills = [];
+    }
+    const catalog = loadToolCatalog(this.globalUserPath);
+    const tools = catalog.filter((tool) => !tool.disabled && (objective.preferredToolIds.includes(tool.id) || tool.techniqueIds.some((id) => objective.techniqueIds.includes(id)) || tool.capabilities.some((capability) => objective.requiredCapabilities.includes(capability)))).map((tool) => ({ id: tool.id, name: tool.name, capabilities: tool.capabilities, available: tool.available === true, preferred: objective.preferredToolIds.includes(tool.id) }));
+    return {
+      objective,
+      activeStep,
+      catalogVersion: ATTACK_CATALOG_VERSION,
+      tactic: getTactic(objective.primaryTacticId) ?? null,
+      techniques: objective.techniqueIds.map((id) => getTechnique(id)).filter((value): value is NonNullable<typeof value> => Boolean(value)),
+      targets,
+      restrictions,
+      skills,
+      tools,
+      dependencies: dependencies.map((dependency) => ({ id: dependency.id, title: dependency.title, status: dependency.status })),
+      blockers,
+      notices,
+      related: {
+        findings: this.listFindings(sessionId).filter((finding) => finding.assetId && contextTargetIds.includes(finding.assetId)).slice(0, 20).map((finding) => ({ ...finding })),
+        vulnerabilities: this.listVulnerabilities(sessionId).filter((vulnerability) => contextTargetIds.includes(vulnerability.assetId)).slice(0, 20).map((vulnerability) => ({ ...vulnerability })),
+        evidence: this.listEvidence(sessionId).filter((evidence) => contextTargetIds.includes(evidence.assetId)).slice(0, 20).map((evidence) => ({ ...evidence })),
+      },
+    };
+  }
+
+  async assertTaskExecutionReady(sessionId: string, toolName: string) {
+    if (/^(task_|restriction_|tool_catalog_)/.test(toolName)) return;
+    const state = this.getProjectState(sessionId);
+    const branch = state.agent.branches.find((candidate) => candidate.id === state.agent.activeBranchId);
+    if (!branch?.focusedTaskId) throw new Error('Create and focus an Agent Task before using execution tools');
+    const tasks = await this.listTasks(sessionId);
+    const focused = tasks.find((task) => task.id === branch.focusedTaskId);
+    if (!focused) throw new Error('The focused task no longer exists');
+    if (focused.kind === 'objective') {
+      const steps = tasks.filter((task) => task.kind === 'step' && task.parentId === focused.id);
+      if (steps.length === 0) throw new Error('Plan 3–7 execution Steps with task_steps_plan before using execution tools');
+      throw new Error('Focus an execution Step with task_focus before using execution tools');
+    }
+    const context = await this.resolveTaskContext(sessionId, focused.id);
+    if (context.blockers.length) throw new Error(`Task execution blocked: ${context.blockers.join('; ')}`);
+  }
+
+  private assertObjectiveFocused(sessionId: string, objectiveId: string) {
+    const state = this.getProjectState(sessionId);
+    const focusedTaskId = state.agent.branches.find((branch) => branch.id === state.agent.activeBranchId)?.focusedTaskId;
+    if (focusedTaskId !== objectiveId) throw new Error('Focus the Objective before changing its execution plan');
+  }
+
+  private assertStepFocused(sessionId: string, stepId: string) {
+    const state = this.getProjectState(sessionId);
+    const focusedTaskId = state.agent.branches.find((branch) => branch.id === state.agent.activeBranchId)?.focusedTaskId;
+    if (focusedTaskId !== stepId) throw new Error('Focus the Step before updating its execution state');
+  }
+
+  private assertObjectiveOrStepFocused(sessionId: string, objectiveId: string, stepId: string) {
+    const state = this.getProjectState(sessionId);
+    const focusedTaskId = state.agent.branches.find((branch) => branch.id === state.agent.activeBranchId)?.focusedTaskId;
+    if (focusedTaskId !== objectiveId && focusedTaskId !== stepId) {
+      throw new Error('Focus the Objective or Step before updating it');
+    }
+  }
+
+  async getTaskTrace(sessionId: string, nodeId: string): Promise<TaskTracePackage> {
+    const tasks = await this.listTasks(sessionId);
+    const selected = tasks.find((task) => task.id === nodeId);
+    if (!selected) throw new Error(`Task ${nodeId} not found`);
+    const nodeIds = selected.kind === 'objective'
+      ? new Set([selected.id, ...tasks.filter((task) => task.kind === 'step' && task.parentId === selected.id).map((task) => task.id)])
+      : new Set([selected.id]);
+    const nodes = tasks.filter((task) => nodeIds.has(task.id));
+    const entries: TaskTraceEntry[] = nodes.flatMap((task) => {
+      const lifecycle: TaskTraceEntry[] = [{ id: `${task.id}:created`, source: 'task', timestamp: task.createdAt, status: 'pending', label: 'Step created' }];
+      if (task.startedAt) lifecycle.push({ id: `${task.id}:started`, source: 'task', timestamp: task.startedAt, status: 'running', label: 'Execution started' });
+      if (task.completedAt) lifecycle.push({ id: `${task.id}:completed`, source: 'task', timestamp: task.completedAt, status: 'complete', label: 'Execution completed', detail: task.kind === 'step' ? task.resultSummary : undefined });
+      if (task.status === 'blocked' || task.status === 'failed') lifecycle.push({ id: `${task.id}:blocked`, source: 'task', timestamp: task.updatedAt, status: 'blocked', label: task.status === 'failed' ? 'Execution failed' : 'Execution blocked', detail: task.kind === 'step' ? task.blockedReason : undefined });
+      return lifecycle;
+    });
+    const state = this.getProjectState(sessionId);
+    const branches = state.agent.branches;
+    for (const branch of branches) {
+      const messages = this.getAgentHistory(sessionId).getMessages(branch.id);
+      for (const message of messages) {
+        for (const activity of message.activities ?? []) {
+          if (!activity.pttTaskId || !nodeIds.has(activity.pttTaskId)) continue;
+          entries.push({ id: `${message.id}:${activity.id}`, source: 'agent', timestamp: message.timestamp, status: activity.status === 'error' ? 'error' : activity.status === 'running' ? 'running' : 'complete', label: activity.label ?? activity.toolName ?? 'Agent activity', detail: activity.outputSummary ?? activity.summary, toolName: activity.toolName, branchId: branch.id, elapsedSeconds: activity.elapsedSeconds });
+        }
+      }
+      for (const run of this.getAgentHistory(sessionId).getSubagentRuns(branch.id)) {
+        if (!run.pttTaskId || !nodeIds.has(run.pttTaskId)) continue;
+        entries.push({ id: `${branch.id}:${run.id}`, source: 'subagent', timestamp: run.startedAt, status: run.status === 'failed' ? 'error' : run.status === 'running' ? 'running' : 'complete', label: run.description || run.agentType || 'Sub-agent run', detail: run.summary ?? run.error, branchId: branch.id, elapsedSeconds: run.usage?.durationMs ? Math.round(run.usage.durationMs / 1000) : undefined });
+      }
+    }
+    entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    const bounded = entries.slice(0, 120);
+    return { taskId: nodeId, generatedAt: new Date().toISOString(), entries: bounded, criteria: selected.kind === 'objective' ? selected.successCriteria : selected.successCriteria, stats: { agentActions: bounded.filter((entry) => entry.source === 'agent').length, subagentRuns: bounded.filter((entry) => entry.source === 'subagent').length, branches: new Set(bounded.map((entry) => entry.branchId).filter(Boolean)).size } };
   }
 
   listFiles(sessionId: string, relativePath = ''): SessionFileEntry[] {
@@ -812,6 +1334,9 @@ class SessionService {
   }
 
   writeFile(sessionId: string, relativePath: string, content: string) {
+    if (/^restrictions\.(?:md|ya?ml)$/i.test(path.basename(relativePath.replace(/\\/g, '/')))) {
+      throw new Error('Restrictions must be changed through the controlled restrictions interface');
+    }
     if (Buffer.byteLength(content, 'utf8') > 2 * 1024 * 1024) {
       throw new Error('File exceeds the 2 MB editor limit');
     }
@@ -928,7 +1453,7 @@ class SessionService {
   }
 
   private ensureHexestraSkills(sessionPath: string) {
-    const installedSkills = installHexestraSkills(sessionPath);
+    const installedSkills = installHexestraSkills(sessionPath, this.globalUserPath);
     if (!installedSkills) {
       console.warn('[Session] Hexestra skill resources were not installed');
     }
@@ -939,7 +1464,7 @@ class SessionService {
     if (skillSource) {
       const template = fs.readFileSync(path.join(skillSource, 'ptt-template.md'), 'utf8');
       const ptt = template
-        .replaceAll('{TARGET}', session.scope?.inScope[0] ?? session.name)
+        .replaceAll('{TARGET}', session.scope?.allowRules[0] ?? session.scope?.excludeRules[0] ?? session.name)
         .replaceAll('{STARTED}', session.createdAt)
         .replaceAll('{UPDATED}', session.updatedAt)
         .replaceAll('{OPSEC_LEVEL}', session.opsecLevel)
@@ -947,61 +1472,18 @@ class SessionService {
       fs.writeFileSync(path.join(sessionPath, 'ptt.md'), ptt, 'utf8');
       return;
     }
-    const ptt = `# Pentest Task Tree — ${session.name}
-
-**Target:** ${session.name} | **Started:** ${session.createdAt} | **Updated:** ${session.updatedAt}
-**Framework:** MITRE ATT&CK Enterprise v15
-**OPSEC Level:** ${session.opsecLevel}
-**Autonomy Level:** ${session.autonomyLevel}
-
----
-
-## Stage 0: Pre-Engagement
-- [ ] Define scope and rules of engagement
-- [ ] Set OPSEC and autonomy levels
-- [ ] Gather credentials (if provided)
-
-## Stage 1: Reconnaissance (TA0043)
-- [ ] Passive recon — WHOIS, DNS enumeration
-- [ ] OSINT — theHarvester, Shodan discovery
-- [ ] Subdomain enumeration — subfinder, amass
-
-## Stage 2: Resource Development (TA0042)
-- [ ] Port scanning — nmap service discovery
-- [ ] Web probing — httpx, whatweb fingerprinting
-- [ ] Vulnerability scanning — nuclei, nikto
-- [ ] Directory fuzzing — ffuf, dirsearch
-
-## Stage 3: Initial Access (TA0001)
-- [ ] Identify attack vectors
-- [ ] Exploit identified vulnerabilities
-- [ ] Document successful access methods
-
-## Stage 4: Execution (TA0002)
-- [ ] Execute payloads (if in scope)
-- [ ] Document execution paths
-
-## Stage 5: Persistence (TA0003)
-- [ ] Establish persistence mechanisms (if in scope)
-- [ ] Document persistence methods
-
-## Stage 6: Privilege Escalation (TA0004)
-- [ ] Enumerate privilege escalation paths
-- [ ] Exploit escalation vectors (if in scope)
-
-## Stage 7: Lateral Movement (TA0008)
-- [ ] Discover internal network topology
-- [ ] Move laterally to other targets
-
-## Stage 8: Impact (TA0040)
-- [ ] Achieve engagement objectives
-- [ ] Document impact achieved
-
-## Disengagement
-- [ ] Cleanup — remove shells, accounts, persistence
-- [ ] Invoke hexestra-report Skill to generate and review the final report
-- [ ] Close engagement
-`;
+    const ptt = [
+      `# Pentest Task Tree — ${session.name}`,
+      '',
+      `**Target:** ${session.name} | **Started:** ${session.createdAt} | **Updated:** ${session.updatedAt}`,
+      `**Framework:** MITRE ATT&CK Enterprise v${ATTACK_CATALOG_VERSION}`,
+      `**OPSEC Level:** ${session.opsecLevel}`,
+      `**Autonomy Level:** ${session.autonomyLevel}`,
+      '',
+      'This file stores ATT&CK Technique-bound technical tasks. Scope, evidence, reporting, and disengagement remain managed elsewhere.',
+      '',
+      ...ATTACK_TACTICS.flatMap((tactic) => [`## ${tactic.id} ${tactic.name}`, '', `<!-- tactic: ${tactic.id} -->`, '']),
+    ].join('\n');
     fs.writeFileSync(path.join(sessionPath, 'ptt.md'), ptt, 'utf-8');
   }
 
@@ -1073,6 +1555,52 @@ export function resolveProjectWatchPath(
 
 export const sessionService = new SessionService();
 
+function sameCriterionDefinitions(
+  left: Array<{ id: string; text: string }>,
+  right: Array<{ id: string; text: string }>,
+) {
+  return left.length === right.length
+    && left.every((criterion, index) => criterion.id === right[index]?.id && criterion.text === right[index]?.text);
+}
+
+function sameCriterionCompletion(
+  left: Array<{ id: string; completed: boolean }>,
+  right: Array<{ id: string; completed: boolean }>,
+) {
+  return left.length === right.length
+    && left.every((criterion, index) => criterion.id === right[index]?.id && criterion.completed === right[index]?.completed);
+}
+
+function isLegacyProjectState(value: unknown): value is { version: number } {
+  return Boolean(value && typeof value === 'object' && 'version' in value && typeof (value as { version?: unknown }).version === 'number' && (value as { version: number }).version < 10);
+}
+
+function stripLegacyHistory(state: ProjectState, repository: AgentHistoryRepository): ProjectState {
+  return normalizeProjectState({
+    ...state,
+    version: 10,
+    history: { storage: 'jsonl', formatVersion: 1 },
+    agent: {
+      ...state.agent,
+      branches: state.agent.branches.map((branch) => {
+        const messages = repository.getMessages(branch.id);
+        const subagentRuns = repository.getSubagentRuns(branch.id);
+        const { messages: _messages, subagentRuns: _subagentRuns, ...metadata } = branch;
+        return {
+          ...metadata,
+          history: {
+            messageCount: messages.length,
+            activityCount: messages.reduce((sum, message) => sum + (message.activities?.length ?? 0), 0),
+            subagentRunCount: subagentRuns.length,
+            lastMessageId: messages.at(-1)?.id,
+            lastMessageAt: messages.at(-1)?.timestamp,
+          },
+        };
+      }),
+    },
+  });
+}
+
 function cleanTarget<T extends Target>(target: T): Target {
   return {
     ...target,
@@ -1093,25 +1621,42 @@ function cleanTarget<T extends Target>(target: T): Target {
   };
 }
 
+function hasDependencyCycle(task: PentestTask, tasks: PentestTask[]) {
+  const byId = new Map(tasks.map((candidate) => [candidate.id, candidate]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (id: string): boolean => {
+    if (visiting.has(id)) return true;
+    if (visited.has(id)) return false;
+    visiting.add(id);
+    const candidate = byId.get(id);
+    const cycle = Boolean(candidate && candidate.dependsOnTaskIds.some(visit));
+    visiting.delete(id);
+    visited.add(id);
+    return cycle;
+  };
+  return visit(task.id);
+}
+
+function matchPriority(match: string) {
+  return match === 'preferred' ? 0 : match === 'technique' ? 1 : match === 'capability' ? 2 : match === 'tactic' ? 3 : 4;
+}
+
 function projectTargetScope(target: Target, scope: SessionMeta['scope']): Target {
   return {
     ...target,
-    status: deriveScopedAssetStatus(
+    scopeAnnotation: scopeAnnotationForValues(
       scope,
       [target.id, target.ip, target.hostname, ...target.domains],
-      target.status,
     ),
   };
 }
 
 function projectAssetScope(asset: AssetRecord, scope: SessionMeta['scope']): AssetRecord {
-  if (asset.type === 'certificate' || asset.type === 'identity') {
-    return { ...asset, status: 'out_of_scope' };
-  }
   const semanticValue = asset.key.slice(asset.key.indexOf(':') + 1);
   return {
     ...asset,
-    status: deriveScopedAssetStatus(scope, [asset.id, semanticValue], asset.status),
+    scopeAnnotation: scopeAnnotationForValues(scope, [asset.id, semanticValue, asset.label, ...Object.values(asset.properties).flatMap((value) => Array.isArray(value) ? value : [String(value)])]),
   };
 }
 
@@ -1123,29 +1668,22 @@ function projectAssetsScope(
 ) {
   const rawById = new Map(assets.map((asset) => [asset.id, asset]));
   const projected = new Map(assets.map((asset) => [asset.id, projectAssetScope(asset, scope)]));
-  const inScopeIds = new Set<string>([
-    LOCAL_ASSET_ID,
-    ...targets.filter((target) => target.status !== 'out_of_scope').map((target) => target.id),
-    ...[...projected.values()].filter((asset) => asset.status !== 'out_of_scope').map((asset) => asset.id),
-  ]);
+  const annotatedIds = new Set<string>(
+    [...projected.values()].filter((asset) => Boolean(asset.scopeAnnotation)).map((asset) => asset.id),
+  );
 
   for (let pass = 0; pass < assets.length + 1; pass += 1) {
     let changed = false;
     for (const edge of relations) {
-      const candidates: Array<{ childId: string; parentId: string }> = edge.type === 'belongs_to'
-        ? [{ childId: edge.source, parentId: edge.target }]
-        : [
-            { childId: edge.source, parentId: edge.target },
-            { childId: edge.target, parentId: edge.source },
-          ];
-      for (const { childId, parentId } of candidates) {
+      if (edge.type !== 'belongs_to') continue;
+      const childId = edge.source;
+      const parentId = edge.target;
+      {
         const child = rawById.get(childId);
-        if (!child || !inScopeIds.has(parentId) || inScopeIds.has(childId)) continue;
-        const semanticValue = child.key.slice(child.key.indexOf(':') + 1);
-        if (isValueExcluded(scope, semanticValue)) continue;
-        if (edge.type !== 'belongs_to' && child.type !== 'certificate' && child.type !== 'identity') continue;
-        projected.set(childId, { ...child, status: normalizeOperationalAssetStatus(child.status) });
-        inScopeIds.add(childId);
+        const parent = projected.get(parentId);
+        if (!child || !parent?.scopeAnnotation || annotatedIds.has(childId)) continue;
+        projected.set(childId, { ...child, scopeAnnotation: parent.scopeAnnotation });
+        annotatedIds.add(childId);
         changed = true;
       }
     }

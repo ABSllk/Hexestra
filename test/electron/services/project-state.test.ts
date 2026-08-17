@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createConversationBranch,
   createDefaultProjectState,
+  mergeAuthoritativeBranchFocus,
   mergeProjectState,
   normalizeProjectState,
 } from '@electron/services/project-state';
@@ -20,7 +21,7 @@ describe('project state', () => {
         ],
       },
     });
-    expect(state.version).toBe(8);
+    expect(state.version).toBe(10);
     expect(state.proxy).toEqual({ enabled: true, activeChainId: 'chain-1', chains: [{ id: 'chain-1', name: 'Two hop', nodeIds: ['node-1', 'node-2'] }] });
   });
 
@@ -58,7 +59,7 @@ describe('project state', () => {
     });
 
     expect(projectA.preferences.permissionMode).toBe('default');
-    expect(projectA.agent.branches[0].messages).toEqual([]);
+    expect(projectA.agent.branches[0].messages ?? []).toEqual([]);
     expect(projectB.preferences.permissionMode).toBe('auto');
     expect(projectB.agent.branches[0].runtime?.sessionId).toBe('claude-project-b');
   });
@@ -67,6 +68,33 @@ describe('project state', () => {
     const branch = createConversationBranch('codex-branch', 'Future backend', { backendId: 'codex' });
     expect(branch.backendId).toBe('codex');
     expect(branch.runtime).toBeNull();
+  });
+
+  it('preserves authoritative task focus when a stale runtime branch snapshot is persisted', () => {
+    const runtimeBranches = [
+      createConversationBranch('main', 'Runtime title', {
+        focusedTaskId: null,
+        runtime: {
+          backendId: 'claude',
+          sessionId: 'runtime-session',
+          connectionFingerprint: 'native:test',
+        },
+      }),
+      createConversationBranch('new-runtime-branch', 'New branch', { focusedTaskId: 'step-new' }),
+    ];
+    const authoritativeBranches = [
+      createConversationBranch('main', 'Persisted title', { focusedTaskId: 'step-current' }),
+    ];
+
+    const merged = mergeAuthoritativeBranchFocus(runtimeBranches, authoritativeBranches);
+
+    expect(merged[0]).toMatchObject({
+      title: 'Runtime title',
+      focusedTaskId: 'step-current',
+      runtime: { sessionId: 'runtime-session' },
+    });
+    expect(merged[1].focusedTaskId).toBe('step-new');
+    expect(runtimeBranches[0].focusedTaskId).toBeNull();
   });
 
   it('maps the former Claude SDK backend label during migration', () => {
@@ -117,13 +145,13 @@ describe('project state', () => {
       },
     });
 
-    expect(state.agent.branches[0].messages[0]).toMatchObject({
+    expect(state.agent.branches[0].messages?.[0]).toMatchObject({
       status: 'complete',
       backendMessageId: 'sdk-message-1',
     });
-    expect(state.agent.branches[0].messages[0].activities?.[0])
+    expect(state.agent.branches[0].messages?.[0]?.activities?.[0])
       .toMatchObject({ status: 'complete' });
-    expect(state.agent.branches[0].messages[0].attachments).toEqual([{
+    expect(state.agent.branches[0].messages?.[0]?.attachments).toEqual([{
       id: 'attachment-1', name: 'screen.png', path: 'C:\\screen.png', kind: 'image',
       mimeType: 'image/png', size: 42,
     }]);
@@ -166,8 +194,8 @@ describe('project state', () => {
     });
 
     expect(state.agent.branches[0].messages).toHaveLength(501);
-    expect(state.agent.branches[0].messages[499].activities).toHaveLength(101);
-    expect(state.agent.branches[0].messages[500].content).toHaveLength(120_001);
+    expect(state.agent.branches[0].messages?.[499]?.activities).toHaveLength(101);
+    expect(state.agent.branches[0].messages?.[500]?.content).toHaveLength(120_001);
   });
 
   it('restores the traffic tab and keeps proxy endpoints on loopback', () => {
@@ -223,7 +251,7 @@ describe('project state', () => {
       },
     });
 
-    expect(migrated.version).toBe(8);
+    expect(migrated.version).toBe(10);
     expect(migrated.shells).toEqual({ profiles: [], listeners: [] });
     expect(migrated.workspace.tabs[0].data).toEqual({ managedShell: true, shellProfileId: 'profile-1' });
   });
@@ -255,13 +283,13 @@ describe('project state', () => {
       workspace: { tabs: [] },
     });
 
-    expect(migrated.version).toBe(8);
-    expect(migrated.agent.branches[0].subagentRuns[0]).toMatchObject({
+    expect(migrated.version).toBe(10);
+    expect(migrated.agent.branches[0].subagentRuns?.[0]).toMatchObject({
       id: 'run-1',
       status: 'interrupted',
       agentType: 'Explore',
     });
-    expect(migrated.agent.branches[0].subagentRuns[0].activities[0].status).toBe('streaming');
+    expect(migrated.agent.branches[0].subagentRuns?.[0]?.activities[0].status).toBe('streaming');
   });
 
   it('persists replay tabs and bounded explicit Agent context in version 4 state', () => {
@@ -287,9 +315,9 @@ describe('project state', () => {
       },
     });
     expect(state.workspace.tabs[0].data).toEqual({ replaySessionId: `replay-${'a'.repeat(32)}` });
-    expect(state.agent.branches[0].messages[0].contextRefs?.[0]).toMatchObject({ kind: 'browser-page' });
-    expect(state.agent.branches[0].messages[0].contextRefs?.[0]).toHaveProperty('selectionText', 'x'.repeat(12_000));
-    expect(state.agent.branches[0].messages[0].contextRefs?.[1]).toMatchObject({
+    expect(state.agent.branches[0].messages?.[0]?.contextRefs?.[0]).toMatchObject({ kind: 'browser-page' });
+    expect(state.agent.branches[0].messages?.[0]?.contextRefs?.[0]).toHaveProperty('selectionText', 'x'.repeat(12_000));
+    expect(state.agent.branches[0].messages?.[0]?.contextRefs?.[1]).toMatchObject({
       kind: 'shell-command', listenerId: 'listener-1', command: 'local command', localOnly: true,
     });
   });

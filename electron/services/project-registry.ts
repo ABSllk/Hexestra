@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import type { ScopeMode } from '../contracts/session';
 
 export interface ProjectMetadata {
   id: string;
@@ -8,7 +9,7 @@ export interface ProjectMetadata {
   status: 'active' | 'paused' | 'completed';
   opsecLevel: 'stealth' | 'balanced' | 'loud';
   autonomyLevel: 'low' | 'medium' | 'high';
-  scope?: { inScope: string[]; outOfScope: string[]; targets: string[] };
+  scope?: { mode: ScopeMode; allowRules: string[]; excludeRules: string[] };
   createdAt: string;
   updatedAt: string;
   targetCount: number;
@@ -31,6 +32,7 @@ interface RecentProjectFile {
 const PROJECT_ID = /^[a-zA-Z0-9-]{1,200}$/;
 const MAX_RECENT_PROJECTS = 100;
 export const PROJECT_DATA_DIRECTORY = '.hexestra';
+export const PROJECT_USER_DIRECTORY = 'user';
 const LEGACY_PROJECT_DATA_DIRECTORY = '.pengent';
 
 export class ProjectRegistry {
@@ -130,7 +132,11 @@ export function createProjectMetadata(projectPath: string, scope?: string): Proj
     status: 'active',
     opsecLevel: 'balanced',
     autonomyLevel: 'medium',
-    scope: scope ? { inScope: [scope], outOfScope: [], targets: [] } : undefined,
+    scope: {
+      mode: 'blacklist',
+      allowRules: scope ? [scope] : [],
+      excludeRules: [],
+    },
     createdAt: now,
     updatedAt: now,
     targetCount: 0,
@@ -160,6 +166,10 @@ export function projectDataPath(projectPath: string) {
     fs.renameSync(legacyPath, currentPath);
   }
   return currentPath;
+}
+
+export function projectUserDataPath(projectPath: string) {
+  return path.join(projectDataPath(projectPath), PROJECT_USER_DIRECTORY);
 }
 
 function projectExists(projectPath: string, projectId: string) {
@@ -212,10 +222,21 @@ function normalizeMetadata(value: unknown): ProjectMetadata | null {
 
 function normalizeScope(value: unknown): ProjectMetadata['scope'] {
   if (!isRecord(value)) return undefined;
+  const legacyAllow = [...stringArray(value.inScope), ...stringArray(value.targets)];
+  const allowRules = stringArray(value.allowRules);
+  const excludeRules = stringArray(value.excludeRules);
+  const hasLegacyShape = Object.prototype.hasOwnProperty.call(value, 'inScope')
+    || Object.prototype.hasOwnProperty.call(value, 'outOfScope')
+    || Object.prototype.hasOwnProperty.call(value, 'targets');
+  const normalizedAllow = allowRules.length ? allowRules : legacyAllow;
+  const normalizedExclude = excludeRules.length ? excludeRules : stringArray(value.outOfScope);
+  const mode = value.mode === 'whitelist' || value.mode === 'blacklist'
+    ? value.mode
+    : (hasLegacyShape && normalizedAllow.length ? 'whitelist' : 'blacklist');
   return {
-    inScope: stringArray(value.inScope),
-    outOfScope: stringArray(value.outOfScope),
-    targets: stringArray(value.targets),
+    mode,
+    allowRules: normalizedAllow,
+    excludeRules: normalizedExclude,
   };
 }
 

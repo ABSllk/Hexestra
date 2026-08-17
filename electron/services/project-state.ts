@@ -16,10 +16,12 @@ import type {
 } from '../contracts/agent-runtime';
 import { CLAUDE_BACKEND_ID } from '../contracts/agent-runtime';
 import type { EgressProjectProxyState } from '../contracts/egress-proxy';
+import type { WorkflowInvocation } from '../contracts/workflows';
+import type { RefineryInvocation } from '../contracts/knowledge-refinery';
 
 export type ProjectPermissionMode = AgentPermissionMode;
 export type ProjectAutonomyLevel = 'low' | 'medium' | 'high';
-export type ProjectTabType = 'terminal' | 'editor' | 'browser' | 'traffic' | 'replay' | 'report' | 'record' | 'settings' | 'welcome';
+export type ProjectTabType = 'terminal' | 'editor' | 'browser' | 'traffic' | 'replay' | 'report' | 'record' | 'workflow' | 'refinery' | 'settings' | 'welcome';
 
 export type PersistedAgentActivity = AgentActivity;
 
@@ -28,11 +30,14 @@ export interface PersistedChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool_request';
   content: string;
   timestamp: string;
-  status: 'sending' | 'streaming' | 'complete' | 'error';
+  status: 'sending' | 'streaming' | 'complete' | 'error' | 'interrupted';
   activities?: PersistedAgentActivity[];
+  hiddenActivityCount?: number;
   backendMessageId?: string;
   attachments?: AgentAttachmentMetadata[];
   contextRefs?: AgentContextRef[];
+  workflowInvocation?: WorkflowInvocation;
+  refineryInvocation?: RefineryInvocation;
 }
 
 export interface PersistedConversationBranch {
@@ -42,8 +47,17 @@ export interface PersistedConversationBranch {
   forkedFromMessageId?: string;
   backendId: AgentBackendId;
   runtime: AgentBackendRuntimeState | null;
-  messages: PersistedChatMessage[];
-  subagentRuns: SubagentRun[];
+  /** Legacy v2-v9 payloads are accepted only while the session migrates to JSONL. */
+  messages?: PersistedChatMessage[];
+  subagentRuns?: SubagentRun[];
+  history: {
+    messageCount: number;
+    activityCount: number;
+    subagentRunCount: number;
+    lastMessageId?: string;
+    lastMessageAt?: string;
+  };
+  focusedTaskId: string | null;
   createdAt: string;
 }
 
@@ -62,7 +76,11 @@ export interface ProjectWorkspaceState {
 }
 
 export interface ProjectState {
-  version: 8;
+  version: 10;
+  history: {
+    storage: 'jsonl';
+    formatVersion: 1;
+  };
   agent: {
     model: string | null;
     lastError: string | null;
@@ -96,7 +114,8 @@ export function createDefaultProjectState(): ProjectState {
     createdAt: new Date(0).toISOString(),
   });
   return {
-    version: 8,
+    version: 10,
+    history: { storage: 'jsonl', formatVersion: 1 },
     agent: {
       model: null,
       lastError: null,
@@ -124,8 +143,12 @@ export function createConversationBranch(
     title,
     backendId: CLAUDE_BACKEND_ID,
     runtime: null,
-    messages: [],
-    subagentRuns: [],
+    history: {
+      messageCount: 0,
+      activityCount: 0,
+      subagentRunCount: 0,
+    },
+    focusedTaskId: null,
     createdAt: new Date().toISOString(),
     ...input,
   };
@@ -144,7 +167,8 @@ export function createDefaultWorkspace(): ProjectWorkspaceState {
 
 export function normalizeProjectState(value: unknown): ProjectState {
   const defaults = createDefaultProjectState();
-  if (!isRecord(value) || (value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8)) return defaults;
+  if (!isRecord(value) || (value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5 && value.version !== 6 && value.version !== 7 && value.version !== 8 && value.version !== 9 && value.version !== 10)) return defaults;
+  const legacyHistory = value.version < 10;
   const agent = isRecord(value.agent) ? value.agent : {};
   const preferences = isRecord(value.preferences) ? value.preferences : {};
   const traffic = isRecord(value.traffic) ? value.traffic : {};
@@ -152,7 +176,7 @@ export function normalizeProjectState(value: unknown): ProjectState {
   const shells = isRecord(value.shells) ? value.shells : {};
   const workspace = isRecord(value.workspace) ? value.workspace : {};
   const branches = Array.isArray(agent.branches)
-    ? agent.branches.flatMap(normalizeBranch).slice(0, MAX_BRANCHES)
+    ? agent.branches.flatMap((branch) => normalizeBranch(branch, legacyHistory)).slice(0, MAX_BRANCHES)
     : [];
   const safeBranches = branches.length > 0 ? branches : defaults.agent.branches;
   const requestedBranchId = typeof agent.activeBranchId === 'string'
@@ -163,7 +187,8 @@ export function normalizeProjectState(value: unknown): ProjectState {
     : safeBranches[0].id;
 
   return {
-    version: 8,
+    version: 10,
+    history: { storage: 'jsonl', formatVersion: 1 },
     agent: {
       model: nullableString(agent.model),
       lastError: nullableString(agent.lastError),
@@ -194,6 +219,24 @@ export function mergeProjectState(current: ProjectState, patch: ProjectStatePatc
     proxy: { ...current.proxy, ...patch.proxy },
     shells: { ...current.shells, ...patch.shells },
     workspace: { ...current.workspace, ...patch.workspace },
+  });
+}
+
+/**
+ * AgentService keeps an in-memory branch projection for runtime/history metadata,
+ * while task focus is written directly through SessionService. Preserve that
+ * authoritative focus when the runtime projection is persisted later in a turn.
+ */
+export function mergeAuthoritativeBranchFocus(
+  runtimeBranches: PersistedConversationBranch[],
+  authoritativeBranches: PersistedConversationBranch[],
+): PersistedConversationBranch[] {
+  const authoritativeById = new Map(authoritativeBranches.map((branch) => [branch.id, branch]));
+  return runtimeBranches.map((branch) => {
+    const authoritative = authoritativeById.get(branch.id);
+    return authoritative
+      ? { ...branch, focusedTaskId: authoritative.focusedTaskId }
+      : branch;
   });
 }
 
@@ -238,7 +281,7 @@ function normalizeWorkspace(value: Record<string, unknown>): ProjectWorkspaceSta
   return { tabs, activeTabId, nextTabNumber };
 }
 
-function normalizeBranch(value: unknown): PersistedConversationBranch[] {
+function normalizeBranch(value: unknown, preserveLegacyHistory: boolean): PersistedConversationBranch[] {
   if (!isRecord(value) || !isIdentifier(value.id)) return [];
   const messages = Array.isArray(value.messages)
     ? value.messages.flatMap(normalizeMessage)
@@ -258,8 +301,21 @@ function normalizeBranch(value: unknown): PersistedConversationBranch[] {
       : undefined,
     backendId,
     runtime: normalizeRuntime(value, backendId),
-    messages,
-    subagentRuns,
+    ...(preserveLegacyHistory ? { messages, subagentRuns } : {}),
+    history: isRecord(value.history)
+      ? {
+          messageCount: boundedNumber(value.history.messageCount) ?? messages.length,
+          activityCount: boundedNumber(value.history.activityCount) ?? messages.reduce((sum, message) => sum + (message.activities?.length ?? 0), 0),
+          subagentRunCount: boundedNumber(value.history.subagentRunCount) ?? subagentRuns.length,
+          lastMessageId: optionalIdentifier(value.history.lastMessageId),
+          lastMessageAt: optionalString(value.history.lastMessageAt),
+        }
+      : {
+          messageCount: messages.length,
+          activityCount: messages.reduce((sum, message) => sum + (message.activities?.length ?? 0), 0),
+          subagentRunCount: subagentRuns.length,
+        },
+    focusedTaskId: typeof value.focusedTaskId === 'string' ? value.focusedTaskId : null,
     createdAt: typeof value.createdAt === 'string'
       ? value.createdAt
       : new Date(0).toISOString(),
@@ -287,6 +343,7 @@ function normalizeSubagentRun(value: unknown): SubagentRun[] {
   return [{
     id: value.id,
     taskId: value.taskId,
+    pttTaskId: optionalIdentifier(value.pttTaskId),
     messageId: optionalIdentifier(value.messageId),
     toolUseId: optionalIdentifier(value.toolUseId),
     agentId: optionalIdentifier(value.agentId),
@@ -349,6 +406,8 @@ function normalizeMessage(value: unknown): PersistedChatMessage[] {
   const contextRefs = Array.isArray(value.contextRefs)
     ? normalizeAgentContextRefs(value.contextRefs)
     : undefined;
+  const workflowInvocation = normalizeWorkflowInvocation(value.workflowInvocation);
+  const refineryInvocation = normalizeRefineryInvocation(value.refineryInvocation);
   return [{
     id: value.id,
     role: value.role,
@@ -359,7 +418,32 @@ function normalizeMessage(value: unknown): PersistedChatMessage[] {
     ...(activities?.length ? { activities } : {}),
     ...(attachments?.length ? { attachments } : {}),
     ...(contextRefs?.length ? { contextRefs } : {}),
+    ...(workflowInvocation ? { workflowInvocation } : {}),
+    ...(refineryInvocation ? { refineryInvocation } : {}),
   }];
+}
+
+function normalizeRefineryInvocation(value: unknown): RefineryInvocation | undefined {
+  if (!isRecord(value) || typeof value.jobId !== 'string' || typeof value.sourceName !== 'string') return undefined;
+  if (value.sourceKind !== 'document' && value.sourceKind !== 'conversation') return undefined;
+  return {
+    jobId: value.jobId.trim().slice(0, 160),
+    sourceKind: value.sourceKind,
+    sourceName: value.sourceName.trim().slice(0, 240),
+  };
+}
+
+function normalizeWorkflowInvocation(value: unknown): WorkflowInvocation | undefined {
+  if (!isRecord(value)) return undefined;
+  if (!isIdentifier(value.workflowId) || typeof value.name !== 'string' || !value.name.trim()) return undefined;
+  if (typeof value.version !== 'string' || !value.version.trim() || typeof value.fingerprint !== 'string' || !value.fingerprint.trim()) return undefined;
+  return {
+    workflowId: value.workflowId,
+    name: value.name.trim().slice(0, 200),
+    version: value.version.trim().slice(0, 64),
+    fingerprint: value.fingerprint.trim().slice(0, 128),
+    ...(typeof value.note === 'string' && value.note.trim() ? { note: value.note.trim().slice(0, 2_000) } : {}),
+  };
 }
 
 function normalizeAttachment(value: unknown): AgentAttachmentMetadata[] {
@@ -397,6 +481,7 @@ function normalizeActivity(value: unknown): PersistedAgentActivity[] {
     elapsedSeconds: typeof value.elapsedSeconds === 'number' && Number.isFinite(value.elapsedSeconds)
       ? Math.max(0, Math.round(value.elapsedSeconds))
       : undefined,
+    pttTaskId: optionalIdentifier(value.pttTaskId),
     subagentRunId: optionalIdentifier(value.subagentRunId),
     agentType: optionalString(value.agentType),
     subagentDescription: optionalString(value.subagentDescription),
@@ -443,6 +528,11 @@ function sanitizeTabData(type: ProjectTabType, data: Record<string, unknown>) {
       recordId: data.recordId,
     };
   }
+  if (type === 'workflow' && isIdentifier(data.workflowId)) {
+    return { workflowId: data.workflowId, mode: data.mode === 'edit' ? 'edit' : 'preview' };
+  }
+  if (type === 'refinery' && isIdentifier(data.jobId)) return { jobId: data.jobId };
+  if (type === 'refinery' && isIdentifier(data.sourceId)) return { sourceId: data.sourceId };
   return undefined;
 }
 
@@ -507,7 +597,7 @@ function isAutonomyLevel(value: unknown): value is ProjectAutonomyLevel {
 
 function isTabType(value: unknown): value is ProjectTabType {
   return value === 'terminal' || value === 'editor' || value === 'browser'
-    || value === 'traffic' || value === 'replay' || value === 'report' || value === 'record' || value === 'settings' || value === 'welcome';
+    || value === 'traffic' || value === 'replay' || value === 'report' || value === 'record' || value === 'workflow' || value === 'refinery' || value === 'settings' || value === 'welcome';
 }
 
 
@@ -555,7 +645,7 @@ function isMessageRole(value: unknown): value is PersistedChatMessage['role'] {
 }
 
 function isMessageStatus(value: unknown): value is PersistedChatMessage['status'] {
-  return value === 'sending' || value === 'streaming' || value === 'complete' || value === 'error';
+  return value === 'sending' || value === 'streaming' || value === 'complete' || value === 'error' || value === 'interrupted';
 }
 
 function isActivityKind(value: unknown): value is PersistedAgentActivity['kind'] {

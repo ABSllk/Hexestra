@@ -32,6 +32,7 @@ const child = spawn(
     cwd: projectRoot,
     env: {
       ...process.env,
+      HEXESTRA_HOME: process.env.HEXESTRA_HOME ?? projectRoot,
       HEXESTRA_USER_DATA: applicationDataPath,
       VITE_DEV_SERVER_URL: devServerUrl,
     },

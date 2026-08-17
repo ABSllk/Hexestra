@@ -27,6 +27,7 @@ vi.mock('electron', () => ({
 describe('folder project service', () => {
   let root: string;
   let previousUserData: string | undefined;
+  let previousHexestraHome: string | undefined;
   let sessionService: typeof import('@electron/services/session.service').sessionService;
   let isVisibleSessionFileChange: typeof import('@electron/services/session.service').isVisibleSessionFileChange;
   let resolveProjectWatchPath: typeof import('@electron/services/session.service').resolveProjectWatchPath;
@@ -34,7 +35,9 @@ describe('folder project service', () => {
   beforeAll(async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-folder-projects-'));
     previousUserData = process.env.HEXESTRA_USER_DATA;
+    previousHexestraHome = process.env.HEXESTRA_HOME;
     process.env.HEXESTRA_USER_DATA = path.join(root, 'user-data');
+    process.env.HEXESTRA_HOME = root;
     vi.resetModules();
     const sessionModule = await import('@electron/services/session.service');
     sessionService = sessionModule.sessionService;
@@ -46,6 +49,7 @@ describe('folder project service', () => {
     sessionService.close();
     electronMocks.windows = [];
     process.env.HEXESTRA_USER_DATA = previousUserData;
+    process.env.HEXESTRA_HOME = previousHexestraHome;
     fs.rmSync(root, { recursive: true, force: true });
   });
 
@@ -67,6 +71,9 @@ describe('folder project service', () => {
     expect(fs.existsSync(path.join(projectPath, '.hexestra', 'project.json'))).toBe(true);
     expect(fs.existsSync(path.join(projectPath, '.hexestra', 'project-state.json'))).toBe(true);
     expect(fs.existsSync(path.join(projectPath, '.hexestra', 'engagement.db'))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'user', 'skills'))).toBe(false);
+    expect(fs.existsSync(path.join(root, 'user', 'restrictions.yaml'))).toBe(true);
+    expect(fs.existsSync(path.join(projectPath, '.hexestra', 'user', 'restrictions.yaml'))).toBe(false);
     expect(fs.existsSync(path.join(
       projectPath,
       '.claude',
@@ -91,7 +98,7 @@ describe('folder project service', () => {
     expect(JSON.parse(fs.readFileSync(
       path.join(projectPath, '.claude', 'settings.local.json'),
       'utf8',
-    )).skillOverrides).toEqual({
+    )).skillOverrides).toMatchObject({
       pentest: 'off',
       'hexestra-pentest': 'on',
       'hexestra-records': 'on',
@@ -145,7 +152,7 @@ describe('folder project service', () => {
     expect((await sessionService.listSessions()).some((project) => project.id === beta.id)).toBe(false);
   });
 
-  it('recomputes asset scope on every read without destroying scan status', async () => {
+  it('recomputes semantic scope annotations on every read without destroying scan status', async () => {
     const projectPath = path.join(root, 'scope-projection');
     fs.mkdirSync(projectPath, { recursive: true });
     const project = await sessionService.openProjectPath(projectPath, {
@@ -166,17 +173,19 @@ describe('folder project service', () => {
     expect(sessionService.listAssets(project.id)[0].status).toBe('scanned');
 
     await sessionService.updateScope(project.id, {
-      inScope: ['other.example.net'], outOfScope: [], targets: [],
+      mode: 'whitelist', allowRules: ['other.example.net'], excludeRules: [],
     });
-    expect(sessionService.listTargets(project.id)[0].status).toBe('out_of_scope');
-    expect(sessionService.listAssets(project.id)[0].status).toBe('out_of_scope');
+    expect(sessionService.listTargets(project.id)[0]).toMatchObject({ status: 'scanned', scopeAnnotation: undefined });
+    expect(sessionService.listAssets(project.id)[0]).toMatchObject({ status: 'scanned', scopeAnnotation: undefined });
 
     await sessionService.updateScope(project.id, {
-      inScope: ['example.com'], outOfScope: [], targets: [],
+      mode: 'whitelist', allowRules: ['example.com'], excludeRules: [],
     });
     expect(sessionService.listTargets(project.id)[0].status).toBe('scanned');
     expect(sessionService.listAssets(project.id)[0].status).toBe('scanned');
-    expect((await sessionService.getNetMap(project.id)).assets[0].status).toBe('scanned');
+    expect(sessionService.listTargets(project.id)[0].scopeAnnotation).toBe('authorized');
+    expect(sessionService.listAssets(project.id)[0].scopeAnnotation).toBe('authorized');
+    expect((await sessionService.getNetMap(project.id)).assets[0].scopeAnnotation).toBe('authorized');
   });
 
   it('counts reusable Findings separately from validated Vulnerabilities', async () => {
@@ -230,6 +239,66 @@ describe('folder project service', () => {
     fs.writeFileSync(path.join(projectPath, '.hexestra', 'watcher-noise.json'), '{}', 'utf8');
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('keeps a focused Step active while its lifecycle and result are updated', async () => {
+    const projectPath = path.join(root, 'persistent-task-focus');
+    fs.mkdirSync(projectPath, { recursive: true });
+    const project = await sessionService.openProjectPath(projectPath, {
+      name: 'Persistent task focus',
+    });
+    const [objective] = await sessionService.planTasks(project.id, [{
+      tacticId: 'TA0043',
+      techniqueId: 'T1595.002',
+      tasks: [{
+        title: 'Scan exposed services',
+        description: 'Collect a bounded service inventory.',
+        successCriteria: [{ id: 'objective-criterion', text: 'Service inventory recorded', completed: false }],
+      }],
+    }]);
+    await sessionService.focusTask(project.id, objective.id);
+    const steps = await sessionService.planTaskSteps(project.id, {
+      objectiveId: objective.id,
+      steps: [
+        { title: 'Prepare scan inputs' },
+        { title: 'Run service scan' },
+        { title: 'Record verified services' },
+      ],
+    });
+    const prepared = await sessionService.upsertTaskStep(project.id, {
+      id: steps[0].id,
+      parentId: objective.id,
+      title: steps[0].title,
+      order: steps[0].order,
+      successCriteria: [{ id: 'step-criterion', text: 'Inputs validated', completed: false }],
+    });
+
+    await sessionService.focusTask(project.id, prepared.id);
+    await sessionService.updateTaskCriterion(project.id, prepared.id, 'step-criterion', true);
+    const completed = await sessionService.upsertTaskStep(project.id, {
+      id: prepared.id,
+      parentId: objective.id,
+      title: prepared.title,
+      order: prepared.order,
+      status: 'completed',
+      resultSummary: 'Validated the selected hosts and scan limits.',
+    });
+
+    expect(completed).toMatchObject({
+      id: prepared.id,
+      status: 'completed',
+      resultSummary: 'Validated the selected hosts and scan limits.',
+      successCriteria: [{ id: 'step-criterion', completed: true }],
+    });
+    expect(sessionService.getProjectState(project.id).agent.branches[0].focusedTaskId).toBe(prepared.id);
+    await expect(sessionService.upsertTaskStep(project.id, {
+      id: steps[1].id,
+      parentId: objective.id,
+      title: 'Rename another pending Step',
+    })).rejects.toThrow('Focus the Objective before changing its execution plan');
+    await expect(sessionService.focusTask(project.id, prepared.id)).resolves.toMatchObject({
+      activeStep: { id: prepared.id },
+    });
   });
 
   it('canonicalizes Windows watcher roots without changing POSIX paths', () => {
