@@ -19,10 +19,10 @@
 
 ## 为什么选择 Hexestra？
 
-Hexestra 将分散的渗透测试环节整合进同一个项目。Agent 可以在 Scope 内自主执行，操作员也可以随时检查、引导、审批、中断或直接接管。
+Hexestra 将分散的渗透测试环节整合进同一个项目。Scope 标签为 Agent 提供资产语义上下文，操作员也可以随时检查、引导、审批、中断或直接接管。
 
 - **人与 AI 共用同一操作面：** 双方使用同一个浏览器、终端会话、捕获流量、任务、资产和证据。
-- **可控的高自主执行：** 在 ASK、AUTO 和 BYPASS 之间选择，同时保留项目 Scope 和技术安全边界。
+- **可控的高自主执行：** 在 ASK、AUTO 和 BYPASS 之间选择，同时保留 Rules of Engagement 和技术安全边界；Scope 标签只作提示。
 - **继续使用熟悉的工具：** 保留 Claude Code、Burp Suite、PowerShell、WSL、SSH 及其现有配置，不必重新适应一套封闭替代品。
 - **持久化的项目状态：** 重新打开项目文件夹即可恢复 Scope、任务、NetMap、证据、Finding、报告、工作区、权限偏好和对话分支。
 
@@ -179,7 +179,7 @@ npm run check
 
 ## 负责使用
 
-只在获得明确授权并准确设置项目 Scope 后使用 Hexestra。破坏性、干扰性或影响隐私的操作应获得适当批准，导出的证据和报告应作为敏感数据处理。ASK、AUTO 和 BYPASS 只改变审批行为，不会关闭 Scope、Rules of Engagement 或技术安全边界。Hexestra 不能替代专业判断和责任承担。
+只在获得明确授权并准确设置项目 Scope 后使用 Hexestra。破坏性、干扰性或影响隐私的操作应获得适当批准，导出的证据和报告应作为敏感数据处理。Scope 标签用于引导 Agent 优先级，但不阻断命令或流量；ASK、AUTO 和 BYPASS 改变审批行为，Rules of Engagement 和技术安全边界仍然有效。Hexestra 不能替代专业判断和责任承担。
 
 ## 参与贡献
 

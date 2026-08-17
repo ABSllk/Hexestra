@@ -19,10 +19,10 @@ An AI-native penetration testing IDE where human operators and AI share the same
 
 ## Why Hexestra?
 
-Hexestra brings the fragmented parts of a penetration test into one project. The Agent can work autonomously within scope, while the operator can inspect, guide, approve, interrupt, or take over at any time.
+Hexestra brings the fragmented parts of a penetration test into one project. Scope labels give the Agent semantic asset context, while the operator can inspect, guide, approve, interrupt, or take over at any time.
 
 - **One shared operational surface:** human and AI work with the same browser, terminal sessions, captured traffic, tasks, assets, and evidence.
-- **Controlled autonomy:** choose ASK, AUTO, or BYPASS without weakening project Scope or technical safety boundaries.
+- **Controlled autonomy:** choose ASK, AUTO, or BYPASS while preserving Rules of Engagement and technical safety boundaries; Scope labels remain advisory.
 - **Keep the tools you know:** continue using Claude Code, Burp Suite, PowerShell, WSL, SSH, and their existing configurations instead of learning a closed replacement.
 - **Durable engagement state:** reopen a project folder to restore Scope, tasks, NetMap, evidence, findings, reports, workspace tabs, permissions, and conversation branches.
 
@@ -179,7 +179,7 @@ npm run check
 
 ## Responsible use
 
-Use Hexestra only with explicit authorization and an accurate project Scope. Destructive, disruptive, or privacy-impacting actions require appropriate approval, and exported evidence or reports should be treated as sensitive data. ASK, AUTO, and BYPASS change approval behavior only; they do not disable Scope, rules of engagement, or technical safety boundaries. Hexestra does not replace professional judgment or accountability.
+Use Hexestra only with explicit authorization and an accurate project Scope. Destructive, disruptive, or privacy-impacting actions require appropriate approval, and exported evidence or reports should be treated as sensitive data. Scope labels guide Agent prioritization but do not block commands or traffic; ASK, AUTO, and BYPASS change approval behavior, while Rules of Engagement and technical safety boundaries remain enforced. Hexestra does not replace professional judgment or accountability.
 
 ## Contributing
 

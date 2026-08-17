@@ -189,7 +189,6 @@ class HexestraBridge:
             "projectId": self.project_id,
             "revision": revision,
             "state": state,
-            "scopeState": "out_of_scope",
             "source": "replay" if flow.metadata.get("hexestra_parent_flow_id") else "browser",
             "request": {
                 "method": request.method,

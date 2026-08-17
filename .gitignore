@@ -22,6 +22,7 @@ tmp/
 .trellis/
 AGENTS.md
 design-system/
+user/
 
 # Editor and operating-system state
 .idea/
