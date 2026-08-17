@@ -1,8 +1,11 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { auditClaudePackageTree } from '../../scripts/audit-release-claude.mjs';
+
+const { createPackage } = createRequire(import.meta.url)('@electron/asar');
 
 const roots = [];
 afterEach(() => roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
@@ -38,5 +41,20 @@ describe('release Claude audit', () => {
     const result = auditClaudePackageTree(root);
     expect(result.hasJavaScriptSdk).toBe(true);
     expect(result.forbidden).toHaveLength(1);
+  });
+
+  it('reads the app archive below a macOS bundle output directory', async () => {
+    const root = fixture();
+    const source = path.join(root, 'asar-source');
+    const sdk = path.join(source, 'node_modules', '@anthropic-ai', 'claude-agent-sdk', 'package.json');
+    const archive = path.join(root, 'Hexestra.app', 'Contents', 'Resources', 'app.asar');
+    fs.mkdirSync(path.dirname(sdk), { recursive: true });
+    fs.writeFileSync(sdk, '{}');
+    fs.mkdirSync(path.dirname(archive), { recursive: true });
+    await createPackage(source, archive);
+
+    const result = auditClaudePackageTree(root);
+    expect(result.hasJavaScriptSdk).toBe(true);
+    expect(result.forbidden).toHaveLength(0);
   });
 });

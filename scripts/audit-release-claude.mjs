@@ -32,14 +32,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 
 export function auditClaudePackageTree(appOutDir) {
   const paths = [];
-  const asarPaths = [
-    path.join(appOutDir, 'resources', 'app.asar'),
-    path.join(appOutDir, 'Contents', 'Resources', 'app.asar'),
-  ];
-  for (const asarPath of asarPaths) {
-    if (fs.existsSync(asarPath) && fs.statSync(asarPath).isFile()) paths.push(...listPackage(asarPath));
-  }
-  for (const file of walkFiles(appOutDir)) {
+  const files = [...walkFiles(appOutDir)];
+  for (const file of files) {
+    if (path.basename(file) === 'app.asar') paths.push(...listPackage(file));
     paths.push(path.relative(appOutDir, file));
   }
 
