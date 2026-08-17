@@ -1,5 +1,5 @@
 import type { AssetType } from './asset';
-import type { TargetStatus } from './target';
+import type { ScopeAnnotation, TargetStatus } from './target';
 
 export type NodeType = 'local' | 'host' | AssetType;
 export type EdgeType = 'belongs_to' | 'resolves_to' | 'connected_to' | 'attack_path';
@@ -35,6 +35,7 @@ export interface GraphNode {
   label: string;
   type: NodeType;
   status: TargetStatus;
+  scopeAnnotation?: ScopeAnnotation;
   ip?: string;
   hostname?: string;
   key?: string;

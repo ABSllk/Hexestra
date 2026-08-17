@@ -5,3 +5,5 @@ export { useChatStore } from './useChatStore';
 export { useTabStore } from './useTabStore';
 export { usePentestTreeStore } from './usePentestTreeStore';
 export { useEgressProxyStore } from './useEgressProxyStore';
+export { useWorkflowStore } from './useWorkflowStore';
+export { useKnowledgeRefineryStore } from './useKnowledgeRefineryStore';

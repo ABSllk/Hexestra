@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentMessageEvent, AgentStatus, ProjectActivation } from '@/types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentMessageEvent, AgentStatus, ProjectActivation, SubagentRun } from '@/types';
 import { useChatStore } from '@/stores/useChatStore';
 import { useSessionStore } from '@/stores/useSessionStore';
+import { useTabStore } from '@/stores/useTabStore';
 
 const readyStatus: AgentStatus = {
   state: 'ready',
@@ -27,6 +28,19 @@ function activation(sessionId: string, content: string): ProjectActivation {
       timestamp: '2026-07-18T00:00:00.000Z',
       status: 'complete',
     }] : [],
+    history: {
+      items: content ? [{
+        id: `message-${sessionId}`,
+        role: 'assistant',
+        content,
+        timestamp: '2026-07-18T00:00:00.000Z',
+        status: 'complete',
+      }] : [],
+      beforeCursor: null,
+      hasEarlier: false,
+      total: content ? 1 : 0,
+      totalActivities: 0,
+    },
     activeBranchId: 'main',
     branches: [{
       id: 'main',
@@ -128,7 +142,20 @@ describe('useChatStore project isolation', () => {
       },
     });
     useChatStore.getState().deactivateProject();
-    useSessionStore.setState({ currentSession: null, targets: [], assets: [] });
+    useSessionStore.setState({
+      currentSession: null,
+      targets: [],
+      assets: [],
+      findings: [],
+      vulnerabilities: [],
+      evidenceRecords: [],
+      reports: [],
+    });
+    useTabStore.setState({ tabs: [], activeTabId: null, nextTabNumber: 1 });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('loads each project history and ignores late events from the previous project', async () => {
@@ -206,6 +233,64 @@ describe('useChatStore project isolation', () => {
     unsubscribe();
   });
 
+  it('coalesces repeated live snapshots while applying first and terminal states immediately', async () => {
+    await useChatStore.getState().activateProject('project-a');
+    vi.useFakeTimers();
+    const unsubscribe = useChatStore.getState().subscribeToAgent();
+
+    const emitMessage = (content: string, status: 'streaming' | 'complete') => {
+      listeners.get('agent:message')?.({
+        sessionId: 'project-a',
+        branchId: 'main',
+        message: {
+          id: 'live-message',
+          role: 'assistant',
+          content,
+          timestamp: '2026-08-12T00:00:00.000Z',
+          status,
+        },
+      } satisfies AgentMessageEvent);
+    };
+
+    emitMessage('first', 'streaming');
+    emitMessage('second', 'streaming');
+    emitMessage('latest', 'streaming');
+    expect(useChatStore.getState().messages.at(-1)?.content).toBe('first');
+
+    vi.advanceTimersByTime(80);
+    expect(useChatStore.getState().messages.at(-1)?.content).toBe('latest');
+
+    emitMessage('pending', 'streaming');
+    emitMessage('finished', 'complete');
+    expect(useChatStore.getState().messages.at(-1)).toMatchObject({
+      content: 'finished',
+      status: 'complete',
+    });
+    vi.advanceTimersByTime(80);
+    expect(useChatStore.getState().messages.at(-1)?.content).toBe('finished');
+
+    const baseRun: SubagentRun = {
+      id: 'live-run',
+      taskId: 'task-a',
+      description: 'Inspect target',
+      status: 'running' as const,
+      startedAt: '2026-08-12T00:00:00.000Z',
+      updatedAt: '2026-08-12T00:00:01.000Z',
+      activities: [],
+    };
+    const emitRun = (run: SubagentRun) => listeners.get('agent:subagent-update')?.({
+      sessionId: 'project-a', branchId: 'main', run,
+    });
+    emitRun(baseRun);
+    emitRun({ ...baseRun, summary: 'second' });
+    emitRun({ ...baseRun, summary: 'latest' });
+    expect(useChatStore.getState().subagentRuns[0].summary).toBeUndefined();
+    vi.advanceTimersByTime(80);
+    expect(useChatStore.getState().subagentRuns[0].summary).toBe('latest');
+
+    unsubscribe();
+  });
+
   it('persists permission changes to the active project only', async () => {
     await useChatStore.getState().activateProject('project-b');
     useChatStore.getState().setPermissionMode('bypassPermissions');
@@ -253,7 +338,7 @@ describe('useChatStore project isolation', () => {
     useChatStore.getState().setComposerText('Keep my existing question');
     const ref = {
       kind: 'traffic-flow' as const, projectId: 'project-a', flowId: 'flow-1', method: 'GET',
-      url: 'https://example.test/', state: 'completed', scopeState: 'out_of_scope' as const,
+      url: 'https://example.test/', state: 'completed',
     };
     useChatStore.getState().queueAgentContext(ref, 'Default prompt');
     useChatStore.getState().queueAgentContext(ref, 'Different default');
@@ -264,6 +349,78 @@ describe('useChatStore project isolation', () => {
     expect(useChatStore.getState().messages.at(-1)?.contextRefs).toEqual([ref]);
     expect(useChatStore.getState().composerContextRefs).toEqual([]);
     expect(invoke).toHaveBeenCalledWith('agent:send', expect.objectContaining({ contextRefs: [ref] }));
+  });
+
+  it('sends only the active managed record using the latest session projection', async () => {
+    await useChatStore.getState().activateProject('project-a');
+    useSessionStore.setState({
+      currentSession: {
+        id: 'project-a', name: 'Project A', createdAt: '', updatedAt: '', status: 'active',
+        opsecLevel: 'balanced', autonomyLevel: 'medium', basePath: '', targetCount: 0,
+        findingCount: 0, vulnerabilityCount: 0,
+      },
+      findings: [{
+        id: 'finding-1', title: 'Inactive finding', kind: 'lead', confidence: 'high', status: 'active',
+        description: 'Do not send this', evidenceIds: [], createdAt: '', updatedAt: '',
+      }],
+      evidenceRecords: [{
+        id: 'evidence-1', assetId: 'asset-1', title: 'Current evidence', tool: 'curl', kind: 'http',
+        content: 'Latest response body', findingIds: [], vulnerabilityIds: [], observedAt: '', updatedAt: '',
+      }],
+    });
+    useTabStore.setState({
+      tabs: [
+        { id: 'record-finding', type: 'record', title: 'Finding', closable: true, data: { recordKind: 'finding', recordId: 'finding-1' } },
+        { id: 'record-evidence', type: 'record', title: 'Evidence', closable: true, data: { recordKind: 'evidence', recordId: 'evidence-1' } },
+      ],
+      activeTabId: 'record-evidence',
+    });
+    useChatStore.setState({
+      contextTabs: [
+        { tabId: 'record-finding', title: 'Finding', type: 'record', contentPreview: 'stale finding', isShared: true },
+        { tabId: 'record-evidence', title: 'Evidence', type: 'record', contentPreview: 'stale evidence', isShared: true },
+      ],
+    });
+
+    await useChatStore.getState().sendMessage('Review the selected record');
+
+    expect(invoke).toHaveBeenCalledWith('agent:send', expect.objectContaining({
+      contextTabs: [expect.objectContaining({
+        tabId: 'record-evidence',
+        title: 'Current evidence',
+        type: 'record',
+        contentPreview: expect.stringContaining('Latest response body'),
+      })],
+    }));
+    const sendRequest = invoke.mock.calls.find(([channel]) => channel === 'agent:send')?.[1] as { contextTabs: Array<{ contentPreview: string }> };
+    expect(sendRequest.contextTabs[0].contentPreview).not.toContain('Do not send this');
+    expect(sendRequest.contextTabs[0].contentPreview).not.toContain('stale evidence');
+  });
+
+  it('honors the managed-record context sharing toggle at send time', async () => {
+    await useChatStore.getState().activateProject('project-a');
+    useSessionStore.setState({
+      currentSession: {
+        id: 'project-a', name: 'Project A', createdAt: '', updatedAt: '', status: 'active',
+        opsecLevel: 'balanced', autonomyLevel: 'medium', basePath: '', targetCount: 0,
+        findingCount: 0, vulnerabilityCount: 0,
+      },
+      reports: [{
+        id: 'report-1', title: 'Current report', status: 'draft', summary: 'Summary', content: '# Report',
+        findingIds: [], vulnerabilityIds: [], createdAt: '', updatedAt: '',
+      }],
+    });
+    useTabStore.setState({
+      tabs: [{ id: 'record-report', type: 'record', title: 'Report', closable: true, data: { recordKind: 'report', recordId: 'report-1' } }],
+      activeTabId: 'record-report',
+    });
+    useChatStore.setState({
+      contextTabs: [{ tabId: 'record-report', title: 'Current report', type: 'record', contentPreview: '# Report', isShared: false }],
+    });
+
+    await useChatStore.getState().sendMessage('Review without context');
+
+    expect(invoke).toHaveBeenCalledWith('agent:send', expect.objectContaining({ contextTabs: [] }));
   });
 
   it('edits a prior user turn into a new active branch', async () => {
@@ -320,7 +477,7 @@ describe('useChatStore project isolation', () => {
   it('creates an independent persisted conversation without clearing the old one', async () => {
     await useChatStore.getState().activateProject('project-a');
 
-    await useChatStore.getState().newConversation();
+    const created = await useChatStore.getState().newConversation();
 
     const state = useChatStore.getState();
     expect(invoke).toHaveBeenCalledWith(
@@ -331,6 +488,22 @@ describe('useChatStore project isolation', () => {
     expect(state.messages).toEqual([]);
     expect(state.branches).toHaveLength(2);
     expect(state.activeBranchId).toMatch(/^conversation-/);
+    expect(created).toBe(true);
+  });
+
+  it('restores the active conversation and reports failure when creation is rejected', async () => {
+    await useChatStore.getState().activateProject('project-a');
+    const previousMessages = useChatStore.getState().messages;
+    invoke.mockRejectedValueOnce(new Error('Unable to create conversation'));
+
+    const created = await useChatStore.getState().newConversation();
+
+    expect(created).toBe(false);
+    expect(useChatStore.getState()).toMatchObject({
+      activeBranchId: 'main',
+      messages: previousMessages,
+      error: 'Error: Unable to create conversation',
+    });
   });
 
   it('switches conversations and hydrates the selected history', async () => {

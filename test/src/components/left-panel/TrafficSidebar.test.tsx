@@ -49,7 +49,7 @@ describe('TrafficSidebar', () => {
       if (channel === TRAFFIC_IPC.GET_PROFILE || channel === TRAFFIC_IPC.START) return profile;
       if (channel === TRAFFIC_IPC.LIST) return {
         items: [{
-          id: 'flow-1', revision: 1, state: 'completed', scopeState: 'in_scope', source: 'browser',
+          id: 'flow-1', revision: 1, state: 'completed', source: 'browser',
           method: 'GET', url: 'https://example.test/api', host: 'example.test', statusCode: 200,
           requestBytes: 14, responseBytes: 15, startedAt: '2026-08-01T00:00:00.000Z', burpRouted: false,
         }],
@@ -173,7 +173,7 @@ describe('TrafficSidebar', () => {
       if (channel === TRAFFIC_IPC.GET_PROFILE || channel === TRAFFIC_IPC.UPDATE_PROFILE) return mirrorProfile;
       if (channel === TRAFFIC_IPC.LIST) return {
         items: [{
-          id: 'flow-mirror', revision: 2, state: 'completed', scopeState: 'in_scope', source: 'browser',
+          id: 'flow-mirror', revision: 2, state: 'completed', source: 'browser',
           method: 'GET', url: 'https://example.test/mirror', host: 'example.test', statusCode: 200,
           requestBytes: 12, responseBytes: 24, startedAt: '2026-08-03T00:00:00.000Z',
           burpRouted: false, burpMode: 'mirror', burpMirrorState: 'failed', burpMirrorError: 'Bridge offline',
@@ -231,7 +231,7 @@ describe('TrafficSidebar', () => {
       if (channel === TRAFFIC_IPC.GET_PROFILE) return profile;
       if (channel === TRAFFIC_IPC.LIST) return {
         items: [{
-          id: 'flow-paused', revision: 2, state: 'request_paused', scopeState: 'out_of_scope', source: 'browser',
+          id: 'flow-paused', revision: 2, state: 'request_paused', source: 'browser',
           method: 'POST', url: 'https://example.test/paused', host: 'example.test',
           requestBytes: 0, startedAt: '2026-08-01T00:00:00.000Z', burpRouted: false,
         }],

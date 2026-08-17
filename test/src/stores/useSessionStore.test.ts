@@ -68,10 +68,10 @@ describe('useSessionStore Finding projection', () => {
       if (channel === 'scope:update') {
         return {
           ...useSessionStore.getState().currentSession,
-          scope: { inScope: ['example.net'], outOfScope: [], targets: [] },
+          scope: { mode: 'whitelist', allowRules: ['example.net'], excludeRules: [] },
         };
       }
-      if (channel === 'targets:list') return [{ id: 'host-1', status: 'out_of_scope' }];
+      if (channel === 'targets:list') return [{ id: 'host-1', status: 'scanned' }];
       if (channel === 'netmap:get') {
         return { version: 3, assets: [{ id: 'asset-1', status: 'scanned' }], edges: [] };
       }
@@ -79,13 +79,13 @@ describe('useSessionStore Finding projection', () => {
     });
 
     await useSessionStore.getState().updateScope({
-      inScope: ['example.net'], outOfScope: [], targets: [],
+      mode: 'whitelist', allowRules: ['example.net'], excludeRules: [],
     });
 
     expect(invoke.mock.calls.map(([channel]) => channel)).toEqual(expect.arrayContaining([
       'scope:update', 'targets:list', 'netmap:get',
     ]));
-    expect(useSessionStore.getState().targets[0]).toMatchObject({ status: 'out_of_scope' });
+    expect(useSessionStore.getState().targets[0]).toMatchObject({ status: 'scanned' });
     expect(useSessionStore.getState().assets[0]).toMatchObject({ status: 'scanned' });
   });
 

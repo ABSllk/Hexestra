@@ -31,7 +31,7 @@ const profile: TrafficProfileState = {
 };
 
 const flow: TrafficFlow = {
-  id: 'flow-1', projectId: 'project-1', revision: 1, state: 'completed', scopeState: 'in_scope', source: 'browser',
+  id: 'flow-1', projectId: 'project-1', revision: 1, state: 'completed', source: 'browser',
   request: {
     method: 'GET', url: 'https://example.test/api', httpVersion: 'http/1.1', headers: [],
     body: { encoding: 'utf8', data: 'request-secret', byteLength: 14 },
@@ -104,8 +104,7 @@ describe('TrafficDetailTab', () => {
     ));
   });
 
-  it('keeps human actions available for out-of-scope traffic', async () => {
-    const outOfScopeFlow = { ...flow, scopeState: 'out_of_scope' as const };
+  it('keeps human actions available for any persisted traffic', async () => {
     const capableProfile = {
       ...profile,
       burpStatus: {
@@ -115,14 +114,13 @@ describe('TrafficDetailTab', () => {
     };
     mocks.invoke.mockImplementation(async (channel: string) => {
       if (channel === TRAFFIC_IPC.GET_PROFILE) return capableProfile;
-      if (channel === TRAFFIC_IPC.READ) return outOfScopeFlow;
+      if (channel === TRAFFIC_IPC.READ) return flow;
       return undefined;
     });
 
     render(<TrafficDetailTab tabId="traffic-1" />);
 
-    expect(await screen.findByText('OUT OF SCOPE')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'HEXESTRA REPEATER' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'HEXESTRA REPEATER' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'SAVE EVIDENCE' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'BURP REPEATER' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'BURP INTRUDER' })).toBeEnabled();

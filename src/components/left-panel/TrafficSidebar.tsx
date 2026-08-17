@@ -17,7 +17,6 @@ import {
   type TrafficFlowState,
   type TrafficListResult,
   type TrafficProfileState,
-  type TrafficScopeState,
   type TrafficSummary,
 } from '@electron/contracts/traffic';
 import { useI18n } from '@/i18n';
@@ -25,7 +24,6 @@ import { useI18n } from '@/i18n';
 const PAGE_SIZE = 50;
 const EMPTY_LIST: TrafficListResult = { items: [], total: 0, offset: 0, limit: PAGE_SIZE };
 type StatusFilter = 'all' | 'paused' | 'completed' | 'failed';
-type ScopeFilter = 'all' | TrafficScopeState;
 type SourceFilter = 'all' | TrafficSummary['source'];
 
 export function TrafficSidebar() {
@@ -40,7 +38,6 @@ export function TrafficSidebar() {
   const [flows, setFlows] = useState(EMPTY_LIST);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
-  const [scope, setScope] = useState<ScopeFilter>('all');
   const [source, setSource] = useState<SourceFilter>('all');
   const [host, setHost] = useState('');
   const [parentFlowId, setParentFlowId] = useState('');
@@ -58,11 +55,10 @@ export function TrafficSidebar() {
   const listQuery = useMemo(() => ({
     query,
     ...(status === 'paused' ? { states: ['request_paused', 'response_paused'] as TrafficFlowState[] } : status === 'all' ? {} : { state: status }),
-    ...(scope === 'all' ? {} : { scopeState: scope }),
     ...(source === 'all' ? {} : { source }),
     ...(host ? { host } : {}),
     ...(parentFlowId ? { parentFlowId } : {}),
-  }), [host, parentFlowId, query, scope, source, status]);
+  }), [host, parentFlowId, query, source, status]);
 
   const loadFlows = useCallback(async (append = false) => {
     if (!projectId) return;
@@ -159,7 +155,6 @@ export function TrafficSidebar() {
           url: flow.url,
           host: flow.host,
           state: flow.state,
-          scopeState: flow.scopeState,
           statusCode: flow.statusCode,
           preview: `${flow.method} ${flow.url} · ${flow.statusCode ?? flow.state}`.slice(0, 2_000),
         }, 'Analyze this captured traffic flow.'),
@@ -296,10 +291,7 @@ export function TrafficSidebar() {
           <span className="shrink-0 font-mono text-[11px] text-text-muted">{flows.total}</span>
         </div>
         <FilterRow label={t('traffic.status')} values={[{ id: 'all', label: t('traffic.all') }, { id: 'paused', label: t('traffic.paused') }, { id: 'completed', label: t('traffic.completed') }, { id: 'failed', label: t('traffic.failed') }]} active={status} onChange={(value) => setStatus(value as StatusFilter)} />
-        <div className="grid grid-cols-2 gap-1.5">
-          <select aria-label="Traffic scope filter" className="ui-control min-w-0 px-1 py-1 text-[11px]" value={scope} onChange={(event) => setScope(event.target.value as ScopeFilter)}>
-            <option value="all">{t('traffic.allScope')}</option><option value="in_scope">{t('traffic.inScope')}</option><option value="out_of_scope">{t('traffic.outOfScope')}</option>
-          </select>
+        <div className="grid grid-cols-1 gap-1.5">
           <select aria-label="Traffic source filter" className="ui-control min-w-0 px-1 py-1 text-[11px]" value={source} onChange={(event) => setSource(event.target.value as SourceFilter)}>
             <option value="all">{t('traffic.allSources')}</option><option value="browser">{t('traffic.browser')}</option><option value="replay">{t('traffic.replay')}</option>
           </select>
@@ -330,7 +322,7 @@ function InterceptToggle({ label, checked, disabled, onChange }: { label: string
 function TrafficListItem({ flow, active, onOpen, onContextMenu }: { flow: TrafficSummary; active: boolean; onOpen: () => void; onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void }) {
   return <button type="button" aria-label={`Open ${flow.method} ${flow.url}`} onClick={onOpen} onContextMenu={onContextMenu} className={cn('mb-1 flex w-full flex-col gap-1 rounded-md border px-2 py-1.5 text-left transition-colors', active ? 'border-accent-blue/35 bg-accent-blue/10' : 'border-transparent hover:border-border-subtle/70 hover:bg-raised/25')}>
     <span className="flex w-full min-w-0 items-center gap-1.5"><span className="shrink-0 font-mono text-[11px] font-semibold text-accent-blue">{flow.method}</span><span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary" title={flow.url}>{flow.host}{safePath(flow.url)}</span><span className="shrink-0 font-mono text-[11px] text-text-muted">{flow.statusCode ?? '—'}</span></span>
-    <span className="flex w-full items-center gap-1.5 font-mono text-[11px]"><span className={cn('truncate', flow.state.includes('paused') ? 'text-accent-yellow' : flow.state === 'failed' ? 'text-severity-high' : 'text-text-muted')}>{flow.state}</span>{flow.source === 'replay' && <span className="text-accent-blue">REPLAY</span>}{flow.burpMirrorState === 'synced' && <span className="text-accent-teal">BURP SYNC</span>}{flow.burpMirrorState === 'pending' && <span className="text-accent-yellow">SYNC PENDING</span>}{flow.burpMirrorState === 'failed' && <span className="text-severity-high">SYNC FAILED</span>}<span className="ml-auto text-text-muted">{formatBytes((flow.requestBytes ?? 0) + (flow.responseBytes ?? 0))} · {flow.durationMs === undefined ? '—' : `${flow.durationMs}ms`}</span><span className={flow.scopeState === 'in_scope' ? 'text-accent-teal' : 'text-text-muted'}>{flow.scopeState === 'in_scope' ? 'IN' : 'OUT'}</span></span>
+    <span className="flex w-full items-center gap-1.5 font-mono text-[11px]"><span className={cn('truncate', flow.state.includes('paused') ? 'text-accent-yellow' : flow.state === 'failed' ? 'text-severity-high' : 'text-text-muted')}>{flow.state}</span>{flow.source === 'replay' && <span className="text-accent-blue">REPLAY</span>}{flow.burpMirrorState === 'synced' && <span className="text-accent-teal">BURP SYNC</span>}{flow.burpMirrorState === 'pending' && <span className="text-accent-yellow">SYNC PENDING</span>}{flow.burpMirrorState === 'failed' && <span className="text-severity-high">SYNC FAILED</span>}<span className="ml-auto text-text-muted">{formatBytes((flow.requestBytes ?? 0) + (flow.responseBytes ?? 0))} · {flow.durationMs === undefined ? '—' : `${flow.durationMs}ms`}</span></span>
   </button>;
 }
 

@@ -11,6 +11,8 @@ import { SettingsTab } from './tabs/SettingsTab';
 import { RecordDetailTab } from './tabs/RecordDetailTab';
 import { TrafficDetailTab } from './tabs/TrafficDetailTab';
 import { TrafficReplayTab } from './tabs/TrafficReplayTab';
+import { WorkflowTab } from './tabs/WorkflowTab';
+import { KnowledgeRefineryTab } from './tabs/KnowledgeRefineryTab';
 
 const EditorTab = lazy(() =>
   import('./tabs/EditorTab').then((module) => ({ default: module.EditorTab })),
@@ -47,6 +49,8 @@ export function TabContainer() {
         {activeTab?.type === 'replay' && <TrafficReplayTab tabId={activeTab.id} />}
         {activeTab?.type === 'report' && <ReportTab tabId={activeTab.id} />}
         {activeTab?.type === 'record' && <RecordDetailTab tabId={activeTab.id} />}
+        {activeTab?.type === 'workflow' && <WorkflowTab tabId={activeTab.id} />}
+        {activeTab?.type === 'refinery' && <KnowledgeRefineryTab tabId={activeTab.id} />}
         {activeTab?.type === 'settings' && <SettingsTab />}
       </div>
     </div>

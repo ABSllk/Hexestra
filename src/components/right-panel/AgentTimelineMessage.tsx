@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Icon } from '@/components/shared';
@@ -10,21 +10,50 @@ export const AgentTimelineMessage = memo(function AgentTimelineMessage({
   message,
   onOpenSubagent,
   subagentRuns,
+  onLoadEarlierActivities,
+  loadingEarlierActivities = false,
 }: {
   message: ChatMessage;
   onOpenSubagent?: (runId: string) => void;
   subagentRuns?: SubagentRun[];
+  onLoadEarlierActivities?: (messageId: string) => void;
+  loadingEarlierActivities?: boolean;
 }) {
+  const subagentRunsById = useMemo(
+    () => new Map(subagentRuns?.map((run) => [run.id, run]) ?? []),
+    [subagentRuns],
+  );
+  const hasTextActivity = message.activities?.some((activity) => activity.kind === 'text') ?? false;
+  const showMessageBody = Boolean(message.content && ((message.hiddenActivityCount ?? 0) > 0 || !hasTextActivity));
   return (
     <article className="w-full text-[13px]" aria-label="AI activity timeline">
       <span className="mb-1 block px-1 text-2xs text-text-muted">AI</span>
       <div className="relative ml-1.5 border-l border-border-subtle/80 pl-4">
+        {message.hiddenActivityCount && message.hiddenActivityCount > 0 && onLoadEarlierActivities && (
+          <EarlierActivityButton
+            count={message.hiddenActivityCount}
+            loading={loadingEarlierActivities}
+            onClick={() => onLoadEarlierActivities(message.id)}
+          />
+        )}
         {message.activities?.map((activity) => (
-          <ActivityItem key={activity.id} activity={activity} onOpenSubagent={onOpenSubagent} subagentRuns={subagentRuns} />
+          <ActivityItem
+            key={activity.id}
+            activity={activity}
+            onOpenSubagent={onOpenSubagent}
+            subagentRun={activity.subagentRunId ? subagentRunsById.get(activity.subagentRunId) : undefined}
+          />
         ))}
       </div>
-      {message.status === 'error' && (
-        <span className="mt-1 block px-1 text-2xs text-severity-critical">Request failed</span>
+      {showMessageBody && (
+        <div className="mt-2 rounded-lg bg-raised px-3 py-2 text-text-primary">
+          <MarkdownContent content={message.content} />
+        </div>
+      )}
+      {(message.status === 'error' || message.status === 'interrupted') && (
+        <span className="mt-1 block px-1 text-2xs text-severity-critical">
+          {message.status === 'interrupted' ? 'Interrupted after restart' : 'Request failed'}
+        </span>
       )}
     </article>
   );
@@ -35,30 +64,78 @@ export function AgentActivityList({
   onOpenSubagent,
   subagentRuns,
   compact = false,
+  hiddenActivityCount,
+  onLoadEarlierActivities,
+  loadingEarlierActivities = false,
 }: {
   activities: AgentActivity[];
   onOpenSubagent?: (runId: string) => void;
   subagentRuns?: SubagentRun[];
   compact?: boolean;
+  hiddenActivityCount?: number;
+  onLoadEarlierActivities?: () => void;
+  loadingEarlierActivities?: boolean;
 }) {
+  const subagentRunsById = useMemo(
+    () => new Map(subagentRuns?.map((run) => [run.id, run]) ?? []),
+    [subagentRuns],
+  );
   return (
     <div className="relative ml-1.5 border-l border-border-subtle/80 pl-4">
+      {hiddenActivityCount && hiddenActivityCount > 0 && onLoadEarlierActivities && (
+        <EarlierActivityButton
+          count={hiddenActivityCount}
+          loading={loadingEarlierActivities}
+          onClick={onLoadEarlierActivities}
+        />
+      )}
       {activities.map((activity) => (
-        <ActivityItem key={activity.id} activity={activity} onOpenSubagent={onOpenSubagent} subagentRuns={subagentRuns} compact={compact} />
+        <ActivityItem
+          key={activity.id}
+          activity={activity}
+          onOpenSubagent={onOpenSubagent}
+          subagentRun={activity.subagentRunId ? subagentRunsById.get(activity.subagentRunId) : undefined}
+          compact={compact}
+        />
       ))}
     </div>
+  );
+}
+
+function EarlierActivityButton({
+  count,
+  loading,
+  onClick,
+}: {
+  count: number;
+  loading: boolean;
+  onClick: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <button
+      type="button"
+      className="mb-3 inline-flex min-h-7 items-center gap-1.5 rounded border border-border-subtle bg-panel/70 px-2 text-[11px] text-text-secondary transition-colors hover:border-accent-blue/50 hover:text-text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-blue disabled:cursor-wait disabled:opacity-60"
+      onClick={onClick}
+      disabled={loading}
+      aria-label={t(loading ? 'agent.loadingEarlierActivity' : 'agent.loadEarlierActivity')}
+    >
+      <Icon name="chevron-right" size={11} className="-rotate-90" />
+      <span>{loading ? t('agent.loadingEarlierActivity') : t('agent.loadEarlierActivity')}</span>
+      {!loading && <span className="text-text-muted">({count})</span>}
+    </button>
   );
 }
 
 const ActivityItem = memo(function ActivityItem({
   activity,
   onOpenSubagent,
-  subagentRuns,
+  subagentRun,
   compact = false,
 }: {
   activity: AgentActivity;
   onOpenSubagent?: (runId: string) => void;
-  subagentRuns?: SubagentRun[];
+  subagentRun?: SubagentRun;
   compact?: boolean;
 }) {
   const dotClass = activity.status === 'error'
@@ -80,7 +157,7 @@ const ActivityItem = memo(function ActivityItem({
       {activity.kind === 'thinking' ? (
         <ThinkingActivity activity={activity} compact={compact} />
       ) : activity.kind === 'tool' ? (
-        <ToolActivity activity={activity} onOpenSubagent={onOpenSubagent} subagentRuns={subagentRuns} compact={compact} />
+        <ToolActivity activity={activity} onOpenSubagent={onOpenSubagent} subagentRun={subagentRun} compact={compact} />
       ) : (
         <TextActivity activity={activity} compact={compact} />
       )}
@@ -129,17 +206,17 @@ function ThinkingActivity({ activity, compact = false }: { activity: AgentActivi
 function ToolActivity({
   activity,
   onOpenSubagent,
-  subagentRuns,
+  subagentRun,
   compact = false,
 }: {
   activity: AgentActivity;
   onOpenSubagent?: (runId: string) => void;
-  subagentRuns?: SubagentRun[];
+  subagentRun?: SubagentRun;
   compact?: boolean;
 }) {
   const { t } = useI18n();
   if (activity.subagentRunId && onOpenSubagent) {
-    const run = subagentRuns?.find((candidate) => candidate.id === activity.subagentRunId);
+    const run = subagentRun;
     const status = run?.status ?? (activity.status === 'running' ? 'running' : activity.status === 'error' ? 'failed' : 'completed');
     const toolCount = run?.usage?.toolUses ?? run?.activities.filter((candidate) => candidate.kind === 'tool').length;
     const tokens = run?.usage?.totalTokens;

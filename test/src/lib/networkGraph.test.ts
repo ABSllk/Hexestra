@@ -17,6 +17,7 @@ const targets: Target[] = [
     hostname: 'web.local',
     domains: ['web.local'],
     status: 'scanned',
+    scopeAnnotation: 'authorized',
     tags: ['nmap'],
     ports: [{ id: '10.0.0.10:443/tcp', port: 443, protocol: 'tcp', state: 'open', service: 'https', firstSeen: now, lastSeen: now }],
     services: [{ port: 443, protocol: 'tcp', name: 'https' }],
@@ -61,7 +62,7 @@ describe('networkGraph', () => {
   it('always projects a local root before target nodes', () => {
     const nodes = projectNetMapNodes(targets);
     expect(nodes[0]).toMatchObject({ id: LOCAL_NODE_ID, type: 'local' });
-    expect(nodes[1]).toMatchObject({ id: 'web', portCount: 1, vulnCount: 1 });
+    expect(nodes[1]).toMatchObject({ id: 'web', portCount: 1, vulnCount: 1, scopeAnnotation: 'authorized' });
   });
 
   it('builds selected target, neighborhood, and local attack-path context', () => {

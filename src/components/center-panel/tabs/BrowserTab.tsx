@@ -20,7 +20,6 @@ const DEFAULT_BROWSER_STATE: BrowserState = {
   canGoBack: false,
   canGoForward: false,
   visible: false,
-  scopeState: 'out_of_scope',
   error: null,
 };
 
@@ -209,11 +208,9 @@ export function BrowserTab({ tabId }: { tabId: string }) {
         </BrowserButton>
         <span
           className={`w-12 text-center text-[11px] ${browserState.error ? 'text-severity-high' : 'text-text-muted'}`}
-          title={browserState.error ?? (browserState.scopeState === 'out_of_scope'
-            ? t('browser.outOfScopeHint')
-            : undefined)}
+          title={browserState.error ?? undefined}
         >
-          {browserState.error ? t('browser.error') : browserState.loading ? t('browser.loading') : browserState.scopeState === 'out_of_scope' ? t('browser.outOfScope') : t('browser.ready')}
+          {browserState.error ? t('browser.error') : browserState.loading ? t('browser.loading') : t('browser.ready')}
         </span>
       </div>
       <div

@@ -3,7 +3,7 @@ import { isManagedRecordKind, type ManagedRecordKind, type ProjectWorkspaceState
 import type { BrowserPostBody } from '@electron/contracts/browser';
 import type { TrafficSummary } from '@electron/contracts/traffic';
 
-export type TabType = 'terminal' | 'editor' | 'browser' | 'traffic' | 'replay' | 'report' | 'record' | 'settings' | 'welcome';
+export type TabType = 'terminal' | 'editor' | 'browser' | 'traffic' | 'replay' | 'report' | 'record' | 'workflow' | 'refinery' | 'settings' | 'welcome';
 
 export interface TabDefinition {
   id: string;
@@ -134,7 +134,7 @@ export function serializeProjectWorkspace(state: Pick<TabStore, 'tabs' | 'active
   };
 }
 
-export type SettingsPage = 'general' | 'connection' | 'traffic' | 'proxy' | 'burp' | 'skills' | 'mcp';
+export type SettingsPage = 'general' | 'connection' | 'traffic' | 'proxy' | 'burp' | 'skills' | 'mcp' | 'instructions' | 'tools';
 
 export function openSettingsTab(page: SettingsPage = 'general') {
   const store = useTabStore.getState();
@@ -210,6 +210,35 @@ export function openRecordTab(recordKind: ManagedRecordKind, recordId: string, t
   });
 }
 
+export function openWorkflowTab(workflowId: string, title: string, mode: 'preview' | 'edit' = 'preview') {
+  const store = useTabStore.getState();
+  const existing = store.tabs.find((tab) => tab.type === 'workflow' && tab.data?.workflowId === workflowId);
+  if (existing) {
+    store.updateTabData(existing.id, { mode });
+    store.setActiveTab(existing.id);
+    return existing.id;
+  }
+  return store.openTab({
+    type: 'workflow',
+    title,
+    icon: 'sparkles',
+    closable: true,
+    data: { workflowId, mode },
+  });
+}
+
+export function openKnowledgeRefineryTab(jobId?: string, sourceId?: string) {
+  const store = useTabStore.getState();
+  const data = sourceId ? { sourceId, jobId: null } : jobId ? { jobId, sourceId: null } : {};
+  const existing = store.tabs.find((tab) => tab.type === 'refinery');
+  if (existing) {
+    store.updateTabData(existing.id, data);
+    store.setActiveTab(existing.id);
+    return existing.id;
+  }
+  return store.openTab({ type: 'refinery', title: 'Knowledge Refinery', icon: 'sparkles', closable: true, data });
+}
+
 function persistedTabData(tab: TabDefinition) {
   if (tab.type === 'terminal' && (tab.data?.managedShell === true || typeof tab.data?.shellProfileId === 'string')) {
     return {
@@ -234,6 +263,11 @@ function persistedTabData(tab: TabDefinition) {
     && typeof tab.data?.recordId === 'string') {
     return { recordKind: tab.data.recordKind, recordId: tab.data.recordId };
   }
+  if (tab.type === 'workflow' && typeof tab.data?.workflowId === 'string') {
+    return { workflowId: tab.data.workflowId, mode: tab.data.mode === 'edit' ? 'edit' : 'preview' };
+  }
+  if (tab.type === 'refinery' && typeof tab.data?.jobId === 'string') return { jobId: tab.data.jobId };
+  if (tab.type === 'refinery' && typeof tab.data?.sourceId === 'string') return { sourceId: tab.data.sourceId };
   return undefined;
 }
 

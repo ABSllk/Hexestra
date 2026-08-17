@@ -10,7 +10,7 @@ const asset: AssetRecord = {
   properties: { domain: 'api.example.com' }, tags: [], vulnCount: 0, firstSeen: now, lastUpdated: now,
 };
 const node: GraphNode = { id: asset.id, key: asset.key, label: asset.label, type: asset.type, status: asset.status, properties: asset.properties, portCount: 0, vulnCount: 0 };
-const session: Session = { id: 'session-1', name: 'Test', status: 'active', scope: { inScope: ['example.com'], outOfScope: [], targets: [] }, opsecLevel: 'balanced', autonomyLevel: 'medium', createdAt: now, updatedAt: now, targetCount: 0, findingCount: 0, vulnerabilityCount: 0, basePath: 'test' };
+const session: Session = { id: 'session-1', name: 'Test', status: 'active', scope: { mode: 'whitelist', allowRules: ['example.com'], excludeRules: [] }, opsecLevel: 'balanced', autonomyLevel: 'medium', createdAt: now, updatedAt: now, targetCount: 0, findingCount: 0, vulnerabilityCount: 0, basePath: 'test' };
 
 describe('AssetWorkspaceTab', () => {
   beforeEach(() => {
@@ -57,9 +57,9 @@ describe('AssetWorkspaceTab', () => {
   it('edits project scope from the same workspace', () => {
     render(<AssetWorkspaceTab />);
     fireEvent.click(screen.getByRole('button', { name: 'scope' }));
-    fireEvent.change(screen.getByLabelText('Out of Scope'), { target: { value: 'auth.example.com' } });
+    fireEvent.change(screen.getByLabelText('Excluded rules'), { target: { value: 'auth.example.com' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Scope' }));
-    expect(useSessionStore.getState().updateScope).toHaveBeenCalledWith(expect.objectContaining({ outOfScope: ['auth.example.com'] }));
+    expect(useSessionStore.getState().updateScope).toHaveBeenCalledWith(expect.objectContaining({ excludeRules: ['auth.example.com'] }));
   });
 
   it('selects inventory assets without rendering a sidebar detail pane', () => {
@@ -138,27 +138,32 @@ describe('AssetWorkspaceTab', () => {
     expect(screen.queryByRole('menuitem', { name: 'Open in Browser' })).not.toBeInTheDocument();
   });
 
-  it('rescan action reuses the Agent task request and disables out-of-scope assets', async () => {
+  it('rescan action reuses the Agent task request for excluded assets', async () => {
     render(<AssetWorkspaceTab />);
     const row = screen.getByRole('button', { name: /api\.example\.com/i });
     fireEvent.contextMenu(row);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Rescan with Agent' }));
 
     await waitFor(() => {
-      expect(usePentestTreeStore.getState().upsertTask).toHaveBeenCalledWith(expect.objectContaining({ id: `asm-rescan-${node.id}`, stage: 'S2' }));
+      expect(usePentestTreeStore.getState().upsertTask).toHaveBeenCalledWith(expect.objectContaining({
+        id: `asm-rescan-${node.id}`,
+        primaryTacticId: 'TA0007',
+        techniqueIds: ['T1046'],
+        targetAssetIds: [node.id],
+      }));
       expect(useChatStore.getState().sendMessage).toHaveBeenCalledWith(expect.stringContaining('api.example.com'));
     });
 
-    useNetMapStore.setState((state) => ({ ...state, nodes: state.nodes.map((item) => item.id === node.id ? { ...item, status: 'out_of_scope' } : item) }));
+    useNetMapStore.setState((state) => ({ ...state, nodes: state.nodes.map((item) => item.id === node.id ? { ...item, scopeAnnotation: 'excluded' } : item) }));
     fireEvent.contextMenu(row);
-    expect(screen.getByRole('menuitem', { name: 'Rescan with Agent' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Rescan with Agent' })).toBeEnabled();
   });
 
   it('asks the Agent to define an empty project scope', () => {
-    useSessionStore.setState({ currentSession: { ...session, scope: { inScope: [], outOfScope: [], targets: [] } } });
+    useSessionStore.setState({ currentSession: { ...session, scope: { mode: 'blacklist', allowRules: [], excludeRules: [] } } });
     render(<AssetWorkspaceTab />);
     fireEvent.click(screen.getByRole('button', { name: 'scope' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Define Scope with Agent' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Agent to maintain labels' }));
     expect(useChatStore.getState().sendMessage).toHaveBeenCalledWith(expect.stringContaining('scope_update'));
   });
 
@@ -187,9 +192,9 @@ describe('AssetWorkspaceTab', () => {
     expect(screen.queryByText('22/tcp')).not.toBeInTheDocument();
   });
 
-  it('does not render detail actions for an out-of-scope asset in the sidebar', () => {
-    useNetMapStore.setState((state) => ({ ...state, nodes: state.nodes.map((item) => item.id === node.id ? { ...item, status: 'out_of_scope' } : item), selectedNodeId: node.id }));
+  it('does not render an execution-blocking action for an excluded asset', () => {
+    useNetMapStore.setState((state) => ({ ...state, nodes: state.nodes.map((item) => item.id === node.id ? { ...item, scopeAnnotation: 'excluded' } : item), selectedNodeId: node.id }));
     render(<AssetWorkspaceTab />);
-    expect(screen.queryByRole('button', { name: 'Out of scope' })).not.toBeInTheDocument();
+    expect(screen.queryByText('EXCLUDED')).toBeInTheDocument();
   });
 });

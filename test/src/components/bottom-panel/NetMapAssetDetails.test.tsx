@@ -9,7 +9,7 @@ const session: Session = {
   id: 'session-netmap-details',
   name: 'NetMap details',
   status: 'active',
-  scope: { inScope: ['api.internal'], outOfScope: [], targets: [] },
+  scope: { mode: 'whitelist', allowRules: ['api.internal'], excludeRules: [] },
   opsecLevel: 'balanced',
   autonomyLevel: 'medium',
   createdAt: now,
@@ -76,11 +76,11 @@ describe('NetMapAssetDetails', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it('does not offer an Agent rescan for an out-of-scope node', () => {
-    useNetMapStore.setState({ nodes: [{ ...node, status: 'out_of_scope' }] });
+  it('keeps Agent rescan available for an excluded node', () => {
+    useNetMapStore.setState({ nodes: [{ ...node, scopeAnnotation: 'excluded' }] });
     render(<NetMapAssetDetails nodeId={node.id} onClose={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: 'Out of scope' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Rescan with Agent' })).toBeEnabled();
   });
 
   it('displays identity credential values', () => {

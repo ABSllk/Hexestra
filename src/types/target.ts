@@ -3,8 +3,9 @@ export type TargetStatus =
   | 'in_progress'
   | 'scanned'
   | 'vulnerable'
-  | 'compromised'
-  | 'out_of_scope';
+  | 'compromised';
+
+export type ScopeAnnotation = 'authorized' | 'excluded';
 
 export type PortProtocol = 'tcp' | 'udp';
 export type ServiceState = 'open' | 'filtered' | 'closed';
@@ -28,6 +29,7 @@ export interface Target {
   domains: string[];
   os?: string;
   status: TargetStatus;
+  scopeAnnotation?: ScopeAnnotation;
   tags: string[];
   ports: Port[];
   services: ServiceInfo[];

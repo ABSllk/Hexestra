@@ -12,7 +12,7 @@ import { useTabStore } from '@/stores';
 import { TrafficReplayTab } from '@/components/center-panel/tabs/TrafficReplayTab';
 
 const source: TrafficFlow = {
-  id: 'flow-source', projectId: 'project-1', revision: 1, state: 'completed', scopeState: 'out_of_scope', source: 'browser',
+  id: 'flow-source', projectId: 'project-1', revision: 1, state: 'completed', source: 'browser',
   request: { method: 'POST', url: 'https://example.test/api', httpVersion: 'http/1.1', headers: [{ name: 'Host', value: 'example.test' }], body: { encoding: 'utf8', data: 'one', byteLength: 3 } },
   response: { statusCode: 200, httpVersion: 'http/1.1', headers: [], body: { encoding: 'utf8', data: 'source', byteLength: 6 } },
   timing: { startedAt: '2026-08-03T00:00:00.000Z', durationMs: 10 }, route: { burpEnabled: false, burpRouted: false },

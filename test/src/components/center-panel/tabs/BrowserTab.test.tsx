@@ -18,7 +18,6 @@ const initialState: BrowserState = {
   canGoBack: false,
   canGoForward: true,
   visible: true,
-  scopeState: 'in_scope',
   error: null,
 };
 

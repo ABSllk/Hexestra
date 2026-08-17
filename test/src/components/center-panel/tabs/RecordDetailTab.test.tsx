@@ -37,4 +37,28 @@ describe('RecordDetailTab', () => {
       data: { recordKind: 'evidence', recordId: 'evidence-1' },
     });
   });
+
+  it('replaces the description draft when a different Finding tab becomes active', () => {
+    useTabStore.setState({
+      tabs: [
+        { id: 'record-1', type: 'record', title: 'Admin lead', closable: true, data: { recordKind: 'finding', recordId: 'finding-1' } },
+        { id: 'record-2', type: 'record', title: 'TLS lead', closable: true, data: { recordKind: 'finding', recordId: 'finding-2' } },
+      ],
+      activeTabId: 'record-1',
+      nextTabNumber: 3,
+    });
+    useSessionStore.setState({
+      findings: [
+        ...useSessionStore.getState().findings,
+        { id: 'finding-2', assetId: 'host-1', title: 'TLS lead', kind: 'observation', confidence: 'medium', status: 'active', description: 'The second Finding description.', evidenceIds: [], createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z' },
+      ],
+    });
+    const view = render(<RecordDetailTab tabId="record-1" />);
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Unsaved first Finding draft.' } });
+
+    view.rerender(<RecordDetailTab tabId="record-2" />);
+
+    expect(screen.getByDisplayValue('The second Finding description.')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Unsaved first Finding draft.')).not.toBeInTheDocument();
+  });
 });

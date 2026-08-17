@@ -8,6 +8,8 @@ import type {
   AgentState,
   AgentStatus,
 } from '../../electron/contracts/agent-runtime';
+import type { WorkflowInvocation } from '../../electron/contracts/workflows';
+import type { RefineryInvocation } from '../../electron/contracts/knowledge-refinery';
 export type {
   SubagentActivity,
   SubagentRun,
@@ -38,7 +40,7 @@ export type {
 } from '../../electron/contracts/agent-runtime';
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool_request';
-export type MessageStatus = 'sending' | 'streaming' | 'complete' | 'error';
+export type MessageStatus = 'sending' | 'streaming' | 'complete' | 'error' | 'interrupted';
 export interface ChatMessage {
   id: string;
   role: MessageRole;
@@ -46,11 +48,14 @@ export interface ChatMessage {
   timestamp: string;
   status: MessageStatus;
   activities?: AgentActivity[];
+  hiddenActivityCount?: number;
   hasToolRequest?: boolean;
   toolRequest?: ToolRequest;
   backendMessageId?: string;
   attachments?: AgentAttachmentMetadata[];
   contextRefs?: AgentContextRef[];
+  workflowInvocation?: WorkflowInvocation;
+  refineryInvocation?: RefineryInvocation;
 }
 
 export interface ToolResult {

@@ -1,4 +1,4 @@
-import type { AgentPermissionMode, AgentStatus, ChatMessage } from './chat';
+import type { AgentActivity, AgentPermissionMode, AgentStatus, ChatMessage } from './chat';
 import type { AgentBackendId } from '../../electron/contracts/agent-runtime';
 import type { AutonomyLevel } from './session';
 import type { ShellProjectState } from '@electron/contracts/shell';
@@ -7,7 +7,7 @@ export type { SubagentRun } from '../../electron/agent-subagent-contract';
 export type { ManagedRecordKind } from '@electron/contracts/records';
 export { isManagedRecordKind } from '@electron/contracts/records';
 
-export type ProjectTabType = 'terminal' | 'editor' | 'browser' | 'traffic' | 'replay' | 'report' | 'record' | 'settings' | 'welcome';
+export type ProjectTabType = 'terminal' | 'editor' | 'browser' | 'traffic' | 'replay' | 'report' | 'record' | 'workflow' | 'refinery' | 'settings' | 'welcome';
 
 export interface ProjectWorkspaceTab {
   id: string;
@@ -36,11 +36,34 @@ export interface ConversationBranchSummary {
   backendId: AgentBackendId;
   createdAt: string;
   messageCount: number;
+  activityCount?: number;
+  subagentRunCount?: number;
+}
+
+export interface AgentHistoryPage {
+  items: ChatMessage[];
+  beforeCursor: string | null;
+  hasEarlier: boolean;
+  total: number;
+  totalActivities: number;
+}
+
+export interface AgentActivityPage {
+  items: AgentActivity[];
+  beforeCursor: string | null;
+  hasEarlier: boolean;
+  total: number;
+}
+
+export interface SubagentDetailPage {
+  run: SubagentRun | null;
+  page: AgentActivityPage | null;
 }
 
 export interface ProjectActivation {
   sessionId: string;
   messages: ChatMessage[];
+  history: AgentHistoryPage;
   activeBranchId: string;
   branches: ConversationBranchSummary[];
   subagentRuns?: SubagentRun[];

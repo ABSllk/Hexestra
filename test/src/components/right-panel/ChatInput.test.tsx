@@ -87,6 +87,8 @@ describe('ChatInput composer', () => {
       composerText: '',
       composerContextRefs: [],
       composerFocusNonce: 0,
+      activeProjectId: null,
+      activeBranchId: 'main',
       agentStatus: {
         state: 'ready', available: true, backendId: 'claude', authenticated: true,
         model: 'runtime-model', backendSessionId: null, pendingRequests: 0, historyLength: 0,
@@ -133,6 +135,16 @@ describe('ChatInput composer', () => {
     expect(await screen.findByText('Send slash commands without attachments or staged context.')).toBeInTheDocument();
     expect(screen.getByText('screen.png')).toBeInTheDocument();
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('sends /distill through the ordinary active conversation', async () => {
+    useChatStore.setState({ activeProjectId: 'project-1', activeBranchId: 'main' });
+    render(<ChatInput />);
+    fireEvent.change(screen.getByPlaceholderText('Message AI assistant...'), { target: { value: '/distill' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('/distill', []));
+    expect(invoke).not.toHaveBeenCalledWith('refinery:jobs:create-from-conversation', expect.anything(), expect.anything());
   });
 
   it('offers keyboard command completion and renders the selected command as a token', async () => {

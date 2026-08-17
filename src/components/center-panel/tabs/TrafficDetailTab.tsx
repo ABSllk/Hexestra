@@ -137,7 +137,6 @@ export function TrafficDetailTab({ tabId }: { tabId: string }) {
       url: flow.request.url,
       host: safeHost(flow.request.url),
       state: flow.state,
-      scopeState: flow.scopeState,
       statusCode: flow.response?.statusCode,
       preview: `${flow.request.method} ${flow.request.url} · ${flow.response?.statusCode ?? flow.state}`,
     }, 'Analyze this captured traffic flow.');
@@ -160,14 +159,6 @@ export function TrafficDetailTab({ tabId }: { tabId: string }) {
             <div className="flex min-w-0 items-center gap-2">
               <span className="rounded bg-accent-blue/10 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-accent-blue">{flow.request.method}</span>
               <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-primary" title={flow.request.url}>{flow.request.url}</span>
-              <span className={cn(
-                'shrink-0 rounded border px-1.5 py-0.5 font-mono text-[11px]',
-                flow.scopeState === 'in_scope'
-                  ? 'border-accent-teal/30 text-accent-teal'
-                  : 'border-accent-yellow/30 text-accent-yellow',
-              )}>
-                {flow.scopeState === 'in_scope' ? 'IN SCOPE' : 'OUT OF SCOPE'}
-              </span>
             </div>
             <div className="mt-1.5 flex items-center gap-3 font-mono text-[11px] text-text-muted">
               <span>{flow.state}</span>

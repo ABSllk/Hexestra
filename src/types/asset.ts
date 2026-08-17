@@ -1,4 +1,4 @@
-import type { TargetStatus } from './target';
+import type { ScopeAnnotation, TargetStatus } from './target';
 
 export type AssetType =
   | 'domain'
@@ -18,6 +18,7 @@ export interface AssetRecord {
   type: AssetType;
   label: string;
   status: TargetStatus;
+  scopeAnnotation?: ScopeAnnotation;
   properties: Record<string, string | number | boolean | string[]>;
   tags: string[];
   vulnCount: number;

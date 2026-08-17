@@ -41,6 +41,7 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
           <div className="truncate font-mono text-xs font-semibold text-text-primary">{node.label}</div>
         </div>
         <div className="ml-3 flex shrink-0 items-center gap-2">
+          {node.scopeAnnotation && <ScopeAnnotationBadge annotation={node.scopeAnnotation} />}
           <StatusBadge status={node.status} />
           <button type="button" className="ui-icon-button h-6 w-6" onClick={onClose} aria-label="Close asset details" title="Close asset details">
             <Icon name="close" size={12} />
@@ -104,16 +105,20 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
         )}
 
         <button
-          disabled={isProcessing || node.status === 'out_of_scope'}
+          disabled={isProcessing}
           onClick={() => void requestRescan()}
           className="flex w-full items-center justify-center gap-2 rounded border border-accent-teal/30 bg-accent-teal/5 px-2 py-1.5 text-accent-teal hover:bg-accent-teal/10 disabled:cursor-not-allowed disabled:opacity-40 select-none"
         >
           <Icon name="activity" size={12} />
-          {node.status === 'out_of_scope' ? 'Out of scope' : 'Rescan with Agent'}
+          Rescan with Agent
         </button>
       </div>
     </aside>
   );
+}
+
+function ScopeAnnotationBadge({ annotation }: { annotation: 'authorized' | 'excluded' }) {
+  return <span className={`rounded border px-1 py-0.5 text-[10px] font-medium ${annotation === 'authorized' ? 'border-accent-teal/40 text-accent-teal' : 'border-severity-high/40 text-severity-high'}`}>{annotation === 'authorized' ? 'AUTHORIZED' : 'EXCLUDED'}</span>;
 }
 
 function humanize(value: string) {

@@ -73,7 +73,7 @@ export function ShellsTab() {
   const bindableAssets = useMemo(() => [
     ...targets.map((target) => ({ id: target.id, label: target.hostname || target.ip, status: target.status })),
     ...assets.map((asset) => ({ id: asset.id, label: asset.label, status: asset.status })),
-  ].filter((item, index, all) => item.status !== 'out_of_scope' && all.findIndex((candidate) => candidate.id === item.id) === index), [assets, targets]);
+  ].filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index), [assets, targets]);
 
   const refresh = useCallback(async () => {
     if (!projectId || !window.hexestra) return;

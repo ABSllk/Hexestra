@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Icon } from '@/components/shared';
 import type { AgentActivity, SubagentRun } from '@/types';
 import { useI18n } from '@/i18n';
+import { useChatStore } from '@/stores';
 import { AgentActivityList } from './AgentTimelineMessage';
 
 export function SubagentDetailView({
@@ -12,6 +13,14 @@ export function SubagentDetailView({
   onBack: () => void;
 }) {
   const { t } = useI18n();
+  const loadSubagentDetail = useChatStore((state) => state.loadSubagentDetail);
+  const loadingSubagentDetail = useChatStore((state) => state.loadingSubagentDetail === run.id);
+  const initialLoadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (initialLoadRef.current === run.id) return;
+    initialLoadRef.current = run.id;
+    void loadSubagentDetail(run.id);
+  }, [loadSubagentDetail, run.id]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onBack();
@@ -62,11 +71,17 @@ export function SubagentDetailView({
           </div>
         )}
 
-        {run.activities.length > 0 ? (
-          <AgentActivityList activities={run.activities as AgentActivity[]} compact />
+        {run.activities.length > 0 || run.hiddenActivityCount ? (
+          <AgentActivityList
+            activities={run.activities as AgentActivity[]}
+            compact
+            hiddenActivityCount={run.hiddenActivityCount}
+            loadingEarlierActivities={loadingSubagentDetail}
+            onLoadEarlierActivities={() => void loadSubagentDetail(run.id)}
+          />
         ) : (
           <div className="rounded border border-border-subtle bg-panel px-3 py-5 text-center text-2xs text-text-muted">
-            {t('agent.subagentWaiting')}
+            {loadingSubagentDetail ? t('common.loading') : t('agent.subagentWaiting')}
           </div>
         )}
 

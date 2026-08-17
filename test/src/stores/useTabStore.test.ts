@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { openTrafficFlowTab, serializeProjectWorkspace, useTabStore } from '@/stores/useTabStore';
+import { openKnowledgeRefineryTab, openTrafficFlowTab, serializeProjectWorkspace, useTabStore } from '@/stores/useTabStore';
 
 describe('useTabStore project workspaces', () => {
   beforeEach(() => useTabStore.getState().resetProject());
@@ -71,5 +71,26 @@ describe('useTabStore project workspaces', () => {
       expect.objectContaining({ id: firstId, data: { flowId: 'flow-1' } }),
     ]);
     expect(useTabStore.getState().activeTabId).toBe(firstId);
+  });
+
+  it('keeps one reusable refinery workspace and persists only its selected job', () => {
+    const firstId = openKnowledgeRefineryTab('refinery-job-1');
+    const secondId = openKnowledgeRefineryTab('refinery-job-2');
+    expect(secondId).toBe(firstId);
+    expect(useTabStore.getState().activeTab()).toMatchObject({ type: 'refinery', data: { jobId: 'refinery-job-2' } });
+    expect(serializeProjectWorkspace(useTabStore.getState()).tabs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'refinery', data: { jobId: 'refinery-job-2' } }),
+    ]));
+  });
+
+  it('opens a retained source in the reusable refinery text viewer', () => {
+    const firstId = openKnowledgeRefineryTab('refinery-job-1');
+    const secondId = openKnowledgeRefineryTab(undefined, 'source-1');
+
+    expect(secondId).toBe(firstId);
+    expect(useTabStore.getState().activeTab()).toMatchObject({ type: 'refinery', data: { sourceId: 'source-1', jobId: null } });
+    expect(serializeProjectWorkspace(useTabStore.getState()).tabs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'refinery', data: { sourceId: 'source-1' } }),
+    ]));
   });
 });

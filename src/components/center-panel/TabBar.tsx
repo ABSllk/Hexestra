@@ -11,6 +11,8 @@ const TAB_ICONS: Record<string, IconName> = {
   traffic: 'activity',
   replay: 'send',
   report: 'report',
+  workflow: 'sparkles',
+  refinery: 'sparkles',
   settings: 'settings',
   welcome: 'home',
 };

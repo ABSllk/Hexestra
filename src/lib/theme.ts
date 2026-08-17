@@ -68,7 +68,7 @@ const DARK_NETMAP_PALETTE: NetMapPalette = {
   nodeLabel: '#BED0DF', nodeSecondaryLabel: '#7C899B', badgeFill: '#2B1620', badgeText: '#FB7185',
   nodeColors: {
     untested: '#7C899B', in_progress: '#4F8CFF', scanned: '#FDE68A', vulnerable: '#FDBA74',
-    compromised: '#6EE7B7', out_of_scope: '#273244',
+    compromised: '#6EE7B7',
   },
 };
 
@@ -80,7 +80,7 @@ const LIGHT_NETMAP_PALETTE: NetMapPalette = {
   nodeLabel: '#324053', nodeSecondaryLabel: LIGHT_THEME_COLOR_HEX.textMuted, badgeFill: '#E7D7DE', badgeText: LIGHT_THEME_COLOR_HEX.accentRed,
   nodeColors: {
     untested: LIGHT_THEME_COLOR_HEX.textMuted, in_progress: LIGHT_THEME_COLOR_HEX.accentBlue, scanned: '#7A5B00', vulnerable: '#9A4521',
-    compromised: '#176B52', out_of_scope: '#8E9CAC',
+    compromised: '#176B52',
   },
 };
 

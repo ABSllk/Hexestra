@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Editor, { loader, type OnMount } from '@monaco-editor/react';
-import * as monaco from 'monaco-editor';
+import Editor, { type OnMount } from '@monaco-editor/react';
 import { Icon } from '@/components/shared';
 import { MarkdownContent } from '@/components/right-panel/AgentTimelineMessage';
 import { detectEditorLanguage, isMarkdownPath } from '@/lib/editorLanguage';
 import { APP_CODE_FONT_SIZE_PX, getMonoFontFamily } from '@/lib/typography';
-import { LIGHT_THEME_COLOR_HEX, MONACO_THEME_NAMES } from '@/lib/theme';
+import { prepareMonaco } from '@/lib/monaco';
+import { MONACO_THEME_NAMES } from '@/lib/theme';
 import { useAppPreferences } from '@/i18n';
 import { useSessionStore, useTabStore } from '@/stores';
 import type { SessionFileContent } from '@/types';
@@ -16,11 +16,6 @@ type RemoteWriteResult = ShellRemoteFileContent | {
   currentRevision: string;
   currentModifiedAt: string;
 };
-
-// Keep the editor fully offline. @monaco-editor/react otherwise loads Monaco
-// from a public CDN, which leaves the workspace stuck on "Loading…" in a
-// restricted pentest environment.
-loader.config({ monaco });
 
 export function EditorTab({ tabId }: { tabId: string }) {
   const { resolvedTheme } = useAppPreferences();
@@ -191,23 +186,7 @@ export function EditorTab({ tabId }: { tabId: string }) {
   }, [save]);
 
   const handleMount: OnMount = (editor, editorApi) => {
-    editorApi.editor.defineTheme('hexestra-dark', {
-      base: 'vs-dark', inherit: true,
-      rules: [{ token: 'comment', foreground: '7C899B', fontStyle: 'italic' }],
-      colors: { 'editor.background': '#0B0F17', 'editor.foreground': '#F1F5F9', 'editorCursor.foreground': '#4F8CFF', 'editor.selectionBackground': '#273244' },
-    });
-    editorApi.editor.defineTheme('hexestra-light', {
-      base: 'vs', inherit: true,
-      rules: [{ token: 'comment', foreground: LIGHT_THEME_COLOR_HEX.textMuted.slice(1), fontStyle: 'italic' }],
-      colors: {
-        'editor.background': LIGHT_THEME_COLOR_HEX.canvas,
-        'editor.foreground': LIGHT_THEME_COLOR_HEX.textPrimary,
-        'editorCursor.foreground': LIGHT_THEME_COLOR_HEX.accentBlue,
-        'editor.selectionBackground': LIGHT_THEME_COLOR_HEX.surfaceActive,
-        'editor.lineHighlightBackground': LIGHT_THEME_COLOR_HEX.raised,
-      },
-    });
-    editorApi.editor.setTheme(MONACO_THEME_NAMES[resolvedTheme]);
+    prepareMonaco(editorApi, resolvedTheme);
     editor.focus();
   };
 

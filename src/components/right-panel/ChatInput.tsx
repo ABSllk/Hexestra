@@ -20,7 +20,7 @@ interface ComposerCommand {
   name: string;
   description: string;
   argumentHint: string;
-  source: 'runtime' | 'builtin' | 'skill';
+  source: 'runtime' | 'builtin' | 'skill' | 'app';
 }
 
 export function ChatInput() {
@@ -457,8 +457,8 @@ function commandCatalog(
   runtimeCommands: ComposerCommand[] | null,
   skillCommands: ComposerCommand[],
 ): ComposerCommand[] {
-  if (runtimeCommands !== null) return runtimeCommands;
   const builtins: ComposerCommand[] = [
+    { name: '/distill', description: t('agent.commandDistill'), argumentHint: '', source: 'app' },
     { name: '/compact', description: t('agent.commandCompact'), argumentHint: '', source: 'builtin' },
     { name: '/context', description: t('agent.commandContext'), argumentHint: '', source: 'builtin' },
     { name: '/cost', description: t('agent.commandCost'), argumentHint: '', source: 'builtin' },
@@ -466,6 +466,9 @@ function commandCatalog(
     { name: '/status', description: t('agent.commandStatus'), argumentHint: '', source: 'builtin' },
   ];
   const byName = new Map(builtins.map((command) => [command.name, command]));
+  // Runtime entries retain their richer argument hints, while application
+  // commands such as /distill remain visible when the runtime omits them.
+  for (const command of runtimeCommands ?? []) if (command.name !== '/distill') byName.set(command.name, command);
   for (const command of skillCommands) if (!byName.has(command.name)) byName.set(command.name, command);
   return [...byName.values()].sort((left, right) => left.name.localeCompare(right.name));
 }

@@ -36,8 +36,15 @@ describe('asset actions', () => {
   });
 
   it('builds the shared rescan task and prompt', () => {
-    const plan = buildAssetRescanPlan(node, target, { inScope: ['example.com'], outOfScope: [], targets: [] });
-    expect(plan.task).toEqual({ id: 'asm-rescan-host-1', stage: 'S2', title: 'Rescan scanner.example.com', status: 'in_progress' });
-    expect(plan.message).toContain('project Scope');
+    const plan = buildAssetRescanPlan(node, target, { mode: 'whitelist', allowRules: ['example.com'], excludeRules: [] });
+    expect(plan.task).toMatchObject({
+      id: 'asm-rescan-host-1',
+      primaryTacticId: 'TA0007',
+      techniqueIds: ['T1046'],
+      targetAssetIds: ['host-1'],
+      status: 'in_progress',
+    });
+    expect(plan.task.successCriteria).toEqual([{ id: 'rescan-recorded', text: 'Record the scan result and reconcile the asset state', completed: false }]);
+    expect(plan.message).toContain('semantic Scope annotations');
   });
 });

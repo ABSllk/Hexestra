@@ -76,7 +76,7 @@ export function AssetWorkspaceTab() {
         id: 'rescan',
         label: t('assets.rescanWithAgent'),
         separatorBefore: true,
-        disabled: isProcessing || menuNode.status === 'out_of_scope',
+        disabled: isProcessing,
         onSelect: async () => {
           const plan = buildAssetRescanPlan(menuNode, menuTarget, session?.scope);
           await upsertTask(plan.task);
@@ -131,7 +131,7 @@ export function AssetWorkspaceTab() {
           {filtersExpanded && <div id="asset-inventory-filters" className="mt-1.5">
             <div className="grid grid-cols-2 gap-1.5">
               <FilterSelect label="Filter asset type" value={typeFilter} onChange={setTypeFilter} options={['all', ...new Set(assetNodes.map((node) => node.type))]} />
-              <FilterSelect label="Filter asset status" value={statusFilter} onChange={setStatusFilter} options={['all', 'untested', 'in_progress', 'scanned', 'vulnerable', 'compromised', 'out_of_scope']} />
+              <FilterSelect label="Filter asset status" value={statusFilter} onChange={setStatusFilter} options={['all', 'untested', 'in_progress', 'scanned', 'vulnerable', 'compromised']} />
             </div>
           </div>}
         </div>}
@@ -155,7 +155,7 @@ export function AssetWorkspaceTab() {
               }}
               className={`ui-hover-row mx-1.5 my-0.5 w-[calc(100%-0.75rem)] px-2.5 py-2 text-left ${selectedNodeId === node.id ? '!border-accent-blue/30 !bg-accent-blue/10 shadow-sm shadow-black/10' : ''}`}
             >
-              <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5 select-none"><span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><StatusBadge status={node.status} className="shrink-0" /></div>
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5 select-none"><span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><span className="flex shrink-0 items-center gap-1.5">{node.scopeAnnotation && <ScopeAnnotationBadge annotation={node.scopeAnnotation} />}<StatusBadge status={node.status} /></span></div>
               <div className="flex min-w-0 items-center gap-2 text-[11px] text-text-muted select-none"><span className="shrink-0 uppercase text-accent-teal select-none">{node.type}</span><span className="min-w-0 flex-1 truncate">{assetPrimaryValue(node, target, asset)}</span>{node.portCount > 0 && <span className="shrink-0">{node.portCount} ports</span>}</div>
               {asset?.type === 'identity' && plaintextCredentials(asset).length > 0 && <div className="mt-1.5 space-y-0.5 rounded bg-raised/55 px-2 py-1.5 font-mono text-[11px] text-text-primary">
                 {plaintextCredentials(asset).map(([kind, value]) => <div key={kind} className="break-all text-text-primary">{kind}: {value}</div>)}
@@ -211,28 +211,34 @@ function ScopePanel() {
   const isProcessing = useChatStore((s) => s.isProcessing);
   const [included, setIncluded] = useState('');
   const [excluded, setExcluded] = useState('');
+  const [mode, setMode] = useState<SessionScope['mode']>('blacklist');
   const [saved, setSaved] = useState(false);
-  useEffect(() => { setIncluded(session?.scope?.inScope.join('\n') ?? ''); setExcluded(session?.scope?.outOfScope.join('\n') ?? ''); }, [session?.id, session?.scope]);
+  useEffect(() => { setMode(session?.scope?.mode ?? 'blacklist'); setIncluded(session?.scope?.allowRules.join('\n') ?? ''); setExcluded(session?.scope?.excludeRules.join('\n') ?? ''); }, [session?.id, session?.scope]);
   if (!session) return null;
   const save = async () => {
-    const scope: SessionScope = { inScope: lines(included), outOfScope: lines(excluded), targets: session.scope?.targets ?? [] };
+    const scope: SessionScope = { mode, allowRules: lines(included), excludeRules: lines(excluded) };
     await updateScope(scope);
     setSaved(true);
     window.setTimeout(() => setSaved(false), 1_500);
   };
-  const askAgent = () => sendMessage('请执行 Stage 0 的 Scope 定义：根据我在当前对话中提供的根目标、项目已有资产和已验证关系，生成最小且可解释的授权范围，并调用 scope_update 写入。根域的子域和由其直接解析出的主机可以纳入；第三方、CDN、共享托管或边界不明资产必须先通过 AskUserQuestion 向我确认。更新后调用 target_list 复核资产状态。');
-  const scopeEmpty = (session.scope?.inScope.length ?? 0) === 0;
+  const askAgent = () => sendMessage('请根据当前项目资产和操作员意图维护 Scope 语义标签规则，并调用 scope_update。Scope 只用于上下文提示，不是执行限制；不要修改项目模式。');
+  const scopeEmpty = (session.scope?.allowRules.length ?? 0) === 0 && (session.scope?.excludeRules.length ?? 0) === 0;
   return <div className="min-h-0 flex-1 overflow-y-auto p-3">
-    {scopeEmpty && <div className="mb-3 rounded border border-accent-blue/25 bg-accent-blue/5 p-2.5"><div className="mb-1 text-2xs font-medium text-accent-blue">Scope has not been defined</div><p className="mb-2 text-[11px] leading-relaxed text-text-muted">Let the Agent derive a minimal scope from the authorized root target and verified relationships.</p><button disabled={isProcessing} onClick={() => void askAgent()} className="flex w-full items-center justify-center gap-1.5 rounded border border-accent-blue/40 bg-accent-blue/10 px-2 py-1.5 text-2xs text-accent-blue disabled:opacity-40"><Icon name="sparkles" size={11} />{isProcessing ? 'Agent is working…' : 'Define Scope with Agent'}</button></div>}
-    <p className="mb-3 text-2xs leading-relaxed text-text-muted">One IP, domain, URL, or CIDR per line. Exclusions always win. Manual edits remain available.</p>
-    <ScopeField label={t('assets.inScope')} value={included} onChange={setIncluded} placeholder={'example.com\n192.0.2.0/24'} />
-    <ScopeField label={t('assets.outOfScope')} value={excluded} onChange={setExcluded} placeholder={'auth.example.com\n192.0.2.200'} />
+    {scopeEmpty && <div className="mb-3 rounded border border-border-subtle bg-panel/40 p-2.5"><div className="mb-1 text-2xs font-medium text-text-secondary">No Scope annotations</div><p className="mb-2 text-[11px] leading-relaxed text-text-muted">Labels guide the Agent; tools and commands remain available.</p><button disabled={isProcessing} onClick={() => void askAgent()} className="flex w-full items-center justify-center gap-1.5 rounded border border-accent-blue/40 bg-accent-blue/10 px-2 py-1.5 text-2xs text-accent-blue disabled:opacity-40"><Icon name="sparkles" size={11} />{isProcessing ? 'Agent is working…' : 'Ask Agent to maintain labels'}</button></div>}
+    <label className="mb-3 block"><span className="mb-1 block text-2xs font-medium text-text-secondary">Scope mode</span><select aria-label="Scope mode" value={mode} onChange={(event) => setMode(event.target.value as SessionScope['mode'])} className="settings-input w-full"><option value="blacklist">Blacklist — show excluded assets</option><option value="whitelist">Whitelist — show authorized assets</option></select></label>
+    <p className="mb-3 text-2xs leading-relaxed text-text-muted">One IP, domain, URL, or CIDR per line. Rules annotate registered assets and their structural descendants.</p>
+    <ScopeField label="Authorized rules" value={included} onChange={setIncluded} placeholder={'example.com\n192.0.2.0/24'} />
+    <ScopeField label="Excluded rules" value={excluded} onChange={setExcluded} placeholder={'auth.example.com\n192.0.2.200'} />
     <button onClick={() => void save()} className="mt-2 w-full rounded border border-accent-blue/40 bg-accent-blue/10 px-2 py-1.5 text-2xs text-accent-blue hover:bg-accent-blue/15">{saved ? t('assets.scopeSaved') : t('assets.saveScope')}</button>
   </div>;
 }
 
 function ScopeField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
   return <label className="mb-3 block"><span className="mb-1 block text-2xs font-medium text-text-secondary">{label}</span><textarea aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={5} className="w-full resize-y rounded border border-border-subtle bg-panel p-2 font-mono text-2xs text-text-primary outline-none placeholder:text-text-muted/60 focus:border-accent-blue/50" /></label>;
+}
+
+function ScopeAnnotationBadge({ annotation }: { annotation: 'authorized' | 'excluded' }) {
+  return <span className={`rounded border px-1 py-0.5 text-[10px] font-medium ${annotation === 'authorized' ? 'border-accent-teal/40 text-accent-teal' : 'border-severity-high/40 text-severity-high'}`}>{annotation === 'authorized' ? 'AUTHORIZED' : 'EXCLUDED'}</span>;
 }
 
 function formatTime(value: string) { return new Date(value).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); }

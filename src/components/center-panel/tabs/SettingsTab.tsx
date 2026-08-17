@@ -17,6 +17,8 @@ import { BurpSettings } from './BurpSettings';
 import { SkillsSettings } from './SkillsSettings';
 import { McpSettings } from './McpSettings';
 import { ProxySettings } from './ProxySettings';
+import { AgentInstructionsSettings } from './AgentInstructionsSettings';
+import { ToolCatalogSettings } from './ToolCatalogSettings';
 import { useAppPreferences, useI18n } from '@/i18n';
 
 const SOURCES: Array<{ id: ClaudeSettingSource; label: string; detail: string }> = [
@@ -51,6 +53,8 @@ export function SettingsTab() {
         <SettingsPageButton active={page === 'proxy'} icon="network" label={t('settings.proxy')} onClick={() => selectPage('proxy')} />
         <SettingsPageButton active={page === 'burp'} icon="activity" label={t('settings.burp')} onClick={() => selectPage('burp')} />
         <SettingsPageButton active={page === 'skills'} icon="sparkles" label={t('settings.skills')} onClick={() => selectPage('skills')} />
+        <SettingsPageButton active={page === 'instructions'} icon="shield" label={t('settings.restrictions')} onClick={() => selectPage('instructions')} />
+        <SettingsPageButton active={page === 'tools'} icon="terminal" label={t('settings.tools')} onClick={() => selectPage('tools')} />
         <SettingsPageButton active={page === 'mcp'} icon="server" label={t('settings.mcp')} onClick={() => selectPage('mcp')} />
       </nav>
       <div className="min-h-0 flex-1">
@@ -60,6 +64,8 @@ export function SettingsTab() {
         {page === 'proxy' && <ProxySettings />}
         {page === 'burp' && <BurpSettings />}
         {page === 'skills' && <SkillsSettings />}
+        {page === 'instructions' && <AgentInstructionsSettings />}
+        {page === 'tools' && <ToolCatalogSettings />}
         {page === 'mcp' && <McpSettings />}
       </div>
     </div>
@@ -223,8 +229,8 @@ function ConnectionSettings() {
             <Field label="Claude executable" hint="Optional absolute path; empty means automatic local discovery">
               <input
                 aria-label="Claude executable"
-              value={claudeSettings.claudeExecutable}
-              onChange={(event) => updateClaude({ claudeExecutable: event.target.value })}
+                value={claudeSettings.claudeExecutable}
+                onChange={(event) => updateClaude({ claudeExecutable: event.target.value })}
                 className="settings-input font-mono"
                 placeholder="Auto-discover local Claude Code"
               />
@@ -420,7 +426,7 @@ function GeneralSettings() {
   );
 }
 
-function SettingsPageButton({ active, icon, label, onClick }: { active: boolean; icon: 'settings' | 'terminal' | 'activity' | 'network' | 'sparkles' | 'server'; label: string; onClick: () => void }) {
+function SettingsPageButton({ active, icon, label, onClick }: { active: boolean; icon: 'settings' | 'terminal' | 'activity' | 'network' | 'sparkles' | 'server' | 'file' | 'shield'; label: string; onClick: () => void }) {
   return (
     <button
       aria-pressed={active}
@@ -440,7 +446,7 @@ function SettingsPageButton({ active, icon, label, onClick }: { active: boolean;
 }
 
 function isSettingsPage(value: unknown): value is SettingsPage {
-  return value === 'general' || value === 'connection' || value === 'traffic' || value === 'proxy' || value === 'burp' || value === 'skills' || value === 'mcp';
+  return value === 'general' || value === 'connection' || value === 'traffic' || value === 'proxy' || value === 'burp' || value === 'skills' || value === 'mcp' || value === 'instructions' || value === 'tools';
 }
 
 function normalizeSettingsPayload(value: AgentSettingsContainer | AgentConnectionSettings): AgentSettingsContainer {

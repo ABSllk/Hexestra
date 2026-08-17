@@ -18,7 +18,11 @@ import {
   type ConversationBranchSummary,
   type ProjectActivation,
   type ProjectWorkspaceState,
+  type AgentHistoryPage,
+  type AgentActivityPage,
+  type SubagentDetailPage,
   type SubagentRun,
+  type WorkflowInvocation,
 } from '@/types';
 import { buildAgentTargetContext } from '@/lib/networkGraph';
 import { reconcileAgentActivities } from '@/lib/agentActivity';
@@ -27,6 +31,9 @@ import { useTabStore } from './useTabStore';
 import { useNetMapStore } from './useNetMapStore';
 import { usePentestTreeStore } from './usePentestTreeStore';
 import { useSessionStore } from './useSessionStore';
+
+const LIVE_EVENT_FLUSH_MS = 80;
+let historyRequestEpoch = 0;
 
 interface ChatStore {
   activeProjectId: string | null;
@@ -47,11 +54,15 @@ interface ChatStore {
   subagentView: 'conversation' | 'subagent-detail';
   selectedSubagentRunId: string | null;
   chatScrollTop: number;
+  history: AgentHistoryPage;
+  loadingEarlierHistory: boolean;
+  loadingHistoryActivities: string | null;
+  loadingSubagentDetail: string | null;
 
   activateProject: (sessionId: string) => Promise<ProjectWorkspaceState>;
   deactivateProject: () => void;
-  sendMessage: (content: string, attachments?: AgentAttachment[]) => Promise<void>;
-  newConversation: () => Promise<void>;
+  sendMessage: (content: string, attachments?: AgentAttachment[], workflowInvocation?: WorkflowInvocation) => Promise<void>;
+  newConversation: () => Promise<boolean>;
   branchFromMessage: (messageId: string, content: string) => Promise<void>;
   switchBranch: (branchId: string) => Promise<void>;
   appendMessage: (msg: ChatMessage) => void;
@@ -72,6 +83,9 @@ interface ChatStore {
   openSubagent: (runId: string) => void;
   closeSubagent: () => void;
   setChatScrollTop: (value: number) => void;
+  loadEarlierHistory: () => Promise<boolean>;
+  loadEarlierActivities: (messageId: string) => Promise<boolean>;
+  loadSubagentDetail: (runId: string) => Promise<boolean>;
 
   /** Subscribe to agent events from main process */
   subscribeToAgent: () => () => void;
@@ -108,8 +122,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   subagentView: 'conversation',
   selectedSubagentRunId: null,
   chatScrollTop: 0,
+  history: emptyHistoryPage(),
+  loadingEarlierHistory: false,
+  loadingHistoryActivities: null,
+  loadingSubagentDetail: null,
 
   activateProject: async (sessionId) => {
+    const requestEpoch = ++historyRequestEpoch;
     set({
       activeProjectId: sessionId,
       messages: [],
@@ -125,13 +144,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       subagentView: 'conversation',
       selectedSubagentRunId: null,
       chatScrollTop: 0,
+      history: emptyHistoryPage(),
+      loadingEarlierHistory: false,
+      loadingHistoryActivities: null,
+      loadingSubagentDetail: null,
     });
     if (!window.hexestra) {
       return { tabs: [], activeTabId: null, nextTabNumber: 1 };
     }
     try {
       const activation = await window.hexestra.invoke<ProjectActivation>('agent:activate', sessionId);
-      if (get().activeProjectId === sessionId) {
+      if (get().activeProjectId === sessionId && requestEpoch === historyRequestEpoch) {
         set({
           messages: activation.messages,
           branches: activation.branches,
@@ -143,6 +166,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           subagentView: 'conversation',
           selectedSubagentRunId: null,
           chatScrollTop: 0,
+          history: activation.history ?? historyFromMessages(activation.messages),
+          loadingEarlierHistory: false,
+          loadingHistoryActivities: null,
+          loadingSubagentDetail: null,
           isProcessing:
             activation.status.state === 'running'
             || activation.status.state === 'awaiting_approval'
@@ -151,12 +178,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
       return activation.workspace;
     } catch (error) {
-      if (get().activeProjectId === sessionId) set({ error: String(error) });
+      if (get().activeProjectId === sessionId && requestEpoch === historyRequestEpoch) set({ error: String(error) });
       throw error;
     }
   },
 
-  deactivateProject: () => set({
+  deactivateProject: () => {
+    historyRequestEpoch += 1;
+    set({
     activeProjectId: null,
     messages: [],
     branches: [mainBranchSummary()],
@@ -171,9 +200,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     subagentView: 'conversation',
     selectedSubagentRunId: null,
     chatScrollTop: 0,
-  }),
+    history: emptyHistoryPage(),
+    loadingEarlierHistory: false,
+    loadingHistoryActivities: null,
+    loadingSubagentDetail: null,
+    });
+  },
 
-  sendMessage: async (content, attachments = []) => {
+  sendMessage: async (content, attachments = [], workflowInvocation) => {
     const session = useSessionStore.getState().currentSession;
     const activeProjectId = get().activeProjectId;
     if (!session || session.id !== activeProjectId) {
@@ -189,18 +223,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       status: 'complete',
       ...(attachments.length ? { attachments: attachments.map(attachmentMetadata) } : {}),
       ...(contextRefs.length ? { contextRefs } : {}),
+      ...(workflowInvocation ? { workflowInvocation } : {}),
     };
     set((s) => ({
       messages: [...s.messages, msg],
       branches: s.branches.map((branch) =>
-        branch.id === s.activeBranchId && s.messages.length === 0
+        branch.id === s.activeBranchId
           ? {
               ...branch,
-              title: compactBranchTitle(content, s.branches.length),
-              messageCount: 1,
+              ...(s.messages.length === 0 ? { title: compactBranchTitle(content, s.branches.length) } : {}),
+              messageCount: branch.messageCount + 1,
             }
           : branch
       ),
+      history: {
+        ...s.history,
+        items: [...s.messages, msg],
+        total: s.history.total + 1,
+      },
       isProcessing: true,
       error: null,
       composerText: '',
@@ -209,7 +249,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     try {
       if (window.hexestra) {
-        await window.hexestra.invoke('agent:send', buildAgentRequest(content, msg.id, get(), attachments, contextRefs));
+        await window.hexestra.invoke('agent:send', buildAgentRequest(content, msg.id, get(), attachments, contextRefs, workflowInvocation));
       }
     } catch (e) {
       set({
@@ -221,13 +261,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   newConversation: async () => {
     const state = get();
+    const requestEpoch = ++historyRequestEpoch;
     if (!window.hexestra || !state.activeProjectId) {
       set({ error: 'Open a project folder before creating a conversation.' });
-      return;
+      return false;
     }
     if (state.isProcessing) {
       set({ error: 'Wait for the active Claude request to finish.' });
-      return;
+      return false;
     }
 
     const conversationId = `conversation-${crypto.randomUUID()}`;
@@ -239,6 +280,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       subagentView: state.subagentView,
       selectedSubagentRunId: state.selectedSubagentRunId,
       pendingToolRequest: state.pendingToolRequest,
+      history: state.history,
     };
     const optimisticConversation: ConversationBranchSummary = {
       id: conversationId,
@@ -258,15 +300,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       subagentView: 'conversation',
       selectedSubagentRunId: null,
       chatScrollTop: 0,
+      history: emptyHistoryPage(),
+      loadingEarlierHistory: false,
+      loadingHistoryActivities: null,
+      loadingSubagentDetail: null,
       error: null,
     });
 
     try {
       const activation = await window.hexestra.invoke<Pick<
         ProjectActivation,
-        'messages' | 'branches' | 'activeBranchId' | 'status' | 'subagentRuns'
+        'messages' | 'history' | 'branches' | 'activeBranchId' | 'status' | 'subagentRuns'
       >>('agent:conversation:new', state.activeProjectId, conversationId);
-      if (get().activeProjectId === state.activeProjectId) {
+      if (get().activeProjectId === state.activeProjectId && requestEpoch === historyRequestEpoch) {
         set({
           messages: activation.messages,
           branches: activation.branches,
@@ -276,17 +322,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           subagentView: 'conversation',
           selectedSubagentRunId: null,
           chatScrollTop: 0,
+          history: activation.history ?? historyFromMessages(activation.messages),
+          loadingEarlierHistory: false,
+          loadingHistoryActivities: null,
+          loadingSubagentDetail: null,
         });
+        return true;
       }
+      return false;
     } catch (error) {
-      if (get().activeProjectId === state.activeProjectId) {
+      if (get().activeProjectId === state.activeProjectId && requestEpoch === historyRequestEpoch) {
         set({ ...previous, error: String(error) });
       }
+      return false;
     }
   },
 
   branchFromMessage: async (messageId, content) => {
     const state = get();
+    const requestEpoch = ++historyRequestEpoch;
     const session = useSessionStore.getState().currentSession;
     const sourceIndex = state.messages.findIndex(
       (message) => message.id === messageId && message.role === 'user',
@@ -318,6 +372,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       subagentRuns: state.subagentRuns,
       subagentView: state.subagentView,
       selectedSubagentRunId: state.selectedSubagentRunId,
+      history: state.history,
     };
     const optimisticBranch: ConversationBranchSummary = {
       id: newBranchId,
@@ -338,6 +393,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       subagentView: 'conversation',
       selectedSubagentRunId: null,
       chatScrollTop: 0,
+      history: historyFromMessages([optimisticMessage]),
+      loadingEarlierHistory: false,
+      loadingHistoryActivities: null,
+      loadingSubagentDetail: null,
       error: null,
     });
 
@@ -345,13 +404,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (!window.hexestra) return;
       const activation = await window.hexestra.invoke<Pick<
         ProjectActivation,
-        'messages' | 'branches' | 'activeBranchId' | 'status' | 'subagentRuns'
+        'messages' | 'history' | 'branches' | 'activeBranchId' | 'status' | 'subagentRuns'
       >>('agent:branch', {
         sourceMessageId: messageId,
         newBranchId,
         request: buildAgentRequest(content, newMessageId, get(), [], sourceContextRefs),
       });
-      if (get().activeProjectId === session.id) {
+      if (get().activeProjectId === session.id && requestEpoch === historyRequestEpoch) {
         set({
           messages: activation.messages,
           branches: activation.branches,
@@ -361,6 +420,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           subagentView: 'conversation',
           selectedSubagentRunId: null,
           chatScrollTop: 0,
+          history: activation.history ?? historyFromMessages(activation.messages),
+          loadingEarlierHistory: false,
+          loadingHistoryActivities: null,
+          loadingSubagentDetail: null,
           isProcessing: false,
         });
       }
@@ -375,6 +438,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   switchBranch: async (branchId) => {
     const state = get();
+    const requestEpoch = ++historyRequestEpoch;
     if (branchId === state.activeBranchId || state.isProcessing) return;
     if (!window.hexestra || !state.activeProjectId) return;
     const previous = {
@@ -384,6 +448,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       subagentRuns: state.subagentRuns,
       subagentView: state.subagentView,
       selectedSubagentRunId: state.selectedSubagentRunId,
+      history: state.history,
     };
     set({
       activeBranchId: branchId,
@@ -395,14 +460,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       subagentView: 'conversation',
       selectedSubagentRunId: null,
       chatScrollTop: 0,
+      history: emptyHistoryPage(),
+      loadingEarlierHistory: false,
+      loadingHistoryActivities: null,
+      loadingSubagentDetail: null,
       error: null,
     });
     try {
       const activation = await window.hexestra.invoke<Pick<
         ProjectActivation,
-        'messages' | 'branches' | 'activeBranchId' | 'status' | 'subagentRuns'
+        'messages' | 'history' | 'branches' | 'activeBranchId' | 'status' | 'subagentRuns'
       >>('agent:branch:activate', state.activeProjectId, branchId);
-      if (get().activeProjectId === state.activeProjectId) {
+      if (get().activeProjectId === state.activeProjectId && requestEpoch === historyRequestEpoch) {
         set({
           messages: activation.messages,
           branches: activation.branches,
@@ -412,6 +481,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           subagentView: 'conversation',
           selectedSubagentRunId: null,
           chatScrollTop: 0,
+          history: activation.history ?? historyFromMessages(activation.messages),
+          loadingEarlierHistory: false,
+          loadingHistoryActivities: null,
+          loadingSubagentDetail: null,
         });
       }
     } catch (error) {
@@ -423,26 +496,41 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((s) => {
       const msgs = [...s.messages];
       const idx = msgs.findIndex((candidate) => candidate.id === msg.id);
+      const previousActivityCount = idx >= 0 ? (msgs[idx].activities?.length ?? 0) : 0;
       if (idx >= 0) {
         const activities = reconcileAgentActivities(msgs[idx].activities, msg.activities);
         msgs[idx] = activities === msg.activities ? msg : { ...msg, activities };
       }
       else msgs.push(msg);
       const activeBranch = s.branches.find((branch) => branch.id === s.activeBranchId);
+      const isNewMessage = idx < 0;
+      const nextActivityCount = idx >= 0 ? (msgs[idx].activities?.length ?? 0) : (msg.activities?.length ?? 0);
+      const activityDelta = isNewMessage ? nextActivityCount : Math.max(0, nextActivityCount - previousActivityCount);
       return {
         messages: msgs,
-        branches: activeBranch?.messageCount === msgs.length
-          ? s.branches
-          : s.branches.map((branch) =>
+        branches: activeBranch
+          ? s.branches.map((branch) =>
               branch.id === s.activeBranchId
-                ? { ...branch, messageCount: msgs.length }
+                ? {
+                    ...branch,
+                    // messageCount is the backend total, never the loaded window length.
+                    messageCount: Math.max(branch.messageCount, isNewMessage ? branch.messageCount + 1 : branch.messageCount),
+                  }
                 : branch
-            ),
+            )
+          : s.branches,
+        history: {
+          ...s.history,
+          total: isNewMessage ? s.history.total + 1 : s.history.total,
+          totalActivities: s.history.totalActivities + activityDelta,
+          items: msgs,
+        },
         isProcessing: msg.status === 'streaming' || msg.status === 'sending',
       };
     }),
 
   clearChat: async () => {
+    historyRequestEpoch += 1;
     const sessionId = get().activeProjectId;
     if (window.hexestra) {
       await window.hexestra.invoke('agent:clear', sessionId);
@@ -459,6 +547,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       subagentView: 'conversation',
       selectedSubagentRunId: null,
       chatScrollTop: 0,
+      history: emptyHistoryPage(),
+      loadingEarlierHistory: false,
+      loadingHistoryActivities: null,
+      loadingSubagentDetail: null,
     });
   },
 
@@ -550,6 +642,140 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   closeSubagent: () => set({ selectedSubagentRunId: null, subagentView: 'conversation' }),
   setChatScrollTop: (chatScrollTop) => set({ chatScrollTop }),
 
+  loadEarlierHistory: async () => {
+    const state = get();
+    const requestEpoch = historyRequestEpoch;
+    const sessionId = state.activeProjectId;
+    const branchId = state.activeBranchId;
+    if (!window.hexestra || !sessionId || !state.history.hasEarlier || state.loadingEarlierHistory) return false;
+    set({ loadingEarlierHistory: true });
+    try {
+      const page = await window.hexestra.invoke<AgentHistoryPage>(
+        'agent:history:page',
+        sessionId,
+        branchId,
+        state.history.beforeCursor,
+      );
+      if (get().activeProjectId !== sessionId || get().activeBranchId !== branchId || requestEpoch !== historyRequestEpoch) return false;
+      set((current) => {
+        const existingIds = new Set(current.messages.map((message) => message.id));
+        const earlier = page.items.filter((message) => !existingIds.has(message.id));
+        return {
+          messages: [...earlier, ...current.messages],
+          history: {
+            ...page,
+            items: [...earlier, ...current.messages],
+          },
+        };
+      });
+      return true;
+    } catch (error) {
+      if (get().activeProjectId === sessionId && get().activeBranchId === branchId && requestEpoch === historyRequestEpoch) {
+        set({ error: String(error) });
+      }
+      return false;
+    } finally {
+      if (get().activeProjectId === sessionId && get().activeBranchId === branchId && requestEpoch === historyRequestEpoch) {
+        set({ loadingEarlierHistory: false });
+      }
+    }
+  },
+
+  loadEarlierActivities: async (messageId) => {
+    const state = get();
+    const requestEpoch = historyRequestEpoch;
+    const sessionId = state.activeProjectId;
+    const branchId = state.activeBranchId;
+    const message = state.messages.find((candidate) => candidate.id === messageId);
+    if (!window.hexestra || !sessionId || !message || state.loadingHistoryActivities === messageId) return false;
+    const hiddenActivityCount = message.hiddenActivityCount ?? 0;
+    if (hiddenActivityCount <= 0) return false;
+    set({ loadingHistoryActivities: messageId });
+    try {
+      const page = await window.hexestra.invoke<AgentActivityPage>(
+        'agent:history:activities',
+        sessionId,
+        branchId,
+        messageId,
+        String(hiddenActivityCount),
+      );
+      if (get().activeProjectId !== sessionId || get().activeBranchId !== branchId || requestEpoch !== historyRequestEpoch) return false;
+      set((current) => ({
+        messages: current.messages.map((candidate) => {
+          if (candidate.id !== messageId) return candidate;
+          const currentActivities = candidate.activities ?? [];
+          const existingIds = new Set(currentActivities.map((activity) => activity.id));
+          const earlier = page.items.filter((activity) => !existingIds.has(activity.id));
+          const nextHidden = page.beforeCursor ? Number(page.beforeCursor) : 0;
+          return {
+            ...candidate,
+            activities: [...earlier, ...currentActivities],
+            hiddenActivityCount: nextHidden > 0 ? nextHidden : undefined,
+          };
+        }),
+      }));
+      set((current) => ({ history: { ...current.history, items: current.messages } }));
+      return true;
+    } catch (error) {
+      if (get().activeProjectId === sessionId && get().activeBranchId === branchId && requestEpoch === historyRequestEpoch) {
+        set({ error: String(error) });
+      }
+      return false;
+    } finally {
+      if (get().activeProjectId === sessionId && get().activeBranchId === branchId && requestEpoch === historyRequestEpoch) {
+        set({ loadingHistoryActivities: null });
+      }
+    }
+  },
+
+  loadSubagentDetail: async (runId) => {
+    const state = get();
+    const requestEpoch = historyRequestEpoch;
+    const sessionId = state.activeProjectId;
+    const branchId = state.activeBranchId;
+    const run = state.subagentRuns.find((candidate) => candidate.id === runId);
+    if (!window.hexestra || !sessionId || !run || state.loadingSubagentDetail === runId) return false;
+    set({ loadingSubagentDetail: runId });
+    try {
+      const page = await window.hexestra.invoke<SubagentDetailPage>(
+        'agent:subagent:detail',
+        sessionId,
+        branchId,
+        runId,
+        run.hiddenActivityCount ? String(run.hiddenActivityCount) : undefined,
+      );
+      if (get().activeProjectId !== sessionId || get().activeBranchId !== branchId || requestEpoch !== historyRequestEpoch || !page.run) return false;
+      set((current) => ({
+        subagentRuns: current.subagentRuns.map((candidate) =>
+          candidate.id === runId
+            ? (() => {
+                const existingActivities = candidate.activities ?? [];
+                const existingIds = new Set(existingActivities.map((activity) => activity.id));
+                const earlierActivities = page.run!.activities.filter((activity) => !existingIds.has(activity.id));
+                return {
+                  ...page.run!,
+                  activities: [...earlierActivities, ...existingActivities],
+                  hiddenActivityCount: page.page?.beforeCursor
+                    ? Number(page.page.beforeCursor)
+                    : undefined,
+                };
+              })()
+            : candidate,
+        ),
+      }));
+      return true;
+    } catch (error) {
+      if (get().activeProjectId === sessionId && get().activeBranchId === branchId && requestEpoch === historyRequestEpoch) {
+        set({ error: String(error) });
+      }
+      return false;
+    } finally {
+      if (get().activeProjectId === sessionId && get().activeBranchId === branchId && requestEpoch === historyRequestEpoch) {
+        set({ loadingSubagentDetail: null });
+      }
+    }
+  },
+
   refreshStatus: async () => {
     const sessionId = get().activeProjectId;
     if (!window.hexestra || !sessionId) return;
@@ -561,12 +787,52 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   subscribeToAgent: () => {
     if (!window.hexestra) return () => {};
 
-    const unsub = window.hexestra.on('agent:message', (data: unknown) => {
-      const event = data as AgentMessageEvent;
+    const pendingMessages = new Map<string, AgentMessageEvent>();
+    const pendingSubagents = new Map<string, AgentSubagentUpdateEvent>();
+    let messageFlushTimer: ReturnType<typeof setTimeout> | null = null;
+    let subagentFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const applyMessage = (event: AgentMessageEvent) => {
       if (
         event.sessionId === get().activeProjectId
         && event.branchId === get().activeBranchId
       ) get().appendMessage(event.message);
+    };
+    const flushMessages = () => {
+      messageFlushTimer = null;
+      const events = [...pendingMessages.values()];
+      pendingMessages.clear();
+      events.forEach(applyMessage);
+    };
+    const applySubagent = (event: AgentSubagentUpdateEvent) => {
+      if (event.sessionId !== get().activeProjectId || event.branchId !== get().activeBranchId) return;
+      set((state) => {
+        const index = state.subagentRuns.findIndex((run) => run.id === event.run.id);
+        if (index < 0) return { subagentRuns: [...state.subagentRuns, event.run] };
+        const next = [...state.subagentRuns];
+        next[index] = event.run;
+        return { subagentRuns: next };
+      });
+    };
+    const flushSubagents = () => {
+      subagentFlushTimer = null;
+      const events = [...pendingSubagents.values()];
+      pendingSubagents.clear();
+      events.forEach(applySubagent);
+    };
+
+    const unsub = window.hexestra.on('agent:message', (data: unknown) => {
+      const event = data as AgentMessageEvent;
+      if (event.sessionId !== get().activeProjectId || event.branchId !== get().activeBranchId) return;
+      const isLiveUpdate = event.message.status === 'streaming' || event.message.status === 'sending';
+      const alreadyProjected = get().messages.some((message) => message.id === event.message.id);
+      if (!isLiveUpdate || !alreadyProjected) {
+        pendingMessages.delete(event.message.id);
+        applyMessage(event);
+        return;
+      }
+      pendingMessages.set(event.message.id, event);
+      if (!messageFlushTimer) messageFlushTimer = setTimeout(flushMessages, LIVE_EVENT_FLUSH_MS);
     });
 
     const unsubTool = window.hexestra.on('agent:tool-request', (data: unknown) => {
@@ -592,18 +858,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const unsubSubagent = window.hexestra.on('agent:subagent-update', (data: unknown) => {
       const event = data as AgentSubagentUpdateEvent;
       if (event.sessionId !== get().activeProjectId || event.branchId !== get().activeBranchId) return;
-      set((state) => {
-        const index = state.subagentRuns.findIndex((run) => run.id === event.run.id);
-        if (index < 0) return { subagentRuns: [...state.subagentRuns, event.run] };
-        const next = [...state.subagentRuns];
-        next[index] = event.run;
-        return { subagentRuns: next };
-      });
+      const alreadyProjected = get().subagentRuns.some((run) => run.id === event.run.id);
+      if (!alreadyProjected || isTerminalSubagentStatus(event.run.status)) {
+        pendingSubagents.delete(event.run.id);
+        applySubagent(event);
+        return;
+      }
+      pendingSubagents.set(event.run.id, event);
+      if (!subagentFlushTimer) subagentFlushTimer = setTimeout(flushSubagents, LIVE_EVENT_FLUSH_MS);
     });
 
     void get().refreshStatus();
 
     return () => {
+      if (messageFlushTimer) clearTimeout(messageFlushTimer);
+      if (subagentFlushTimer) clearTimeout(subagentFlushTimer);
+      pendingMessages.clear();
+      pendingSubagents.clear();
       unsub();
       unsubTool();
       unsubStatus();
@@ -618,6 +889,7 @@ function buildAgentRequest(
   state: ChatStore,
   attachments: AgentAttachment[] = [],
   contextRefs: AgentContextRef[] = [],
+  workflowInvocation?: WorkflowInvocation,
 ) {
   const session = useSessionStore.getState().currentSession;
   const netmap = useNetMapStore.getState();
@@ -660,13 +932,15 @@ function buildAgentRequest(
     selectedTarget,
     tasks: usePentestTreeStore.getState().tasks.map((task) => ({
       id: task.id,
-      stage: task.stage,
+      primaryTacticId: task.primaryTacticId,
+      techniqueIds: task.techniqueIds,
       title: task.title,
       status: task.status,
     })),
     contextTabs,
     attachments,
     contextRefs,
+    ...(workflowInvocation ? { workflowInvocation } : {}),
   };
 }
 
@@ -679,6 +953,30 @@ function mainBranchSummary(): ConversationBranchSummary {
     createdAt: new Date().toISOString(),
     messageCount: 0,
   };
+}
+
+function emptyHistoryPage(): AgentHistoryPage {
+  return {
+    items: [],
+    beforeCursor: null,
+    hasEarlier: false,
+    total: 0,
+    totalActivities: 0,
+  };
+}
+
+function historyFromMessages(messages: ChatMessage[]): AgentHistoryPage {
+  return {
+    items: messages,
+    beforeCursor: null,
+    hasEarlier: false,
+    total: messages.length,
+    totalActivities: messages.reduce((sum, message) => sum + (message.activities?.length ?? 0), 0),
+  };
+}
+
+function isTerminalSubagentStatus(status: SubagentRun['status']) {
+  return status !== 'pending' && status !== 'running';
 }
 
 function compactBranchTitle(content: string, index: number) {

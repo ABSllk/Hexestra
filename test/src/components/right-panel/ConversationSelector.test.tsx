@@ -4,7 +4,7 @@ import { useChatStore } from '@/stores';
 import { ConversationSelector } from '@/components/right-panel/ConversationSelector';
 
 describe('ConversationSelector', () => {
-  const newConversation = vi.fn(async () => {});
+  const newConversation = vi.fn(async () => true);
   const switchBranch = vi.fn(async () => {});
 
   beforeEach(() => {

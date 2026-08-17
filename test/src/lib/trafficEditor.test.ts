@@ -3,7 +3,7 @@ import type { TrafficFlow } from '@electron/contracts/traffic';
 import { formatTrafficMessage, parseTrafficMessage } from '@/lib/trafficEditor';
 
 const flow: TrafficFlow = {
-  id: 'flow-1', projectId: 'p1', revision: 1, state: 'request_paused', scopeState: 'in_scope', source: 'browser',
+  id: 'flow-1', projectId: 'p1', revision: 1, state: 'request_paused', source: 'browser',
   request: {
     method: 'POST', url: 'https://example.test/a', httpVersion: 'h2', headers: [{ name: 'X-Test', value: '1' }],
     body: { encoding: 'utf8', data: 'hello', byteLength: 5 },
@@ -29,4 +29,3 @@ describe('traffic editor', () => {
     expect(() => parseTrafficMessage('HTTP/1.1 200 OK\nBad', 'response', 'utf8')).toThrow(/header/);
   });
 });
-

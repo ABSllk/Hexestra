@@ -9,7 +9,6 @@ export const NODE_COLORS = {
   scanned: '#FDE68A',
   vulnerable: '#FDBA74',
   compromised: '#6EE7B7',
-  out_of_scope: '#273244',
 } as const;
 
 export const SEVERITY_COLORS = {
@@ -26,7 +25,6 @@ export const STATUS_LABELS: Record<string, string> = {
   scanned: 'Scanned',
   vulnerable: 'Vulnerable',
   compromised: 'Compromised',
-  out_of_scope: 'Out of Scope',
   pending: 'Pending',
   completed: 'Completed',
   blocked: 'Blocked',

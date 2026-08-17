@@ -3,9 +3,12 @@ import type { AssetRecord, GraphNode, SessionScope, Target } from '@/types';
 export interface AssetRescanPlan {
   task: {
     id: string;
-    stage: 'S2';
     title: string;
     status: 'in_progress';
+    primaryTacticId: 'TA0007';
+    techniqueIds: ['T1046'];
+    targetAssetIds: string[];
+    successCriteria: [{ id: string; text: string; completed: false }];
   };
   message: string;
 }
@@ -63,12 +66,15 @@ export function buildAssetRescanPlan(node: GraphNode, target: Target | undefined
   return {
     task: {
       id: `asm-rescan-${node.id}`,
-      stage: 'S2',
       title: `Rescan ${node.label}`,
       status: 'in_progress',
+      primaryTacticId: 'TA0007',
+      techniqueIds: ['T1046'],
+      targetAssetIds: [node.id],
+      successCriteria: [{ id: 'rescan-recorded', text: 'Record the scan result and reconcile the asset state', completed: false }],
     },
     message: `Rescan the selected asset ${node.label} (${target?.ip ?? node.key ?? node.id}). `
-      + `First verify it against the project Scope ${JSON.stringify(scope ?? {})}, `
+      + `Review the project's semantic Scope annotations ${JSON.stringify(scope ?? {})}, `
       + 'use the smallest appropriate scan action, then update the asset, change record, and task status.',
   };
 }

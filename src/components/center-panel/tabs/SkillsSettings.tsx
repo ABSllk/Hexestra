@@ -8,6 +8,7 @@ import { Button, DismissibleNotice, Icon, useConfirmDialog } from '@/components/
 import { cn } from '@/lib/cn';
 import { useSessionStore } from '@/stores';
 import { useI18n } from '@/i18n';
+import YAML from 'yaml';
 
 const NEW_SKILL = `---
 name: new-skill
@@ -27,7 +28,8 @@ export function SkillsSettings() {
   const [document, setDocument] = useState<ClaudeSkillDocument | null>(null);
   const [name, setName] = useState('');
   const [content, setContent] = useState('');
-  const [scope, setScope] = useState<ClaudeSkillScope>('personal');
+  const [scope, setScope] = useState<ClaudeSkillScope>('global');
+  const [metadata, setMetadata] = useState({ tactics: '', techniques: '', capabilities: '', risk: '' });
   const [busy, setBusy] = useState<string | null>('load');
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +52,7 @@ export function SkillsSettings() {
           setName(loaded.name);
           setContent(loaded.content);
           setScope(loaded.scope);
+          setMetadata(readSkillMetadata(loaded.metadata));
         }
       }
     } catch (reason) {
@@ -80,6 +83,7 @@ export function SkillsSettings() {
       setName(loaded.name);
       setContent(loaded.content);
       setScope(loaded.scope);
+      setMetadata(readSkillMetadata(loaded.metadata));
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -97,14 +101,15 @@ export function SkillsSettings() {
       id: 'new',
       name: candidate,
       description: 'New Skill',
-      scope: result?.projectAvailable ? 'project' : 'personal',
+      scope: sessionId ? 'project' : 'global',
       enabled: true,
       sourcePath: '',
       content: nextContent,
     });
     setName(candidate);
     setContent(nextContent);
-    setScope(result?.projectAvailable ? 'project' : 'personal');
+    setScope(sessionId ? 'project' : 'global');
+    setMetadata({ tactics: '', techniques: '', capabilities: '', risk: '' });
     setError(null);
   };
 
@@ -117,7 +122,7 @@ export function SkillsSettings() {
         sessionId,
         scope,
         name,
-        content,
+        content: writeSkillMetadata(content, name, metadata),
         enabled: document.enabled,
         originalName: document.id === 'new' ? null : document.name,
       });
@@ -175,8 +180,8 @@ export function SkillsSettings() {
   };
 
   const dirty = useMemo(() => document
-    ? document.name !== name || document.content !== content || document.scope !== scope
-    : false, [content, document, name, scope]);
+    ? document.name !== name || document.content !== writeSkillMetadata(content, name, metadata) || document.scope !== scope
+    : false, [content, document, metadata, name, scope]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-canvas">
@@ -196,7 +201,7 @@ export function SkillsSettings() {
       <div className="grid min-h-0 flex-1 grid-cols-[250px_1fr]">
         <aside className="min-h-0 overflow-y-auto border-r border-border-subtle bg-panel/35 p-3">
           {!result && <p className="p-3 text-xs text-text-muted">{t('skills.loading')}</p>}
-          {result?.items.length === 0 && <EmptyList text="No personal or project Skills found." />}
+          {result?.items.length === 0 && <EmptyList text="No global or project user Skills found." />}
           <div className="space-y-1">
             {result?.items.map((item) => (
               <button
@@ -238,10 +243,17 @@ export function SkillsSettings() {
                 <label>
                   <span className="mb-1 block text-[11px] font-medium text-text-secondary">Scope</span>
                   <select aria-label="Skill scope" value={scope} disabled={document.id !== 'new'} onChange={(event) => setScope(event.target.value as ClaudeSkillScope)} className="settings-input">
-                    <option value="personal">Personal</option>
-                    <option value="project" disabled={!result?.projectAvailable}>Project</option>
+                    <option value="global">Global user</option>
+                    <option value="project" disabled={!sessionId}>Project user</option>
+                    <option value="core">Hexestra core</option>
                   </select>
                 </label>
+              </div>
+              <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                <MetadataField label="ATT&CK tactics" value={metadata.tactics} onChange={(value) => setMetadata((current) => ({ ...current, tactics: value }))} placeholder="TA0043" />
+                <MetadataField label="ATT&CK techniques" value={metadata.techniques} onChange={(value) => setMetadata((current) => ({ ...current, techniques: value }))} placeholder="T1595.001,T1595.002" />
+                <MetadataField label="Capabilities" value={metadata.capabilities} onChange={(value) => setMetadata((current) => ({ ...current, capabilities: value }))} placeholder="port-scanning,service-fingerprinting" />
+                <MetadataField label="Risk" value={metadata.risk} onChange={(value) => setMetadata((current) => ({ ...current, risk: value }))} placeholder="active" />
               </div>
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-[11px] font-medium text-text-secondary">SKILL.md</span>
@@ -260,14 +272,14 @@ export function SkillsSettings() {
                 <div className="flex gap-2">
                   {document.id !== 'new' && (
                     <>
-                      <button onClick={() => void toggle()} disabled={Boolean(busy)} className="rounded border border-border-subtle px-3 py-1.5 text-xs text-text-secondary hover:border-accent-blue/30 disabled:opacity-40">
+                      <button onClick={() => void toggle()} disabled={Boolean(busy) || document.scope === 'core'} className="rounded border border-border-subtle px-3 py-1.5 text-xs text-text-secondary hover:border-accent-blue/30 disabled:opacity-40">
                         {document.enabled ? 'Disable' : 'Enable'}
                       </button>
-                      <button onClick={() => void remove()} disabled={Boolean(busy)} className="rounded px-3 py-1.5 text-xs text-severity-critical hover:bg-severity-critical/10 disabled:opacity-40">Delete</button>
+                      <button onClick={() => void remove()} disabled={Boolean(busy) || document.scope === 'core'} className="rounded px-3 py-1.5 text-xs text-severity-critical hover:bg-severity-critical/10 disabled:opacity-40">Delete</button>
                     </>
                   )}
                 </div>
-                <button onClick={() => void save()} disabled={Boolean(busy) || (!dirty && document.id !== 'new')} className="rounded border border-accent-blue/30 bg-accent-blue/15 px-3 py-1.5 text-xs font-medium text-accent-blue hover:bg-accent-blue/20 disabled:opacity-40">
+                <button onClick={() => void save()} disabled={Boolean(busy) || document.scope === 'core' || (!dirty && document.id !== 'new')} className="rounded border border-accent-blue/30 bg-accent-blue/15 px-3 py-1.5 text-xs font-medium text-accent-blue hover:bg-accent-blue/20 disabled:opacity-40">
                   {busy === 'save' ? 'Saving...' : 'Save Skill'}
                 </button>
               </div>
@@ -289,4 +301,28 @@ function EmptyList({ text }: { text: string }) {
 
 function SourceError({ source, detail }: { source: string; detail: string }) {
   return <div className="mt-2 rounded border border-severity-critical/25 bg-severity-critical/5 p-2 text-[11px] text-severity-critical"><strong>{source}:</strong> {detail}</div>;
+}
+
+function MetadataField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
+  return <label><span className="mb-1 block text-[11px] font-medium text-text-secondary">{label}</span><input aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="settings-input font-mono text-[11px]" /></label>;
+}
+
+function readSkillMetadata(metadata?: Record<string, string>) {
+  return { tactics: metadata?.['hexestra-tactics'] ?? '', techniques: metadata?.['hexestra-techniques'] ?? '', capabilities: metadata?.['hexestra-capabilities'] ?? '', risk: metadata?.['hexestra-risk'] ?? '' };
+}
+
+function writeSkillMetadata(content: string, name: string, metadata: { tactics: string; techniques: string; capabilities: string; risk: string }) {
+  const match = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return content;
+  let values: Record<string, unknown> = {};
+  try { values = (YAML.parse(match[1]) as Record<string, unknown>) ?? {}; } catch { values = {}; }
+  values.name = name;
+  const existing = values.metadata && typeof values.metadata === 'object' && !Array.isArray(values.metadata) ? values.metadata as Record<string, unknown> : {};
+  const next = { ...existing };
+  if (metadata.tactics.trim()) next['hexestra-tactics'] = metadata.tactics.trim(); else delete next['hexestra-tactics'];
+  if (metadata.techniques.trim()) next['hexestra-techniques'] = metadata.techniques.trim(); else delete next['hexestra-techniques'];
+  if (metadata.capabilities.trim()) next['hexestra-capabilities'] = metadata.capabilities.trim(); else delete next['hexestra-capabilities'];
+  if (metadata.risk.trim()) next['hexestra-risk'] = metadata.risk.trim(); else delete next['hexestra-risk'];
+  if (Object.keys(next).length) values.metadata = next; else delete values.metadata;
+  return `---\n${YAML.stringify(values).trimEnd()}\n---${content.slice(match[0].length)}`;
 }

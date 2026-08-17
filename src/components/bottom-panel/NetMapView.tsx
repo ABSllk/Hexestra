@@ -728,7 +728,7 @@ const AssetNode = memo(function AssetNode({
       }}
       transform={`translate(${node.x} ${node.y})`}
       role="button"
-      aria-label={`${node.label}, ${node.status}`}
+      aria-label={`${node.label}, ${node.status}${node.scopeAnnotation ? `, ${node.scopeAnnotation}` : ''}`}
       tabIndex={0}
       opacity={dimmed && !selected && !highlighted ? 0.2 : 1}
     >
@@ -803,6 +803,19 @@ const AssetNode = memo(function AssetNode({
           textAnchor="middle"
         >
           {secondaryLabel}
+        </text>
+      )}
+      {showLabels && node.scopeAnnotation && (
+        <text
+          className="font-mono select-none"
+          y={riskSize + (showSecondaryLabel ? 50 : 35)}
+          fill={node.scopeAnnotation === 'authorized' ? palette.edgeLink : palette.badgeText}
+          fontSize={APP_SUPPORTING_FONT_SIZE_PX}
+          fontWeight="600"
+          letterSpacing=".6"
+          textAnchor="middle"
+        >
+          {node.scopeAnnotation === 'authorized' ? 'AUTHORIZED' : 'EXCLUDED'}
         </text>
       )}
       </g>
