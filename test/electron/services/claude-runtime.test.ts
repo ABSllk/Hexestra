@@ -38,7 +38,7 @@ describe('Claude runtime resolution', () => {
   it('prefers an explicit executable', async () => {
     const fixture = executableFixture();
     const result = await resolveClaudeRuntime({ ...baseSettings, claudeExecutable: fixture.file }, { platform: process.platform, environment: {} });
-    expect(result).toMatchObject({ executablePath: fixture.file, source: 'explicit' });
+    expect(result).toMatchObject({ executablePath: fs.realpathSync(fixture.file), source: 'explicit' });
   });
 
   it('uses the login-shell PATH before the Electron PATH', async () => {
@@ -49,7 +49,7 @@ describe('Claude runtime resolution', () => {
       environment: { PATH: processPath.root },
       resolveLoginEnvironment: async () => ({ PATH: login.root }),
     });
-    expect(result).toMatchObject({ executablePath: login.file, source: 'login-shell' });
+    expect(result).toMatchObject({ executablePath: fs.realpathSync(login.file), source: 'login-shell' });
   });
 
   it('blocks when no local executable exists', async () => {
