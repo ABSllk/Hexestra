@@ -157,8 +157,7 @@ export function AssetWorkspaceTab() {
             >
               <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5 select-none"><span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><StatusBadge status={node.status} className="shrink-0" /></div>
               <div className="flex min-w-0 items-center gap-2 text-[11px] text-text-muted select-none"><span className="shrink-0 uppercase text-accent-teal select-none">{node.type}</span><span className="min-w-0 flex-1 truncate">{assetPrimaryValue(node, target, asset)}</span>{node.portCount > 0 && <span className="shrink-0">{node.portCount} ports</span>}</div>
-              {asset?.type === 'identity' && plaintextCredentials(asset).length > 0 && <div className="mt-1.5 rounded border border-severity-high/40 bg-severity-high/10 px-2 py-1 font-mono text-[10px] text-severity-high" role="alert">
-                <div>PLAINTEXT CREDENTIAL</div>
+              {asset?.type === 'identity' && plaintextCredentials(asset).length > 0 && <div className="mt-1.5 space-y-0.5 rounded bg-raised/55 px-2 py-1.5 font-mono text-[11px] text-text-primary">
                 {plaintextCredentials(asset).map(([kind, value]) => <div key={kind} className="break-all text-text-primary">{kind}: {value}</div>)}
               </div>}
               {updatedAt && <div className="mt-1 font-mono text-[11px] text-text-muted/70 select-none">Seen {formatTime(updatedAt)}</div>}

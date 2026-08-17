@@ -20,7 +20,7 @@ export const CLAUDE_MODE_OPTIONS: ReadonlyArray<{
   {
     value: 'bypassPermissions',
     label: 'BYPASS',
-    description: 'All software permission checks are disabled',
+    description: 'Software permission checks disabled',
   },
 ];
 
@@ -85,7 +85,7 @@ export function ClaudeModeSelector({
         >
           <div className="flex gap-1.5 text-[11px] leading-4 text-text-secondary">
             <Icon name="alert" size={12} className="mt-0.5 shrink-0 text-severity-critical" />
-            <span>BYPASS allows commands and file changes without any permission prompt.</span>
+            <span>BYPASS allows commands and file changes without permission prompts.</span>
           </div>
           <div className="mt-1.5 flex justify-end gap-1.5">
             <button

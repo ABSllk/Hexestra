@@ -250,7 +250,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
     ),
     createAgentTool(
       'evidence_upsert',
-      'The only supported write path for raw Evidence. Invoke and follow hexestra-records before storing verbatim output from a named tool or command; never store interpretation, leads, or conclusions as Evidence.',
+      'Store named tool or command output as Evidence. Follow hexestra-records; never store interpretations, leads, or conclusions.',
       {
         id: z.string().optional(),
         assetId: z.string(),
@@ -278,7 +278,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
     ),
     createAgentTool(
       'finding_upsert',
-      'The only supported write path for Findings. Invoke and follow hexestra-records to classify, link, and verify distilled project knowledge; do not use this for raw output or a validated Vulnerability.',
+      'Store distilled project knowledge as a Finding. Follow hexestra-records to classify, link, and verify it; do not store tool output or validated Vulnerabilities.',
       {
         id: z.string().optional(),
         assetId: z.string().optional(),
@@ -307,7 +307,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
     ),
     createAgentTool(
       'vulnerability_upsert',
-      'The only supported write path for validated weaknesses. Invoke and follow hexestra-records first; link the real affected asset and supporting records, and include independently executable numbered reproduction steps and observable results.',
+      'Store a validated Vulnerability. Follow hexestra-records; link the affected asset and supporting records, and include executable numbered reproduction steps with observable results.',
       {
         id: z.string().optional(),
         assetId: z.string(),
@@ -341,7 +341,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
     ),
     createAgentTool(
       'report_upsert',
-      'The only supported write path for Markdown reports. Invoke and follow the native project Skill hexestra-report first, then create or update a draft/final report and link the Finding and Vulnerability IDs it summarizes; never write report files under reports/.',
+      'Create or update a Markdown report. Follow hexestra-report; choose draft or final, link summarized Finding and Vulnerability IDs, and never write under reports/.',
       {
         id: z.string().optional(),
         title: z.string().min(1).max(300),

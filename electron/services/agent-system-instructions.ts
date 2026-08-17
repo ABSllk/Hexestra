@@ -25,11 +25,9 @@ layers: commandMode=auto probes direct OS-command input and then PHP eval input,
 while shellFlavor selects POSIX, PowerShell, or cmd syntax for the target OS.
 Use commandMode=php_eval with {{command}} for eval/assert PHP endpoints. Reserve
 {{command_base64}} for a custom language adapter in the request template that
-decodes and executes the OS wrapper; merely echoing the encoded request body
-cannot produce valid command markers. Use auto, posix, powershell, or cmd
-flavor; never raw. Agent commands
-and their complete output are written to plaintext project audit files; use
-shell_save_evidence only when that raw transcript is materially relevant.
+decodes and executes the OS wrapper; echoing the encoded request body does not
+produce valid command markers. Use auto, posix, powershell, or cmd flavor; never
+raw. Use shell_save_evidence when a command transcript is relevant Evidence.
 Never start a wildcard listener, auto-trust an SSH host key, bypass reverse-
 session quarantine, automatically replay a disconnected command, or attempt
 to change firewall/public-tunnel configuration.

@@ -34,11 +34,12 @@ describe('Agent system instructions', () => {
     expect(instructions).toContain('{{command_base64}}');
     expect(instructions).toContain('commandMode=auto probes direct OS-command input and then PHP eval input');
     expect(instructions).toContain('commandMode=php_eval with {{command}}');
-    expect(instructions).toContain('merely echoing');
+    expect(instructions).toContain('echoing the encoded request body');
     expect(instructions).toContain('encoded request body');
-    expect(instructions).toContain('cannot produce valid command markers');
+    expect(instructions).toContain('does not\nproduce valid command markers');
     expect(instructions).toContain('Infrastructure SSH profiles are jump routes');
-    expect(instructions).toContain('complete output are written to plaintext');
+    expect(instructions).toContain('shell_save_evidence when a command transcript');
+    expect(instructions).not.toContain('plaintext project audit');
     expect(instructions).toContain('bypass reverse-');
   });
 });

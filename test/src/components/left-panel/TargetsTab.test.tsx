@@ -39,7 +39,7 @@ describe('TargetsTab asset inventory', () => {
     expect(screen.getByText('nginx, React')).toBeInTheDocument();
   });
 
-  it('shows identity credential values without masking and warns the operator', () => {
+  it('shows identity credential values', () => {
     const identity: AssetRecord = {
       ...asset,
       id: 'identity-visible', key: 'identity:local:realm:alice', type: 'identity', label: 'alice',
@@ -51,7 +51,6 @@ describe('TargetsTab asset inventory', () => {
       selectedNodeId: identity.id,
     });
     render(<TargetsTab />);
-    expect(screen.getByRole('alert')).toHaveTextContent('PLAINTEXT CREDENTIAL');
     expect(screen.getByText('visible-password')).toBeInTheDocument();
   });
 });

@@ -21,7 +21,7 @@ describe('ClaudeModeSelector', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'BYPASS' }));
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent('without any permission prompt');
+    expect(screen.getByRole('alert')).toHaveTextContent('without permission prompts');
 
     fireEvent.click(screen.getByRole('button', { name: 'ENABLE BYPASS' }));
     expect(onChange).toHaveBeenCalledWith('bypassPermissions');

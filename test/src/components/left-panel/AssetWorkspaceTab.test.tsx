@@ -69,7 +69,7 @@ describe('AssetWorkspaceTab', () => {
     expect(screen.queryByText('Details')).not.toBeInTheDocument();
   });
 
-  it('renders Identity credentials as plaintext directly in the Assets inventory', () => {
+  it('renders Identity credential values in the Assets inventory', () => {
     const identity: AssetRecord = {
       ...asset,
       id: 'identity-assets', key: 'identity:oidc:example:alice', type: 'identity', label: 'alice',
@@ -78,8 +78,10 @@ describe('AssetWorkspaceTab', () => {
     useSessionStore.setState({ assets: [identity] });
     useNetMapStore.setState({ nodes: [{ ...node, id: identity.id, key: identity.key, type: identity.type, label: identity.label, properties: identity.properties }] });
     render(<AssetWorkspaceTab />);
-    expect(screen.getByRole('alert')).toHaveTextContent('PLAINTEXT CREDENTIAL');
-    expect(screen.getByText(/session=visible/)).toBeInTheDocument();
+    const credential = screen.getByText(/session=visible/);
+    expect(credential).toBeInTheDocument();
+    expect(credential.parentElement).toHaveClass('bg-raised/55');
+    expect(credential.parentElement).not.toHaveAttribute('role', 'alert');
   });
 
   it('opens the asset context menu without changing selection and can reveal the NetMap', () => {

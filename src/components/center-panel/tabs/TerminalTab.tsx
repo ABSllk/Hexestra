@@ -197,7 +197,7 @@ export function TerminalTab({ tabId }: TerminalTabProps) {
       {managedShell && (
         <div className="flex h-7 shrink-0 items-center gap-2 border-b border-border-subtle bg-canvas px-2 text-[11px] text-text-muted">
           <Icon name="shield" size={12} className="text-accent-yellow" />
-          <span className="truncate">Shared with AI · Agent commands and complete output are stored in plaintext</span>
+          <span className="truncate">Shared with AI</span>
           {shellSession?.state === 'agent_locked' && (
             <button className="ml-auto rounded border border-accent-yellow/40 px-2 py-0.5 text-accent-yellow" onClick={() => void terminal.takeover()}>
               Take over

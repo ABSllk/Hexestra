@@ -10,31 +10,31 @@ export function createProxyAgentTools({ sessionId }: AgentToolContext) {
     return sessionId;
   };
   const nodeInput = {
-    source: z.enum(['uri', 'form', 'yaml']).describe('Use uri for one proxy URI, form for one structured proxy object, or yaml for one Mihomo proxy object only'),
+    source: z.enum(['uri', 'form', 'yaml']).describe('Input kind: uri, form, or yaml'),
     name: z.string().trim().min(1).max(100).optional(),
     value: z.union([
       z.string().min(1).max(100_000),
       z.record(z.string().min(1).max(100), z.unknown()),
-    ]).describe('Write-only proxy URI, form object, or single-proxy YAML. This value is redacted from approval UI and persisted Agent history.'),
+    ]).describe('Write-only proxy URI, form object, or single-proxy YAML; redacted in approval UI and Agent history.'),
   };
   return [
-    createAgentTool('proxy_status', 'Read the active project proxy state, active-chain latency, exit IP, and errors. No controller or node secrets are returned.', {}, async () => text(withoutCapabilities(await egressProxyService.status(projectId(), false)))),
-    createAgentTool('proxy_nodes_list', 'List sanitized global proxy node identities. Credentials, capability flags, and complete Mihomo objects are never returned.', {}, () => text(egressProxyService.nodesList().map(withoutCapabilities))),
-    createAgentTool('proxy_node_import', 'Import one proxy node from a URI, structured form object, or single Mihomo proxy YAML object. Credentials are write-only: the stored secret and raw input are never returned.', nodeInput, async (input) => text(withoutCapabilities(await egressProxyService.nodeSave(input as EgressProxyNodeInput)))),
-    createAgentTool('proxy_nodes_import', 'Atomically import 1-200 proxy node URIs with one URI per non-empty line. Blank lines are ignored; if any line is invalid, no nodes are imported. The complete URI batch is write-only and never returned.', {
-      value: z.string().min(1).max(500_000).describe('Write-only proxy URIs, one per line. URI fragments may provide individual node names.'),
+    createAgentTool('proxy_status', 'Read project proxy state, latency, exit IP, and errors; secrets are omitted.', {}, async () => text(withoutCapabilities(await egressProxyService.status(projectId(), false)))),
+    createAgentTool('proxy_nodes_list', 'List global proxy node identities without credentials or capability flags; complete Mihomo objects are never returned.', {}, () => text(egressProxyService.nodesList().map(withoutCapabilities))),
+    createAgentTool('proxy_node_import', 'Import a proxy node from a URI, form object, or Mihomo proxy YAML. Credentials are write-only; stored secrets and raw input are not returned.', nodeInput, async (input) => text(withoutCapabilities(await egressProxyService.nodeSave(input as EgressProxyNodeInput)))),
+    createAgentTool('proxy_nodes_import', 'Atomically import 1-200 proxy node URIs, one per non-empty line. Blank lines are ignored; any invalid line rejects the batch. Input is write-only.', {
+      value: z.string().min(1).max(500_000).describe('Write-only proxy URIs, one per line; URI fragments may set node names.'),
     }, async ({ value }) => text((await egressProxyService.nodesImportBatch(value)).map(withoutCapabilities))),
-    createAgentTool('proxy_node_update', 'Replace an existing proxy node using a complete URI, structured form object, or single Mihomo proxy YAML object. The prior credentials cannot be read; provide the complete replacement value.', {
+    createAgentTool('proxy_node_update', 'Replace a proxy node from a URI, form object, or Mihomo proxy YAML. Provide the full value; stored credentials are unreadable.', {
       nodeId: z.string().min(1).max(200),
       ...nodeInput,
     }, async ({ nodeId, ...input }) => text(withoutCapabilities(await egressProxyService.nodeSave(input as EgressProxyNodeInput, nodeId)))),
-    createAgentTool('proxy_node_delete', 'Delete a saved proxy node by sanitized node ID. Chains that still reference the node remain blocked until repaired.', {
+    createAgentTool('proxy_node_delete', 'Delete a saved proxy node by ID. Referencing chains remain blocked until repaired.', {
       nodeId: z.string().min(1).max(200),
     }, async ({ nodeId }) => text({ nodeId, deleted: await egressProxyService.nodeDelete(nodeId) })),
-    createAgentTool('proxy_nodes_test', 'Test every saved node independently from the host network and return latency in milliseconds or null for timeout. This starts a temporary Mihomo probe runtime and makes network requests.', {}, async () => text(await egressProxyService.nodesTest())),
+    createAgentTool('proxy_nodes_test', 'Test saved nodes from the host; return latency in milliseconds or null on timeout. Uses a temporary Mihomo runtime and makes network requests.', {}, async () => text(await egressProxyService.nodesTest())),
     createAgentTool('proxy_chains_list', 'List project proxy chains as ordered node IDs without node secrets.', {}, () => text(egressProxyService.chainsList(projectId()))),
-    createAgentTool('proxy_chain_test', 'Actively validate and measure the total and per-hop latency of the active project proxy chain. This can make network requests through the selected nodes.', { chainId: z.string().min(1).max(200) }, async ({ chainId }) => text(withoutCapabilities(await egressProxyService.chainTest(projectId(), chainId)))),
-    createAgentTool('proxy_chain_save', 'Validate and save a linear 1-8 hop chain using existing sanitized node IDs.', {
+    createAgentTool('proxy_chain_test', 'Validate the active chain and return total and per-hop latency. Makes network requests through selected nodes.', { chainId: z.string().min(1).max(200) }, async ({ chainId }) => text(withoutCapabilities(await egressProxyService.chainTest(projectId(), chainId)))),
+    createAgentTool('proxy_chain_save', 'Validate and save a linear 1-8 hop chain from node IDs.', {
       id: z.string().min(1).max(200).optional(),
       name: z.string().min(1).max(100),
       nodeIds: z.array(z.string().min(1).max(200)).min(1).max(8).describe('Unique node IDs in Hexestra-to-exit traffic order'),

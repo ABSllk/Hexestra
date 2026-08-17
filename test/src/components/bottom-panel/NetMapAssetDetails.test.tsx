@@ -83,7 +83,7 @@ describe('NetMapAssetDetails', () => {
     expect(screen.getByRole('button', { name: 'Out of scope' })).toBeDisabled();
   });
 
-  it('always displays plaintext identity credentials with an explicit warning', () => {
+  it('displays identity credential values', () => {
     const identity: AssetRecord = {
       id: 'identity-alice', key: 'identity:oidc:example:alice', type: 'identity', label: 'alice', status: 'scanned',
       properties: { provider: 'oidc', realm: 'example', principal: 'alice', credential_token: 'visible-token' },
@@ -96,7 +96,6 @@ describe('NetMapAssetDetails', () => {
     useSessionStore.setState({ assets: [identity], targets: [] });
     useNetMapStore.setState({ nodes: [identityNode], selectedNodeId: identity.id });
     render(<NetMapAssetDetails nodeId={identity.id} onClose={vi.fn()} />);
-    expect(screen.getByRole('alert')).toHaveTextContent('PLAINTEXT CREDENTIAL');
     expect(screen.getByText('visible-token')).toBeInTheDocument();
   });
 });
