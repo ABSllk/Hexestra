@@ -100,9 +100,14 @@
       "dist/**/*",
       "dist-electron/**/*",
       "LICENSE",
+      "node_modules/@anthropic-ai/claude-agent-sdk/**/*",
       "!node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**",
       "!node_modules/@anthropic-ai/claude-agent-sdk-linux-*/**",
-      "!node_modules/@anthropic-ai/claude-agent-sdk-win32-*/**"
+      "!node_modules/@anthropic-ai/claude-agent-sdk-win32-*/**",
+      "!**/claude",
+      "!**/claude.exe",
+      "!**/claude.cmd",
+      "!**/claude.bat"
     ],
     "afterPack": "./scripts/audit-release-claude.mjs",
     "extraResources": [

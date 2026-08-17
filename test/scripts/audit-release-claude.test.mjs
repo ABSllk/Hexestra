@@ -14,6 +14,19 @@ function fixture() {
 }
 
 describe('release Claude audit', () => {
+  it('keeps the JavaScript SDK in the app while excluding platform CLIs', () => {
+    const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
+    const files = packageJson.build?.files ?? [];
+    expect(files).toContain('node_modules/@anthropic-ai/claude-agent-sdk/**/*');
+    expect(files).toContain('!node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**');
+    expect(files).toContain('!node_modules/@anthropic-ai/claude-agent-sdk-linux-*/**');
+    expect(files).toContain('!node_modules/@anthropic-ai/claude-agent-sdk-win32-*/**');
+    expect(files).toContain('!**/claude');
+    expect(files).toContain('!**/claude.exe');
+    expect(files).toContain('!**/claude.cmd');
+    expect(files).toContain('!**/claude.bat');
+  });
+
   it('requires the JavaScript SDK and rejects platform CLI files', () => {
     const root = fixture();
     const sdk = path.join(root, 'resources', 'app.asar.unpacked', 'node_modules', '@anthropic-ai', 'claude-agent-sdk', 'package.json');
