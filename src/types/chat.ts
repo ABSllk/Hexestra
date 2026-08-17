@@ -65,7 +65,7 @@ export interface ToolResult {
 export interface ContextTab {
   tabId: string;
   title: string;
-  type: 'terminal' | 'editor' | 'browser' | 'traffic' | 'report';
+  type: 'terminal' | 'editor' | 'browser' | 'traffic' | 'report' | 'record';
   contentPreview: string;
   isShared: boolean;
 }

@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from 'react';
 import { EmptyState, Icon, IconButton, PanelHeader } from '@/components/shared';
-import { useChatStore, useTabStore } from '@/stores';
+import { useChatStore, useSessionStore, useTabStore } from '@/stores';
 import { openSettingsTab } from '@/stores/useTabStore';
+import { buildSelectedRecordContextTab } from '@/lib/agentRecordContext';
 import { ChatInput } from './ChatInput';
 import { ChatMessages } from './ChatMessages';
 import { ConversationSelector } from './ConversationSelector';
@@ -23,9 +24,14 @@ export function AIChatSidebar() {
   const subagentRuns = useChatStore((s) => s.subagentRuns);
   const closeSubagent = useChatStore((s) => s.closeSubagent);
   const tabs = useTabStore((s) => s.tabs);
+  const activeTabId = useTabStore((s) => s.activeTabId);
+  const findings = useSessionStore((s) => s.findings);
+  const vulnerabilities = useSessionStore((s) => s.vulnerabilities);
+  const evidenceRecords = useSessionStore((s) => s.evidenceRecords);
+  const reports = useSessionStore((s) => s.reports);
   const contextTabs = useMemo(
-    () =>
-      tabs
+    () => {
+      const sharedTabs = tabs
         .filter((tab) => tab.type === 'terminal' || tab.type === 'editor' || tab.type === 'browser' || tab.type === 'traffic' || tab.type === 'report')
         .map((tab) => ({
           tabId: tab.id,
@@ -37,8 +43,14 @@ export function AIChatSidebar() {
             tab.data?.url ??
             '',
           ),
-        })),
-    [tabs],
+        }));
+      const selectedRecord = buildSelectedRecordContextTab(
+        tabs.find((tab) => tab.id === activeTabId),
+        { findings, vulnerabilities, evidenceRecords, reports },
+      );
+      return selectedRecord ? [...sharedTabs, selectedRecord] : sharedTabs;
+    },
+    [activeTabId, evidenceRecords, findings, reports, tabs, vulnerabilities],
   );
 
   useEffect(() => subscribeToAgent(), [subscribeToAgent]);

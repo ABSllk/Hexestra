@@ -63,7 +63,7 @@ type AutonomyLevel = 'low' | 'medium' | 'high';
 interface SharedTabContext {
   tabId: string;
   title: string;
-  type: 'terminal' | 'editor' | 'browser' | 'traffic' | 'replay' | 'report';
+  type: 'terminal' | 'editor' | 'browser' | 'traffic' | 'replay' | 'report' | 'record';
   contentPreview: string;
 }
 

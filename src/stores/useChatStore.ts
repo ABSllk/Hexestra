@@ -22,6 +22,8 @@ import {
 } from '@/types';
 import { buildAgentTargetContext } from '@/lib/networkGraph';
 import { reconcileAgentActivities } from '@/lib/agentActivity';
+import { buildSelectedRecordContextTab } from '@/lib/agentRecordContext';
+import { useTabStore } from './useTabStore';
 import { useNetMapStore } from './useNetMapStore';
 import { usePentestTreeStore } from './usePentestTreeStore';
 import { useSessionStore } from './useSessionStore';
@@ -635,8 +637,18 @@ function buildAgentRequest(
       }
     : undefined;
   const contextTabs = state.contextTabs
-    .filter((tab) => tab.isShared)
+    .filter((tab) => tab.type !== 'record' && tab.isShared)
     .map(({ isShared: _isShared, ...tab }) => tab);
+  const selectedRecord = buildSelectedRecordContextTab(
+    useTabStore.getState().activeTab(),
+    useSessionStore.getState(),
+  );
+  const selectedRecordPreference = selectedRecord
+    ? state.contextTabs.find((tab) => tab.tabId === selectedRecord.tabId)
+    : undefined;
+  if (selectedRecord && selectedRecordPreference?.isShared !== false) {
+    contextTabs.push(selectedRecord);
+  }
   return {
     content,
     clientMessageId,
