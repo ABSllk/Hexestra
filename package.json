@@ -1,6 +1,6 @@
 {
   "name": "hexestra",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Human-AI penetration testing IDE with controlled autonomy and existing-tool integration",
   "author": "ABSllk",
@@ -51,7 +51,9 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
+    "mammoth": "^1.12.1",
     "monaco-editor": "^0.50.0",
+    "pdfjs-dist": "^5.7.284",
     "playwright-core": "1.62.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
@@ -107,6 +109,10 @@
       {
         "from": "resources/skills",
         "to": "skills"
+      },
+      {
+        "from": "resources/default-user",
+        "to": "default-user"
       },
       {
         "from": "resources/mitmproxy",
