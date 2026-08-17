@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createConversationBranch, createDefaultProjectState } from '@electron/services/project-state';
 import {
   AgentHistoryRepository,
@@ -11,6 +11,7 @@ import {
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const directory of temporaryDirectories.splice(0)) {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -23,6 +24,26 @@ function createRepository() {
 }
 
 describe('AgentHistoryRepository', () => {
+  it('does not reread branch indexes or invalidate cached stats when assurance repeats', () => {
+    const { repository } = createRepository();
+    const branch = createConversationBranch('main', 'Main');
+    repository.ensureBranch(branch);
+    repository.appendMessage('main', {
+      id: 'message-1',
+      role: 'assistant',
+      content: 'complete',
+      timestamp: new Date().toISOString(),
+      status: 'complete',
+    });
+    expect(repository.getBranchStats('main').messageCount).toBe(1);
+    const readFile = vi.spyOn(fs, 'readFileSync');
+
+    for (let index = 0; index < 50; index += 1) repository.ensureBranches([branch]);
+    expect(repository.getBranchStats('main').messageCount).toBe(1);
+
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
   it('pages messages and budgets activities from the newest messages first', () => {
     const { directory, repository } = createRepository();
     const branch = createConversationBranch('main', 'Main');

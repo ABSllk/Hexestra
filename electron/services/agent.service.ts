@@ -630,6 +630,7 @@ class AgentService {
 
     const activeBranch = this.branches.find((branch) => branch.id === this.activeBranchId);
     if (!activeBranch) throw new Error('Active conversation branch is missing');
+    const focusedTaskId = activeBranch.focusedTaskId ?? undefined;
     const adapter = this.adapterRegistry.require(activeBranch.backendId);
     const available = await adapter.initialize(request.session?.id);
     if (!available) {
@@ -689,7 +690,7 @@ class AgentService {
     let latestContent = '';
     let latestActivities: AgentActivity[] = [];
     const activityTaskBindings = new Map<string, string>();
-    let focusedTaskStarted = false;
+    let focusedTaskTransitionChecked = false;
     let completedEvent: Extract<import('../contracts/agent-runtime').AgentRunEvent, { type: 'turn_completed' }> | undefined;
     const streamScheduler = new AgentStreamScheduler();
     const pendingSubagentRunIds = new Set<string>();
@@ -812,9 +813,10 @@ class AgentService {
           this.emitStatus();
         } else if (event.type === 'turn_snapshot') {
           latestContent = event.content;
-          latestActivities = this.bindActivitiesToFocusedTask(request.session?.id, event.activities, activityTaskBindings);
-          if (!focusedTaskStarted && request.session?.id && event.activities.some((activity) => activity.kind === 'tool' && activity.toolName && !/^(task_|restriction_list|tool_catalog_)/.test(activity.toolName))) {
-            focusedTaskStarted = await this.markFocusedTaskInProgress(request.session.id);
+          latestActivities = this.bindActivitiesToFocusedTask(focusedTaskId, event.activities, activityTaskBindings);
+          if (!focusedTaskTransitionChecked && request.session?.id && focusedTaskId && event.activities.some((activity) => activity.kind === 'tool' && activity.toolName && !/^(task_|restriction_list|tool_catalog_)/.test(activity.toolName))) {
+            focusedTaskTransitionChecked = true;
+            await this.markFocusedTaskInProgress(request.session.id, focusedTaskId);
           }
           mainProjectionDirty = true;
           streamScheduler.schedule(publishPendingProjection);
@@ -836,7 +838,7 @@ class AgentService {
         } else if (event.type === 'turn_completed') {
           completedEvent = event;
           latestContent = event.content;
-          latestActivities = this.bindActivitiesToFocusedTask(request.session?.id, event.activities, activityTaskBindings);
+          latestActivities = this.bindActivitiesToFocusedTask(focusedTaskId, event.activities, activityTaskBindings);
         }
       }
       if (!completedEvent) throw new Error('Agent backend ended without a completion event');
@@ -1212,9 +1214,7 @@ class AgentService {
   private mergeSubagentRuns(runs: SubagentRun[]) {
     if (runs.length === 0) return;
     const byId = new Map(this.subagentRuns.map((run) => [run.id, run]));
-    const focusedTaskId = this.activeSessionId
-      ? sessionService.getProjectState(this.activeSessionId).agent.branches.find((branch) => branch.id === this.activeBranchId)?.focusedTaskId ?? undefined
-      : this.branches.find((branch) => branch.id === this.activeBranchId)?.focusedTaskId ?? undefined;
+    const focusedTaskId = this.branches.find((branch) => branch.id === this.activeBranchId)?.focusedTaskId ?? undefined;
     for (const run of runs) {
       const next = cloneSubagentRun(run);
       if (!next.pttTaskId && focusedTaskId) next.pttTaskId = focusedTaskId;
@@ -1257,10 +1257,7 @@ class AgentService {
     return this.adapterRegistry.get(backendId)?.status().available ?? false;
   }
 
-  private async markFocusedTaskInProgress(sessionId: string) {
-    const state = sessionService.getProjectState(sessionId);
-    const focusedTaskId = state.agent.branches.find((branch) => branch.id === state.agent.activeBranchId)?.focusedTaskId;
-    if (!focusedTaskId) return false;
+  private async markFocusedTaskInProgress(sessionId: string, focusedTaskId: string) {
     const tasks = await sessionService.listTasks(sessionId);
     const task = tasks.find((candidate) => candidate.id === focusedTaskId);
     if (!task || task.status === 'in_progress' || task.status === 'completed' || task.status === 'skipped' || task.status === 'blocked') return false;
@@ -1274,10 +1271,8 @@ class AgentService {
     } catch { return false; }
   }
 
-  private bindActivitiesToFocusedTask(sessionId: string | undefined, activities: AgentActivity[], bindings: Map<string, string>) {
-    if (!sessionId) return activities;
-    const state = sessionService.getProjectState(sessionId);
-    const focusedTaskId = state.agent.branches.find((branch) => branch.id === state.agent.activeBranchId)?.focusedTaskId;
+  private bindActivitiesToFocusedTask(focusedTaskId: string | undefined, activities: AgentActivity[], bindings: Map<string, string>) {
+    if (!focusedTaskId && bindings.size === 0) return activities;
     return activities.map((activity) => {
       const prior = bindings.get(activity.id);
       const taskId = prior ?? (focusedTaskId || undefined);

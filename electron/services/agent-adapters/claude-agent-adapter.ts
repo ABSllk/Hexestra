@@ -47,6 +47,7 @@ import {
 import { buildAgentSdkUserMessage } from '../agent-attachment';
 import { AgentTimelineBuilder } from '../agent-timeline';
 import { SubagentRegistry } from '../subagent-registry';
+import { AgentStreamScheduler } from '../agent-stream-scheduler';
 import type { AgentToolDefinition } from '../../contracts/agent-tools';
 import type {
   RestrictionClassificationInput,
@@ -93,6 +94,8 @@ interface ClaudeLiveTurn {
   dynamicSystemContext?: string;
   timeline: AgentTimelineBuilder;
   subagentRegistry: SubagentRegistry;
+  projectionScheduler: AgentStreamScheduler;
+  mainProjectionDirty: boolean;
   pendingSubagentRunIds: Set<string>;
   lastAssistantBackendMessageId?: string;
   sessionReported: boolean;
@@ -438,6 +441,8 @@ export class ClaudeAgentAdapter implements AgentAdapter {
       dynamicSystemContext: input.dynamicSystemContext,
       timeline: new AgentTimelineBuilder(`turn-${Date.now()}`),
       subagentRegistry: new SubagentRegistry(`turn-${Date.now()}`),
+      projectionScheduler: new AgentStreamScheduler(),
+      mainProjectionDirty: false,
       pendingSubagentRunIds: new Set<string>(),
       sessionReported: false,
       completed: false,
@@ -647,15 +652,35 @@ export class ClaudeAgentAdapter implements AgentAdapter {
     for (const runId of changedSubagentRuns) turn.pendingSubagentRunIds.add(runId);
     const mainTimelineChanged = !turn.subagentRegistry.isChildMessage(message)
       && turn.timeline.consume(message);
-    turn.subagentRegistry.annotateMainTimeline(turn.timeline);
-    if (mainTimelineChanged) {
+    if (changedSubagentRuns.length > 0) {
+      turn.subagentRegistry.annotateMainTimeline(turn.timeline);
+      turn.mainProjectionDirty = true;
+    }
+    if (mainTimelineChanged) turn.mainProjectionDirty = true;
+    if (turn.mainProjectionDirty || turn.pendingSubagentRunIds.size > 0) {
+      turn.projectionScheduler.schedule(() => this.flushTurnProjection(turn));
+    }
+  }
+
+  private flushTurnProjection(turn: ClaudeLiveTurn) {
+    if (turn.mainProjectionDirty) {
+      turn.mainProjectionDirty = false;
       turn.output.push({
         type: 'turn_snapshot',
         content: turn.timeline.getText(),
         activities: turn.timeline.snapshot(),
       });
     }
-    this.flushSubagentSnapshots(turn);
+    for (const runId of turn.pendingSubagentRunIds) {
+      const run = turn.subagentRegistry.getRun(runId);
+      if (run) turn.output.push({ type: 'subagent_snapshot', run });
+    }
+    turn.pendingSubagentRunIds.clear();
+  }
+
+  private cancelAndFlushTurnProjection(turn: ClaudeLiveTurn) {
+    turn.projectionScheduler.cancel();
+    this.flushTurnProjection(turn);
   }
 
   private finishLiveTurn(
@@ -673,6 +698,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
           : 'runtime',
       );
       this.finishTurnSubagents(turn, 'failed');
+      this.cancelAndFlushTurnProjection(turn);
       turn.completed = true;
       runtime.activeTurn = null;
       turn.output.fail(error);
@@ -680,7 +706,9 @@ export class ClaudeAgentAdapter implements AgentAdapter {
     }
     if (!turn.timeline.getText().trim()) turn.timeline.addText(message.result);
     turn.timeline.finish();
+    turn.mainProjectionDirty = true;
     this.finishTurnSubagents(turn, 'completed');
+    this.cancelAndFlushTurnProjection(turn);
     const content = turn.timeline.getText().trim() || '(Claude returned no text response)';
     turn.output.push({
       type: 'turn_completed',
@@ -696,17 +724,11 @@ export class ClaudeAgentAdapter implements AgentAdapter {
   }
 
   private finishTurnSubagents(turn: ClaudeLiveTurn, status: 'completed' | 'failed' | 'stopped') {
-    for (const runId of turn.subagentRegistry.finish(status)) turn.pendingSubagentRunIds.add(runId);
+    const changedRunIds = turn.subagentRegistry.finish(status);
+    for (const runId of changedRunIds) turn.pendingSubagentRunIds.add(runId);
+    if (changedRunIds.length === 0) return;
     turn.subagentRegistry.annotateMainTimeline(turn.timeline);
-    this.flushSubagentSnapshots(turn);
-  }
-
-  private flushSubagentSnapshots(turn: ClaudeLiveTurn) {
-    for (const runId of turn.pendingSubagentRunIds) {
-      const run = turn.subagentRegistry.getRun(runId);
-      if (run) turn.output.push({ type: 'subagent_snapshot', run });
-    }
-    turn.pendingSubagentRunIds.clear();
+    turn.mainProjectionDirty = true;
   }
 
   private failLiveRuntime(
@@ -725,6 +747,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
             ? 'authentication'
             : 'runtime');
       this.finishTurnSubagents(turn, code === 'cancelled' ? 'stopped' : 'failed');
+      this.cancelAndFlushTurnProjection(turn);
       turn.completed = true;
       runtime.activeTurn = null;
       turn.output.fail(error instanceof AgentBackendError

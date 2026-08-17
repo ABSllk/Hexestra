@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sdk = vi.hoisted(() => ({
   query: vi.fn(),
@@ -82,6 +82,10 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
     sdk.createSdkMcpServer.mockClear();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('keeps one streaming query alive across turns in the same conversation', async () => {
     const prompts: unknown[] = [];
     const contexts: string[] = [];
@@ -121,6 +125,60 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
 
     await adapter.disposeConversation('project-1', 'main');
     expect(close).toHaveBeenCalled();
+  });
+
+  it('coalesces bursty partial messages while flushing the complete timeline immediately', async () => {
+    vi.useFakeTimers();
+    let burstFinished!: () => void;
+    const burst = new Promise<void>((resolve) => { burstFinished = resolve; });
+    let releaseResult!: () => void;
+    const resultReady = new Promise<void>((resolve) => { releaseResult = resolve; });
+    sdk.query.mockImplementation((params) => ({
+      supportedCommands: vi.fn(async () => []),
+      setPermissionMode: vi.fn(async () => undefined),
+      interrupt: vi.fn(async () => undefined),
+      close: vi.fn(),
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'system', subtype: 'init', session_id: 'claude-session-1', model: 'deepseek-v4-pro' };
+        for await (const _prompt of params.prompt) {
+          yield {
+            type: 'stream_event',
+            event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+          };
+          for (const text of ['a', 'b', 'c', 'd', 'e', 'f']) {
+            yield {
+              type: 'stream_event',
+              event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } },
+            };
+          }
+          burstFinished();
+          await resultReady;
+          yield { type: 'result', subtype: 'success', result: 'abcdef' };
+        }
+      },
+    }));
+
+    const adapter = new ClaudeAgentAdapter();
+    const pendingEvents = collect(adapter.runTurn(runInput('context'), interactions));
+    await burst;
+    await vi.advanceTimersByTimeAsync(100);
+    releaseResult();
+    const events = await pendingEvents;
+    const snapshots = events.filter((event) => event.type === 'turn_snapshot');
+
+    expect(snapshots).toHaveLength(3);
+    expect(snapshots[1]).toEqual(expect.objectContaining({ content: 'abcdef' }));
+    expect(snapshots.at(-1)).toEqual(expect.objectContaining({
+      content: 'abcdef',
+      activities: [expect.objectContaining({ content: 'abcdef', status: 'complete' })],
+    }));
+    expect(events.at(-1)).toEqual(expect.objectContaining({
+      type: 'turn_completed',
+      content: 'abcdef',
+      activities: [expect.objectContaining({ content: 'abcdef', status: 'complete' })],
+    }));
+
+    await adapter.disposeConversation('project-1', 'main');
   });
 
   it('interrupts only the active turn and reuses the streaming process afterwards', async () => {

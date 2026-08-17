@@ -100,6 +100,7 @@ export class AgentHistoryRepository {
   private readonly manifestPath: string;
   private manifest: HistoryManifest;
   private statsCache = new Map<string, HistoryBranchStats>();
+  private readonly ensuredBranchFiles = new Set<string>();
 
   constructor(private readonly sessionPath: string) {
     this.root = path.join(sessionPath, '.hexestra', 'agent-history');
@@ -108,6 +109,7 @@ export class AgentHistoryRepository {
   }
 
   ensureBranch(branch: Pick<PersistedConversationBranch, 'id' | 'parentBranchId' | 'createdAt'>) {
+    let created = false;
     if (!this.manifest.branches[branch.id]) {
       this.manifest.branches[branch.id] = {
         id: branch.id,
@@ -115,9 +117,10 @@ export class AgentHistoryRepository {
         createdAt: branch.createdAt,
       };
       this.saveManifest();
+      created = true;
     }
-    this.ensureFiles(branch.id);
-    this.statsCache.delete(branch.id);
+    this.ensureBranchFiles(branch.id);
+    if (created) this.statsCache.delete(branch.id);
   }
 
   ensureBranches(branches: PersistedConversationBranch[]) {
@@ -321,7 +324,7 @@ export class AgentHistoryRepository {
   }
 
   appendMessage(branchId: string, message: PersistedChatMessage) {
-    this.ensureFiles(branchId);
+    this.ensureBranchFiles(branchId);
     const existing = this.getOwnMessageRecords(branchId).find((record) => record.id === message.id);
     if (existing) {
       const existingActivityIds = new Set(
@@ -351,7 +354,7 @@ export class AgentHistoryRepository {
   }
 
   appendSubagent(branchId: string, run: SubagentRun) {
-    this.ensureFiles(branchId);
+    this.ensureBranchFiles(branchId);
     const existing = this.getOwnSubagentRecords(branchId).find((record) => record.id === run.id);
     if (existing) {
       const existingActivityIds = new Set(
@@ -380,7 +383,7 @@ export class AgentHistoryRepository {
   }
 
   writeLive(branchId: string, message?: PersistedChatMessage, subagentRuns?: SubagentRun[]) {
-    this.ensureFiles(branchId);
+    this.ensureBranchFiles(branchId);
     const record: LiveRecord = {
       v: AGENT_HISTORY_FORMAT_VERSION,
       timestamp: new Date().toISOString(),
@@ -443,6 +446,7 @@ export class AgentHistoryRepository {
     if (fs.existsSync(this.root)) fs.rmSync(this.root, { recursive: true, force: true });
     this.manifest = this.emptyManifest();
     this.statsCache.clear();
+    this.ensuredBranchFiles.clear();
   }
 
   private appendActivities(branchId: string, messageId: string, activities: PersistedAgentActivity[]) {
@@ -535,6 +539,12 @@ export class AgentHistoryRepository {
         this.rebuildIndex(branchId);
       }
     }
+  }
+
+  private ensureBranchFiles(branchId: string) {
+    if (this.ensuredBranchFiles.has(branchId)) return;
+    this.ensureFiles(branchId);
+    this.ensuredBranchFiles.add(branchId);
   }
 
   private rebuildIndex(branchId: string) {
