@@ -63,18 +63,18 @@ type FakeStats = {
 
 class FakeSftp {
   files = new Map<string, { data: Buffer; stats: FakeStats }>();
-  directories = new Set(['/home/alice', '/home/alice/empty']);
+  directories = new Set(['/remote/alice', '/remote/alice/empty']);
   closed = false;
 
   constructor() {
-    this.files.set('/home/alice/readme.txt', { data: Buffer.from('hello\n'), stats: fileStats(6) });
-    this.files.set('/home/alice/.hidden', { data: Buffer.from('hidden'), stats: fileStats(6) });
-    this.files.set('/home/alice/link', { data: Buffer.alloc(0), stats: symlinkStats() });
-    this.files.set('/home/alice/dir/nested.txt', { data: Buffer.from('nested'), stats: fileStats(6) });
-    this.directories.add('/home/alice/dir');
+    this.files.set('/remote/alice/readme.txt', { data: Buffer.from('hello\n'), stats: fileStats(6) });
+    this.files.set('/remote/alice/.hidden', { data: Buffer.from('hidden'), stats: fileStats(6) });
+    this.files.set('/remote/alice/link', { data: Buffer.alloc(0), stats: symlinkStats() });
+    this.files.set('/remote/alice/dir/nested.txt', { data: Buffer.from('nested'), stats: fileStats(6) });
+    this.directories.add('/remote/alice/dir');
   }
 
-  realpath(_value: string, callback: (error: Error | null, value?: string) => void) { callback(null, '/home/alice'); }
+  realpath(_value: string, callback: (error: Error | null, value?: string) => void) { callback(null, '/remote/alice'); }
   lstat(value: string, callback: (error: Error | null, stats?: FakeStats) => void) {
     const normalized = path.posix.normalize(value);
     if (this.directories.has(normalized)) { callback(null, directoryStats()); return; }
@@ -172,42 +172,42 @@ describe('SSH SFTP file manager', () => {
 
   it('reuses one SFTP channel, lists hidden files and does not follow links', async () => {
     const sessionId = injectSshSession(service);
-    expect(await service.remoteHome('project-1', sessionId)).toBe('/home/alice');
-    expect(await service.remoteHome('project-1', sessionId)).toBe('/home/alice');
+    expect(await service.remoteHome('project-1', sessionId)).toBe('/remote/alice');
+    expect(await service.remoteHome('project-1', sessionId)).toBe('/remote/alice');
     await expect(service.listRemoteFiles('project-1', sessionId, '')).rejects.toThrow('Invalid remote path');
-    const entries = await service.listRemoteFiles('project-1', sessionId, '/home/alice');
+    const entries = await service.listRemoteFiles('project-1', sessionId, '/remote/alice');
     expect(entries.map((entry) => entry.name)).toEqual(expect.arrayContaining(['.hidden', 'link', 'readme.txt', 'dir']));
-    await expect(service.readRemoteFile('project-1', sessionId, '/home/alice/link')).rejects.toThrow('regular file');
+    await expect(service.readRemoteFile('project-1', sessionId, '/remote/alice/link')).rejects.toThrow('regular file');
   });
 
   it('detects revisions and refuses stale writes unless forced', async () => {
     const sessionId = injectSshSession(service);
-    const original = await service.readRemoteFile('project-1', sessionId, '/home/alice/readme.txt');
-    const conflict = await service.writeRemoteFile('project-1', sessionId, '/home/alice/readme.txt', 'changed', 'stale-revision');
+    const original = await service.readRemoteFile('project-1', sessionId, '/remote/alice/readme.txt');
+    const conflict = await service.writeRemoteFile('project-1', sessionId, '/remote/alice/readme.txt', 'changed', 'stale-revision');
     expect(conflict).toMatchObject({ status: 'conflict', currentRevision: original.revision });
-    const written = await service.writeRemoteFile('project-1', sessionId, '/home/alice/readme.txt', 'changed', original.revision);
+    const written = await service.writeRemoteFile('project-1', sessionId, '/remote/alice/readme.txt', 'changed', original.revision);
     expect(written).toMatchObject({ revision: expect.any(String), content: 'changed' });
-    await expect(service.writeRemoteFile('project-1', sessionId, '/home/alice/readme.txt', 'forced', original.revision, true)).resolves.toMatchObject({ content: 'forced' });
+    await expect(service.writeRemoteFile('project-1', sessionId, '/remote/alice/readme.txt', 'forced', original.revision, true)).resolves.toMatchObject({ content: 'forced' });
   });
 
   it('protects roots and requires a recursive preview for non-empty directories', async () => {
     const sessionId = injectSshSession(service);
     await expect(service.previewRemoteDelete('project-1', sessionId, '/')).rejects.toThrow('root');
-    const preview = await service.previewRemoteDelete('project-1', sessionId, '/home/alice/dir');
+    const preview = await service.previewRemoteDelete('project-1', sessionId, '/remote/alice/dir');
     expect(preview.recursive).toBe(true);
     await expect(service.deleteRemote('project-1', sessionId, preview.token)).rejects.toThrow('Recursive confirmation');
     await expect(service.deleteRemote('project-1', sessionId, preview.token, true)).rejects.toThrow('missing or expired');
-    const fresh = await service.previewRemoteDelete('project-1', sessionId, '/home/alice/dir');
-    await expect(service.deleteRemote('project-1', sessionId, fresh.token, true)).resolves.toMatchObject({ path: '/home/alice/dir' });
-    expect(sftp.files.has('/home/alice/dir/nested.txt')).toBe(false);
+    const fresh = await service.previewRemoteDelete('project-1', sessionId, '/remote/alice/dir');
+    await expect(service.deleteRemote('project-1', sessionId, fresh.token, true)).resolves.toMatchObject({ path: '/remote/alice/dir' });
+    expect(sftp.files.has('/remote/alice/dir/nested.txt')).toBe(false);
   });
 
   it('rejects cross-project and non-SSH sessions and closes SFTP resources on disconnect', async () => {
     const sessionId = injectSshSession(service);
-    await expect(service.listRemoteFiles('other-project', sessionId, '/home/alice')).rejects.toThrow('another project');
+    await expect(service.listRemoteFiles('other-project', sessionId, '/remote/alice')).rejects.toThrow('another project');
     const localId = injectSshSession(service, 'local');
-    await expect(service.listRemoteFiles('project-1', localId, '/home/alice')).rejects.toThrow('only for SSH');
-    await service.listRemoteFiles('project-1', sessionId, '/home/alice');
+    await expect(service.listRemoteFiles('project-1', localId, '/remote/alice')).rejects.toThrow('only for SSH');
+    await service.listRemoteFiles('project-1', sessionId, '/remote/alice');
     service.disconnect('project-1', sessionId);
     expect(sftp.closed).toBe(true);
     expect(mocks.clientEnd).toHaveBeenCalled();
@@ -218,14 +218,14 @@ describe('SSH SFTP file manager', () => {
     const localSource = path.join(mocks.projectPath, 'upload.txt');
     const localDestination = path.join(mocks.projectPath, 'download.txt');
     fs.writeFileSync(localSource, 'uploaded');
-    const uploaded = await service.uploadRemoteFile('project-1', sessionId, localSource, '/home/alice/uploaded.txt');
+    const uploaded = await service.uploadRemoteFile('project-1', sessionId, localSource, '/remote/alice/uploaded.txt');
     expect(uploaded).toMatchObject({ results: [{ name: 'uploaded.txt', status: 'completed' }] });
-    expect(sftp.files.get('/home/alice/uploaded.txt')?.data.toString()).toBe('uploaded');
-    await expect(service.downloadRemoteFileTo('project-1', sessionId, '/home/alice/uploaded.txt', localDestination)).resolves.toMatchObject({ size: 8 });
+    expect(sftp.files.get('/remote/alice/uploaded.txt')?.data.toString()).toBe('uploaded');
+    await expect(service.downloadRemoteFileTo('project-1', sessionId, '/remote/alice/uploaded.txt', localDestination)).resolves.toMatchObject({ size: 8 });
     expect(fs.readFileSync(localDestination, 'utf8')).toBe('uploaded');
-    await expect(service.downloadRemoteFileTo('project-1', sessionId, '/home/alice/uploaded.txt', localDestination)).rejects.toThrow('already exists');
+    await expect(service.downloadRemoteFileTo('project-1', sessionId, '/remote/alice/uploaded.txt', localDestination)).rejects.toThrow('already exists');
     fs.writeFileSync(localDestination, 'old');
-    await service.downloadRemoteFileTo('project-1', sessionId, '/home/alice/uploaded.txt', localDestination, true);
+    await service.downloadRemoteFileTo('project-1', sessionId, '/remote/alice/uploaded.txt', localDestination, true);
     expect(fs.readFileSync(localDestination, 'utf8')).toBe('uploaded');
     expect(fs.readdirSync(mocks.projectPath).some((name) => name.includes('.hexestra-'))).toBe(false);
   });

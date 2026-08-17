@@ -16,21 +16,21 @@ describe('portable Hexestra home', () => {
     expect(resolveGlobalUserPath({
       configuredPath: null,
       defaultApp: true,
-      cwd: 'D:\\study\\Pengent',
-    })).toBe(path.join(path.resolve('D:\\study\\Pengent'), 'user'));
+      cwd: 'D:\\checkout\\Hexestra',
+    })).toBe(path.join(path.resolve('D:\\checkout\\Hexestra'), 'user'));
   });
 
   it('treats Node and Electron launchers as development runtimes', () => {
     expect(resolveHexestraHome({
       configuredPath: null,
-      cwd: 'D:\\study\\Pengent',
+      cwd: 'D:\\checkout\\Hexestra',
       executablePath: 'C:\\Program Files\\nodejs\\node.exe',
-    })).toBe(path.resolve('D:\\study\\Pengent'));
+    })).toBe(path.resolve('D:\\checkout\\Hexestra'));
     expect(resolveHexestraHome({
       configuredPath: null,
-      cwd: 'D:\\study\\Pengent',
-      executablePath: 'D:\\Pengent\\node_modules\\electron\\dist\\electron.exe',
-    })).toBe(path.resolve('D:\\study\\Pengent'));
+      cwd: 'D:\\checkout\\Hexestra',
+      executablePath: 'D:\\checkout\\Hexestra\\node_modules\\electron\\dist\\electron.exe',
+    })).toBe(path.resolve('D:\\checkout\\Hexestra'));
   });
 
   it('uses the executable directory when packaged', () => {

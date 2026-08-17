@@ -40,6 +40,7 @@ const LOCAL_ROOT_ENTRIES = new Set([
   '.agents',
   '.claude',
   '.codex',
+  '.hexestra',
   '.git',
   '.npm-cache',
   '.trellis',
@@ -53,6 +54,7 @@ const LOCAL_ROOT_ENTRIES = new Set([
   'node_modules',
   'release',
   'tmp',
+  'user',
 ]);
 
 const LOCAL_VERSIONED_RELEASE_DIRECTORY_PATTERN =
@@ -71,6 +73,7 @@ const REQUIRED_IGNORE_RULES = new Set([
   '.agents/',
   '.claude/',
   '.codex/',
+  '.hexestra/',
   '.trellis/',
   '.ui-test/',
   'AGENTS.md',
@@ -82,6 +85,7 @@ const REQUIRED_IGNORE_RULES = new Set([
   'release/',
   'release-*/',
   'tmp/',
+  'user/',
   'resources/burp-bridge/*.jar',
   'resources/mitmproxy/bin/',
   '*.pyc',

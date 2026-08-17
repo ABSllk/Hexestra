@@ -1,6 +1,6 @@
-# Pengent 用户上下文维护
+# Hexestra 用户上下文维护
 
-Pengent 将任务上下文拆成四类：Objective 描述目标，Restrictions 规定必须遵守的边界，Skills 描述可复用战法，Tools 提供本地能力，Execution Steps 记录本次实际推进过程。
+Hexestra 将任务上下文拆成四类：Objective 描述目标，Restrictions 规定必须遵守的边界，Skills 描述可复用战法，Tools 提供本地能力，Execution Steps 记录本次实际推进过程。
 
 ## 两级用户层
 

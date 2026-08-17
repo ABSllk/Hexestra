@@ -2,6 +2,33 @@
 
 ## Unreleased / 未发布
 
+## [0.5.0] - 2026-08-17
+
+### Added / 新增
+
+- 新增基于 MITRE ATT&CK 的任务树、离线目录、Technique/Tactic 上下文、限制服务、工具目录和任务步骤管理。
+  Added an offline MITRE ATT&CK task tree with Technique/Tactic context, restrictions, a tool catalog, and task-step management.
+- 新增工作流与知识提炼中心，可在任务树中运行工作流，或从文档和对话生成 Restrictions、Skills 与 Workflows 候选。
+  Added task-tree workflows and a knowledge refinery for turning documents and conversations into reviewed Restriction, Skill, and Workflow candidates.
+- 新增分支级历史分页与 JSONL 历史仓储，支持长对话分层加载、子 Agent 懒加载和历史迁移。
+  Added branch-scoped paginated history and JSONL storage with layered loading, lazy subagent details, and migration support.
+- 新增 Agent Instructions、Tool Catalog、Workflow 和 Refinery 工作区，并补齐中英文界面。
+  Added Agent Instructions, Tool Catalog, Workflow, and Refinery workspaces with English and Simplified Chinese UI coverage.
+
+### Changed / 变更
+
+- Scope 改为软提示：白名单和黑名单用于上下文与优先级提示，不再单独阻断任务聚焦或执行；授权声明由应用统一注入。
+  Scope is now advisory: whitelist and blacklist modes provide context and prioritization without independently blocking task focus or execution; authorization is declared by the application.
+- 用户自定义 Restrictions、Skills、Tools 和 Workflows 存放在 Hexestra 用户目录，不再混入内置资源；内置 ATT&CK 目录固定为 Enterprise v19.1。
+  User Restrictions, Skills, Tools, and Workflows live in the Hexestra user directory instead of bundled resources; the built-in ATT&CK catalog is pinned to Enterprise v19.1.
+- Claude Agent SDK 适配为持续 Streaming Input，会话内复用 Query；Shell `auto` 模式在输出空闲后可正常结束命令。
+  Adapted the Claude Agent SDK to persistent Streaming Input with per-conversation Query reuse; Shell `auto` mode now completes commands after output becomes idle.
+
+### Fixed / 修复
+
+- 修复长对话首屏渲染卡顿、任务重复聚焦、已启动 Step 更新失败、Finding 详情不刷新和提炼调试信息不可见等问题。
+  Fixed long-conversation first-render stalls, repeated task focusing, updates to started Steps, stale Finding details, and missing refinery diagnostics.
+
 ## [0.4.0] - 2026-08-12
 
 ### Added / 新增
