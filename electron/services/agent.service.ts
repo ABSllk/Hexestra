@@ -245,16 +245,14 @@ class AgentService {
     ipcMain.handle('agent:cancel', (_event, sessionId?: string) => {
       if (sessionId && sessionId !== this.activeSessionId) return;
       this.abortController?.abort();
-      this.abortController = null;
       this.resolveAllPermissions(false);
-      this.setState(this.activeBackendAvailable() ? 'ready' : 'error');
+      if (!this.abortController) this.setState(this.activeBackendAvailable() ? 'ready' : 'error');
     });
 
     ipcMain.handle('agent:clear', async (_event, sessionId?: string) => {
       if (sessionId && sessionId !== this.activeSessionId) await this.activateProject(sessionId);
-      this.abortController?.abort();
-      this.abortController = null;
-      this.resolveAllPermissions(false);
+      await this.stopActiveRequest();
+      await this.disposeActiveConversationRuntime();
       this.chatHistory = [];
       this.backendSessionId = null;
       this.connectionFingerprint = null;
@@ -303,15 +301,28 @@ class AgentService {
 
   private async activateProject(sessionId: string) {
     const previousSessionId = this.activeSessionId;
-    if (this.activeSessionId !== sessionId && this.abortController) {
-      this.abortController.abort();
-      this.resolveAllPermissions(false);
-      await this.waitForActiveRequest();
+    if (this.activeSessionId !== sessionId) {
+      await this.stopActiveRequest();
+      await this.disposeActiveConversationRuntime();
     }
     if (previousSessionId && previousSessionId !== sessionId) {
       shellService.destroyProject(previousSessionId);
     }
     return this.loadProject(sessionId);
+  }
+
+  private async stopActiveRequest() {
+    if (!this.abortController) return;
+    this.abortController.abort();
+    this.resolveAllPermissions(false);
+    await this.waitForActiveRequest();
+  }
+
+  private async disposeActiveConversationRuntime() {
+    const branch = this.branches.find((candidate) => candidate.id === this.activeBranchId);
+    if (!branch) return;
+    const adapter = this.adapterRegistry.get(branch.backendId);
+    await adapter?.disposeConversation?.(this.activeSessionId ?? undefined, branch.id);
   }
 
   private loadProject(sessionId: string) {
@@ -413,6 +424,7 @@ class AgentService {
     const branch = this.branches.find((candidate) => candidate.id === branchId);
     if (!branch) throw new Error(`Conversation branch ${branchId} not found`);
     if (branch.id !== this.activeBranchId) {
+      await this.disposeActiveConversationRuntime();
       this.saveActiveBranchProjection();
       this.activeBranchId = branch.id;
       this.hydrateActiveBranch();
@@ -428,7 +440,7 @@ class AgentService {
     };
   }
 
-  private createConversation(
+  private async createConversation(
     sessionId: string,
     conversationId: string,
     backendId: AgentBackendId = CLAUDE_BACKEND_ID,
@@ -448,6 +460,7 @@ class AgentService {
     }
     this.adapterRegistry.require(backendId);
 
+    await this.disposeActiveConversationRuntime();
     this.saveActiveBranchProjection();
     const conversation = createConversationBranch(
       conversationId,
@@ -501,6 +514,7 @@ class AgentService {
     );
     const canResume = resumeOptions.fork;
 
+    await this.disposeActiveConversationRuntime();
     this.saveActiveBranchProjection();
     const branch = createConversationBranch(
       input.newBranchId,
@@ -647,6 +661,7 @@ class AgentService {
 
     try {
       const runInput = {
+        conversationId: this.activeBranchId,
         prompt,
         command: command ?? undefined,
         systemInstructions: buildSystemInstructions(),
@@ -661,8 +676,8 @@ class AgentService {
         fork: resumeOptions.fork,
         settingSources: connectionSettings.settingSources,
         tools: hexestraTools,
-      };
         projectId: request.session?.id,
+      };
       for await (const event of adapter.runTurn(runInput, interactions)) {
         if (event.type === 'session') {
           this.backendSessionId = event.sessionId;

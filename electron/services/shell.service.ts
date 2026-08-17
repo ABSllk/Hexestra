@@ -658,7 +658,9 @@ export class ShellService {
     const timeoutMs = normalizeCommandTimeout(request.timeoutMs);
     if (session.webshell) return this.executeWebShellAgent(session, request, approvalMode, timeoutMs);
     const commandId = createShellId('audit');
-    const nonce = session.value.shellFlavor === 'raw' ? undefined : cryptoNonce();
+    const nonce = session.value.shellFlavor === 'raw' || session.value.shellFlavor === 'auto'
+      ? undefined
+      : cryptoNonce();
     return new Promise<ShellCommandResult>((resolve) => {
       const timeout = setTimeout(() => {
         this.writeTransport(session, '\x03');

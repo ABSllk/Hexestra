@@ -120,6 +120,32 @@ describe('ShellService local session and Agent lease', () => {
     expect(service.listAudits('project-1')).toMatchObject([{ id: result.id, outcome: 'completed' }]);
   });
 
+  it('completes an auto-flavor command after output becomes idle without sending Ctrl+C', async () => {
+    vi.useFakeTimers();
+    try {
+      const profile = service.saveProfile('project-1', {
+        name: 'Auto shell', kind: 'local', assetRole: 'target', shellFlavor: 'auto',
+      });
+      const session = await service.connect('project-1', profile.id, 1, 'terminal-auto');
+      const resultPromise = service.executeCommand({
+        projectId: 'project-1', sessionId: session.id,
+        command: 'echo hello', timeoutMs: 5_000,
+      }, 'default');
+
+      expect(pty.write).toHaveBeenLastCalledWith('echo hello\r');
+      pty.emitData('hello\r\n');
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await expect(resultPromise).resolves.toMatchObject({
+        outcome: 'completed_unverified', output: 'hello\r\n', exitCode: undefined,
+      });
+      expect(pty.write).not.toHaveBeenCalledWith('\x03');
+      expect(service.listSessions('project-1')[0]).toMatchObject({ state: 'ready' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('returns an actionable WebShell profile error instead of a generic rejection', () => {
     expect(() => service.saveProfile('project-1', {
       name: 'Invalid WebShell',

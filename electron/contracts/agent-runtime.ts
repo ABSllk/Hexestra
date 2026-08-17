@@ -79,9 +79,12 @@ export interface AgentInteractionHandler {
 }
 
 export interface AgentRunInput {
+  /** Stable application conversation identity used to retain a live backend runtime. */
+  conversationId: string;
   prompt: string;
   command?: string;
   systemInstructions: string;
+  dynamicSystemContext?: string;
   signal: AbortSignal;
   attachments: AgentAttachment[];
   cwd: string;
@@ -151,6 +154,7 @@ export interface AgentAdapter {
     input: AgentRunInput,
     interactions: AgentInteractionHandler,
   ): AsyncIterable<AgentRunEvent>;
+  disposeConversation?(projectId: string | undefined, conversationId: string): Promise<void> | void;
 }
 
 export class AgentBackendError extends Error {

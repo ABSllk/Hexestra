@@ -80,39 +80,49 @@ export function buildAgentSdkPrompt(
   command?: string,
 ): string | AsyncIterable<SDKUserMessage> {
   if (command) return command;
-  const embedded = attachments.filter((attachment) => (
-    (attachment.kind === 'image' || attachment.kind === 'pdf') && attachment.base64
-  ));
+  const embedded = embeddedAttachments(attachments);
   if (embedded.length === 0) return prompt;
 
   return (async function* messageStream() {
-    const content: SDKUserMessage['message']['content'] = [
-      { type: 'text', text: prompt },
-      ...embedded.map((attachment) => attachment.kind === 'image'
-        ? {
-            type: 'image' as const,
-            source: {
-              type: 'base64' as const,
-              media_type: imageMediaType(attachment.mimeType),
-              data: attachment.base64!,
-            },
-          }
-        : {
-            type: 'document' as const,
-            source: {
-              type: 'base64' as const,
-              media_type: 'application/pdf' as const,
-              data: attachment.base64!,
-            },
-            title: attachment.name,
-          }),
-    ];
-    yield {
-      type: 'user',
-      message: { role: 'user', content },
-      parent_tool_use_id: null,
-    };
+    yield buildAgentSdkUserMessage(prompt, attachments);
   })();
+}
+
+/** Build one SDK message for a long-lived streaming-input query. */
+export function buildAgentSdkUserMessage(
+  prompt: string,
+  attachments: AgentAttachment[] = [],
+  command?: string,
+): SDKUserMessage {
+  const embedded = command ? [] : embeddedAttachments(attachments);
+  const content: SDKUserMessage['message']['content'] = embedded.length === 0
+    ? command ?? prompt
+    : [
+        { type: 'text', text: prompt },
+        ...embedded.map((attachment) => attachment.kind === 'image'
+          ? {
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: imageMediaType(attachment.mimeType),
+                data: attachment.base64!,
+              },
+            }
+          : {
+              type: 'document' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: 'application/pdf' as const,
+                data: attachment.base64!,
+              },
+              title: attachment.name,
+            }),
+      ];
+  return {
+    type: 'user',
+    message: { role: 'user', content },
+    parent_tool_use_id: null,
+  };
 }
 
 export function attachmentPromptContext(attachments: AgentAttachment[] = []) {
@@ -144,4 +154,10 @@ function textMime(extension: string) {
 function imageMediaType(value: string): 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' {
   if (value === 'image/png' || value === 'image/gif' || value === 'image/webp') return value;
   return 'image/jpeg';
+}
+
+function embeddedAttachments(attachments: AgentAttachment[]) {
+  return attachments.filter((attachment) => (
+    (attachment.kind === 'image' || attachment.kind === 'pdf') && attachment.base64
+  ));
 }

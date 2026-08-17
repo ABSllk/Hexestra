@@ -4,7 +4,12 @@ import os from 'os';
 import path from 'path';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { afterEach, describe, expect, it } from 'vitest';
-import { attachmentPromptContext, buildAgentSdkPrompt, readAgentAttachment } from '@electron/services/agent-attachment';
+import {
+  attachmentPromptContext,
+  buildAgentSdkPrompt,
+  buildAgentSdkUserMessage,
+  readAgentAttachment,
+} from '@electron/services/agent-attachment';
 
 describe('Agent attachments', () => {
   const roots: string[] = [];
@@ -43,5 +48,15 @@ describe('Agent attachments', () => {
     const prompt = buildAgentSdkPrompt('wrapped workspace prompt', [], '/compact');
 
     expect(prompt).toBe('/compact');
+  });
+
+  it('builds one user message for a persistent streaming query', () => {
+    const message = buildAgentSdkUserMessage('wrapped workspace prompt', [], '/compact');
+
+    expect(message).toMatchObject({
+      type: 'user',
+      parent_tool_use_id: null,
+      message: { role: 'user', content: '/compact' },
+    });
   });
 });
