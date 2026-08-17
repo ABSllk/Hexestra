@@ -10,6 +10,7 @@ import { isManagedRecordKind } from '../contracts/records';
 import type { SubagentRun } from '../agent-subagent-contract';
 import type {
   AgentActivity,
+  AgentInputSource,
   AgentBackendId,
   AgentBackendRuntimeState,
   AgentPermissionMode,
@@ -30,7 +31,8 @@ export interface PersistedChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool_request';
   content: string;
   timestamp: string;
-  status: 'sending' | 'streaming' | 'complete' | 'error' | 'interrupted';
+  status: 'queued' | 'sending' | 'streaming' | 'complete' | 'error' | 'interrupted';
+  source?: AgentInputSource;
   activities?: PersistedAgentActivity[];
   hiddenActivityCount?: number;
   backendMessageId?: string;
@@ -394,9 +396,10 @@ function normalizeSubagentActivity(value: unknown) {
 function normalizeMessage(value: unknown): PersistedChatMessage[] {
   if (!isRecord(value)) return [];
   if (typeof value.id !== 'string' || !isMessageRole(value.role)) return [];
-  const status = isMessageStatus(value.status) && value.status !== 'sending' && value.status !== 'streaming'
-    ? value.status
-    : 'complete';
+  const persistedStatus = isMessageStatus(value.status) ? value.status : 'complete';
+  const status = persistedStatus === 'queued' || persistedStatus === 'sending' || persistedStatus === 'streaming'
+    ? 'interrupted'
+    : persistedStatus;
   const activities = Array.isArray(value.activities)
     ? value.activities.flatMap(normalizeActivity)
     : undefined;
@@ -414,6 +417,7 @@ function normalizeMessage(value: unknown): PersistedChatMessage[] {
     content: boundedString(value.content),
     timestamp: typeof value.timestamp === 'string' ? value.timestamp : new Date(0).toISOString(),
     status,
+    ...(isMessageSource(value.source) ? { source: value.source } : {}),
     backendMessageId: optionalIdentifier(value.backendMessageId ?? value.sdkMessageId),
     ...(activities?.length ? { activities } : {}),
     ...(attachments?.length ? { attachments } : {}),
@@ -645,7 +649,11 @@ function isMessageRole(value: unknown): value is PersistedChatMessage['role'] {
 }
 
 function isMessageStatus(value: unknown): value is PersistedChatMessage['status'] {
-  return value === 'sending' || value === 'streaming' || value === 'complete' || value === 'error' || value === 'interrupted';
+  return value === 'queued' || value === 'sending' || value === 'streaming' || value === 'complete' || value === 'error' || value === 'interrupted';
+}
+
+function isMessageSource(value: unknown): value is AgentInputSource {
+  return value === 'operator' || value === 'scheduled' || value === 'runtime';
 }
 
 function isActivityKind(value: unknown): value is PersistedAgentActivity['kind'] {

@@ -1,5 +1,6 @@
 import type { Rectangle } from 'electron';
 import type { BrowserBounds, BrowserIdentity } from '../contracts/browser';
+import { isProjectRuntimePinned } from './project-runtime-lease';
 
 const MAX_BROWSER_DIMENSION = 16_384;
 
@@ -36,7 +37,9 @@ export function shouldDestroyBrowserRuntime(
   ownerId: number,
   projectId: string | null,
   retainedTabIds: ReadonlySet<string>,
+  pinnedProjectIds: ReadonlySet<string> = new Set(),
 ) {
+  if (pinnedProjectIds.has(runtime.projectId) || isProjectRuntimePinned(runtime.projectId)) return false;
   return runtime.ownerId === ownerId
     && (runtime.projectId !== projectId || !retainedTabIds.has(runtime.tabId));
 }

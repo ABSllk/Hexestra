@@ -4,6 +4,7 @@ import type { AgentAttachmentMetadata } from '../../electron/agent-attachment-co
 import type { AgentContextRef } from '../../electron/agent-context-contract';
 import type {
   AgentActivity,
+  AgentInputSource,
   AgentPermissionMode,
   AgentState,
   AgentStatus,
@@ -40,13 +41,14 @@ export type {
 } from '../../electron/contracts/agent-runtime';
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool_request';
-export type MessageStatus = 'sending' | 'streaming' | 'complete' | 'error' | 'interrupted';
+export type MessageStatus = 'queued' | 'sending' | 'streaming' | 'complete' | 'error' | 'interrupted';
 export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
   timestamp: string;
   status: MessageStatus;
+  source?: AgentInputSource;
   activities?: AgentActivity[];
   hiddenActivityCount?: number;
   hasToolRequest?: boolean;

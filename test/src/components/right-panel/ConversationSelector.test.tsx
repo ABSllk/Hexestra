@@ -53,11 +53,11 @@ describe('ConversationSelector', () => {
     expect(newConversation).toHaveBeenCalledOnce();
   });
 
-  it('disables conversation changes while Claude is running', () => {
+  it('keeps conversation changes available while Claude is running', () => {
     useChatStore.setState({ isProcessing: true });
     render(<ConversationSelector />);
 
-    expect(screen.getByRole('combobox', { name: 'Select conversation' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'New conversation' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Select conversation' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'New conversation' })).not.toBeDisabled();
   });
 });

@@ -284,7 +284,9 @@ export class AgentHistoryRepository {
     const prefix = hasForkMarker
       ? (cutoffIndex >= 0 ? inherited.slice(0, cutoffIndex + 1) : [])
       : inherited;
-    const own = this.readMessageRecords(branchId).map((record) => record.message);
+    const ownById = new Map<string, PersistedChatMessage>();
+    this.readMessageRecords(branchId).forEach((record) => ownById.set(record.id, record.message));
+    const own = [...ownById.values()];
     const activities = this.readActivities(branchId);
     return [...prefix, ...own].map((message) => {
       const messageActivities = activities.get(message.id) ?? [];
@@ -333,6 +335,10 @@ export class AgentHistoryRepository {
           .map((record) => record.activity.id),
       );
       this.appendActivities(branchId, message.id, (message.activities ?? []).filter((activity) => !existingActivityIds.has(activity.id)));
+      const base = { ...message } as PersistedChatMessage;
+      delete base.activities;
+      const records = this.readMessageRecords(branchId);
+      fs.appendFileSync(this.files(branchId).messages, `${JSON.stringify({ v: AGENT_HISTORY_FORMAT_VERSION, seq: records.length + 1, id: message.id, message: base, activityCount: message.activities?.length ?? existing.activityCount })}\n`, 'utf8');
       this.rebuildIndex(branchId);
       this.statsCache.clear();
       return;
@@ -410,7 +416,11 @@ export class AgentHistoryRepository {
       ? this.getMessages(branchId).find((message) => message.id === live.message?.id)
       : undefined;
     const message = live.message
-      ? persistedMessage ?? { ...live.message, status: 'interrupted' as const }
+      ? persistedMessage
+        ? ['queued', 'sending', 'streaming'].includes(persistedMessage.status)
+          ? { ...persistedMessage, status: 'interrupted' as const }
+          : persistedMessage
+        : { ...live.message, status: 'interrupted' as const }
       : undefined;
     if (message && !persistedMessage) this.appendMessage(branchId, message);
 
@@ -433,6 +443,16 @@ export class AgentHistoryRepository {
 
     this.clearLive(branchId);
     return { ...live, ...(message ? { message } : {}), subagentRuns };
+  }
+
+  /** Convert queue/stream records left by an application exit into a durable interruption. */
+  recoverAbandonedMessages(branchId: string) {
+    const messages = this.getMessages(branchId);
+    for (const message of messages) {
+      if (message.status !== 'queued' && message.status !== 'sending' && message.status !== 'streaming') continue;
+      this.appendMessage(branchId, { ...message, status: 'interrupted' });
+    }
+    return this.getMessages(branchId);
   }
 
   clearLive(branchId: string) {

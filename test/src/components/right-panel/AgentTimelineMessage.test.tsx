@@ -172,7 +172,7 @@ describe('AgentTimelineMessage', () => {
     expect(screen.getByText('Explore')).toBeInTheDocument();
     expect(screen.getByText(/2 tools/)).toBeInTheDocument();
     expect(screen.getByText(/128 tokens/)).toBeInTheDocument();
-    screen.getByRole('button', { name: /open explore output/i }).click();
+    screen.getByRole('button', { name: /open inspect response headers output/i }).click();
     expect(onOpen).toHaveBeenCalledWith('run-1');
   });
 });

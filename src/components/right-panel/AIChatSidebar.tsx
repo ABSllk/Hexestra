@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EmptyState, Icon, IconButton, PanelHeader } from '@/components/shared';
 import { useChatStore, useSessionStore, useTabStore } from '@/stores';
 import { openSettingsTab } from '@/stores/useTabStore';
@@ -23,6 +23,10 @@ export function AIChatSidebar() {
   const selectedSubagentRunId = useChatStore((s) => s.selectedSubagentRunId);
   const subagentRuns = useChatStore((s) => s.subagentRuns);
   const closeSubagent = useChatStore((s) => s.closeSubagent);
+  const attentionItems = useChatStore((s) => s.attentionItems);
+  const openAttention = useChatStore((s) => s.openAttention);
+  const clearAttention = useChatStore((s) => s.clearAttention);
+  const [inboxOpen, setInboxOpen] = useState(false);
   const tabs = useTabStore((s) => s.tabs);
   const activeTabId = useTabStore((s) => s.activeTabId);
   const findings = useSessionStore((s) => s.findings);
@@ -96,7 +100,33 @@ export function AIChatSidebar() {
             </span>
           )}
         </span>}
-        actions={<IconButton name="settings" label={t('agent.openSettings')} size={14} onClick={() => openSettingsTab('connection')} />}
+        actions={<div className="flex items-center gap-1">
+          <div className="relative">
+            <IconButton name="activity" label={t('agent.inbox')} size={14} onClick={() => setInboxOpen((open) => !open)} />
+            {attentionItems.some((item) => !item.read) && <span className="pointer-events-none absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-status-warning" />}
+            {inboxOpen && (
+              <div className="ui-popover absolute right-0 top-full z-40 mt-2 w-72 p-1.5">
+                <div className="px-2 py-1 text-[11px] font-semibold text-text-primary">{t('agent.inbox')}</div>
+                {attentionItems.length === 0 ? (
+                  <div className="px-2 py-3 text-[11px] text-text-muted">{t('agent.inboxEmpty')}</div>
+                ) : attentionItems.slice().reverse().map((item) => (
+                  <div key={item.id} className="flex items-start gap-2 rounded px-2 py-2 text-left hover:bg-raised/60">
+                    <button className="min-w-0 flex-1 text-left" onClick={() => { setInboxOpen(false); void openAttention(item); }}>
+                      <span className="block truncate text-[11px] font-medium text-text-primary">{item.title}</span>
+                      <span className="block truncate text-[10px] text-text-muted">{item.detail || `${item.projectId} · ${item.branchId}`}</span>
+                    </button>
+                    {!item.kind.startsWith('waiting_') && (
+                      <button aria-label={t('common.clear')} className="shrink-0 rounded p-1 text-text-muted hover:text-text-primary" onClick={() => void clearAttention(item.id)}>
+                        <Icon name="close" size={10} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <IconButton name="settings" label={t('agent.openSettings')} size={14} onClick={() => openSettingsTab('connection')} />
+        </div>}
       />
 
       <ConversationSelector />

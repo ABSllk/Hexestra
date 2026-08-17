@@ -16,9 +16,15 @@ import {
   type AgentBackendCapabilities,
   type AgentBackendStatus,
   type AgentCommandDiscoveryInput,
+  type AgentConversationHandle,
+  type AgentConversationOpenInput,
   type AgentInteractionHandler,
+  type AgentInterruptReceipt,
+  type AgentQueuedInput,
   type AgentRunEvent,
   type AgentRunInput,
+  type AgentRuntimeSnapshot,
+  type AgentInputSource,
 } from '../../contracts/agent-runtime';
 import {
   normalizeAgentSlashCommands,
@@ -85,9 +91,15 @@ const capabilities: AgentBackendCapabilities = {
   tools: true,
   interactiveQuestions: true,
   slashCommands: true,
+  queuedInput: true,
+  scheduledWakeups: true,
 };
 
 interface ClaudeLiveTurn {
+  inputId: string;
+  source: AgentInputSource;
+  projectId?: string;
+  branchId: string;
   output: AsyncPushQueue<AgentRunEvent>;
   interactions: AgentInteractionHandler;
   tools: AgentToolDefinition[];
@@ -108,6 +120,12 @@ interface ClaudeLiveRuntime {
   input: AsyncPushQueue<SDKUserMessage>;
   abortController: AbortController;
   activeTurn: ClaudeLiveTurn | null;
+  baseInput: AgentRunInput;
+  interactions: AgentInteractionHandler | null;
+  lastPromptSource?: 'user' | 'sdk' | 'system' | 'loop_wakeup' | 'schedule_wakeup';
+  pendingInputs: Map<string, AgentQueuedInput>;
+  pendingCrons: Array<{ id: string; schedule: string; recurring: boolean; prompt: string }>;
+  subscribers: Set<AsyncPushQueue<AgentRunEvent>>;
   sessionId: string | null;
   model: string | null;
   commands: AgentSlashCommandDescriptor[];
@@ -130,7 +148,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
   private lastError: string | null = null;
   private readonly commandCache = new Map<string, AgentSlashCommandDescriptor[]>();
   private readonly commandRequests = new Map<string, Promise<AgentSlashCommandDescriptor[]>>();
-  private liveRuntime: ClaudeLiveRuntime | null = null;
+  private readonly liveRuntimes = new Map<string, ClaudeLiveRuntime>();
 
   async initialize(projectId?: string) {
     const settings = agentSettingsService.getClaudeSettings();
@@ -167,9 +185,32 @@ export class ClaudeAgentAdapter implements AgentAdapter {
   }
 
   async disposeConversation(projectId: string | undefined, conversationId: string) {
-    const runtime = this.liveRuntime;
-    if (!runtime || !runtime.key.startsWith(`${projectId ?? ''}\u0000${conversationId}\u0000`)) return;
-    await this.disposeLiveRuntime(runtime);
+    const prefix = `${projectId ?? ''}\u0000${conversationId}\u0000`;
+    const runtimes = [...this.liveRuntimes.values()].filter((runtime) => runtime.key.startsWith(prefix));
+    for (const runtime of runtimes) await this.disposeLiveRuntime(runtime);
+  }
+
+  hasLiveRuntimeForProject(projectId: string) {
+    return [...this.liveRuntimes.values()].some((runtime) => runtime.baseInput.projectId === projectId && !runtime.closing);
+  }
+
+  hasLiveRuntimeForConversation(projectId: string, branchId: string) {
+    return [...this.liveRuntimes.values()].some((runtime) => runtime.baseInput.projectId === projectId
+      && runtime.baseInput.conversationId === branchId
+      && !runtime.closing);
+  }
+
+  hasPinnedRuntimeForProject(projectId: string) {
+    return [...this.liveRuntimes.values()].some((runtime) => runtime.baseInput.projectId === projectId
+      && !runtime.closing
+      && (Boolean(runtime.activeTurn) || runtime.pendingInputs.size > 0 || runtime.pendingCrons.length > 0));
+  }
+
+  hasPinnedRuntimeForConversation(projectId: string, branchId: string) {
+    return [...this.liveRuntimes.values()].some((runtime) => runtime.baseInput.projectId === projectId
+      && runtime.baseInput.conversationId === branchId
+      && !runtime.closing
+      && (Boolean(runtime.activeTurn) || runtime.pendingInputs.size > 0 || runtime.pendingCrons.length > 0));
   }
 
   async listCommands(input: AgentCommandDiscoveryInput) {
@@ -431,11 +472,19 @@ export class ClaudeAgentAdapter implements AgentAdapter {
     }
 
     const runtime = await this.ensureLiveRuntime(input, settings, runtimeResolution);
+    runtime.interactions = interactions;
+    runtime.baseInput = { ...input };
     if (runtime.activeTurn) {
       throw new AgentBackendError('Claude is already processing a request', this.id, 'runtime');
     }
     const turn: ClaudeLiveTurn = {
-      output: new AsyncPushQueue<AgentRunEvent>(),
+      inputId: input.inputId ?? crypto.randomUUID(),
+      source: input.source ?? 'operator',
+      projectId: input.projectId,
+      branchId: input.conversationId,
+      output: new AsyncPushQueue<AgentRunEvent>((event) => {
+        for (const subscriber of runtime.subscribers) subscriber.push(event);
+      }),
       interactions,
       tools: input.tools,
       dynamicSystemContext: input.dynamicSystemContext,
@@ -453,6 +502,8 @@ export class ClaudeAgentAdapter implements AgentAdapter {
         type: 'session',
         sessionId: runtime.sessionId,
         model: runtime.model,
+        projectId: input.projectId,
+        branchId: input.conversationId,
       });
       turn.sessionReported = true;
     }
@@ -479,9 +530,32 @@ export class ClaudeAgentAdapter implements AgentAdapter {
         }
       }
       if (runtime.commandsLoaded) {
-        turn.output.push({ type: 'commands_changed', commands: runtime.commands });
+        turn.output.push({ type: 'commands_changed', projectId: input.projectId, branchId: input.conversationId, commands: runtime.commands });
       }
-      runtime.input.push(buildAgentSdkUserMessage(input.prompt, input.attachments, input.command));
+      const queuedMessage = buildAgentSdkUserMessage(input.prompt, input.attachments, input.command);
+      runtime.pendingInputs.delete(turn.inputId);
+      runtime.input.push({
+        ...queuedMessage,
+        uuid: turn.inputId as SDKUserMessage['uuid'],
+      });
+      turn.output.push({
+        type: 'input_started',
+        projectId: input.projectId,
+        branchId: input.conversationId,
+        inputId: turn.inputId,
+        source: turn.source,
+        prompt: input.prompt,
+        queuedAt: input.queuedAt,
+        startedAt: new Date().toISOString(),
+      });
+      turn.output.push({
+        type: 'turn_started',
+        projectId: input.projectId,
+        branchId: input.conversationId,
+        inputId: turn.inputId,
+        source: turn.source,
+        startedAt: new Date().toISOString(),
+      });
       for await (const event of turn.output) {
         if (input.signal.aborted && event.type === 'turn_completed') {
           throw new AgentBackendError('Claude request was cancelled', this.id, 'cancelled');
@@ -515,6 +589,28 @@ export class ClaudeAgentAdapter implements AgentAdapter {
     }
   }
 
+  async openConversation(
+    input: AgentConversationOpenInput,
+    interactions: AgentInteractionHandler,
+  ): Promise<AgentConversationHandle> {
+    const available = await this.initialize(input.projectId);
+    if (!available || !this.sdk) {
+      throw new AgentBackendError(this.lastError ?? 'Claude Agent SDK is unavailable', this.id, 'unavailable');
+    }
+    const settings = agentSettingsService.getClaudeSettings();
+    const runtimeResolution = this.runtime;
+    if (!runtimeResolution?.executablePath) {
+      throw new AgentBackendError(this.lastError ?? 'Claude Code is not installed', this.id, 'unavailable');
+    }
+    const runtime = await this.ensureLiveRuntime({ ...input, signal: input.signal ?? new AbortController().signal }, settings, runtimeResolution);
+    runtime.interactions = interactions;
+    runtime.baseInput = { ...runtime.baseInput, ...input, signal: input.signal ?? runtime.baseInput.signal };
+    const events = new AsyncPushQueue<AgentRunEvent>();
+    runtime.subscribers.add(events);
+    if (runtime.sessionId) events.push({ type: 'session', sessionId: runtime.sessionId, model: runtime.model, projectId: input.projectId, branchId: input.conversationId });
+    return new ClaudeConversationHandle(this, runtime, events, interactions);
+  }
+
   private async ensureLiveRuntime(
     input: AgentRunInput,
     settings: ReturnType<typeof agentSettingsService.getClaudeSettings>,
@@ -524,8 +620,8 @@ export class ClaudeAgentAdapter implements AgentAdapter {
       throw new AgentBackendError('Claude Agent SDK is unavailable', this.id, 'unavailable');
     }
     const key = liveRuntimeKey(input, this.fingerprint());
-    if (this.liveRuntime?.key === key && !this.liveRuntime.closing) return this.liveRuntime;
-    if (this.liveRuntime) await this.disposeLiveRuntime(this.liveRuntime);
+    const existing = this.liveRuntimes.get(key);
+    if (existing && !existing.closing) return existing;
 
     const runtimeSettings = { ...settings, claudeExecutable: runtimeResolution.executablePath };
     const isWsl = settings.executionMode === 'wsl';
@@ -547,8 +643,27 @@ export class ClaudeAgentAdapter implements AgentAdapter {
           : undefined,
         canUseTool: this.createLivePermissionHandler(() => live?.activeTurn ?? null),
         hooks: {
-          PreToolUse: [{ hooks: [createManagedRecordGuard()] }],
-          UserPromptSubmit: [{ hooks: [createDynamicContextHook(() => live?.activeTurn ?? null)] }],
+          PreToolUse: [{ hooks: [createManagedRecordGuard(), createSessionCronScopeGuard()] }],
+          UserPromptSubmit: [{ hooks: [createDynamicContextHook(() => live?.activeTurn ?? null, (source) => { if (live) live.lastPromptSource = source; }, () => {
+            const provider = live?.baseInput.dynamicSystemContextProvider;
+            return provider ? provider() : live?.baseInput.dynamicSystemContext;
+          })] }],
+          Stop: [{ hooks: [createSessionCronHook((crons) => {
+            if (live) {
+              live.pendingCrons = crons;
+              for (const subscriber of live.subscribers) {
+                subscriber.push({ type: 'schedules_changed', projectId: live.baseInput.projectId, branchId: live.baseInput.conversationId, crons });
+                subscriber.push({ type: 'runtime_state', projectId: live.baseInput.projectId, branchId: live.baseInput.conversationId, snapshot: {
+                  projectId: live.baseInput.projectId,
+                  branchId: live.baseInput.conversationId,
+                  active: Boolean(live.activeTurn),
+                  pendingInputs: live.pendingInputs.size,
+                  pendingCrons: crons.length,
+                  interactionPending: false,
+                } });
+              }
+            }
+          })] }],
         },
         includePartialMessages: true,
         forwardSubagentText: true,
@@ -593,6 +708,12 @@ export class ClaudeAgentAdapter implements AgentAdapter {
       input: inputQueue,
       abortController,
       activeTurn: null,
+      baseInput: { ...input },
+      interactions: null,
+      lastPromptSource: undefined,
+      pendingInputs: new Map(),
+      pendingCrons: [],
+      subscribers: new Set(),
       sessionId: null,
       model: null,
       commands: [],
@@ -600,7 +721,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
       closing: false,
       reader: Promise.resolve(),
     };
-    this.liveRuntime = live;
+    this.liveRuntimes.set(key, live);
     live.reader = this.consumeLiveRuntime(live, input);
     return live;
   }
@@ -615,7 +736,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
             message.commands,
           );
           runtime.commandsLoaded = true;
-          runtime.activeTurn?.output.push({ type: 'commands_changed', commands: runtime.commands });
+          runtime.activeTurn?.output.push({ type: 'commands_changed', projectId: runtime.baseInput.projectId, branchId: runtime.baseInput.conversationId, commands: runtime.commands });
         }
         if (message.type === 'system' && message.subtype === 'init') {
           runtime.sessionId = message.session_id;
@@ -626,8 +747,51 @@ export class ClaudeAgentAdapter implements AgentAdapter {
               type: 'session',
               sessionId: message.session_id,
               model: message.model,
+              projectId: turn.projectId,
+              branchId: turn.branchId,
             });
             turn.sessionReported = true;
+          }
+        }
+        if (message.type === 'user') {
+          let queuedInput: AgentQueuedInput | undefined;
+          if (message.uuid) {
+            queuedInput = runtime.pendingInputs.get(message.uuid);
+            if (queuedInput) {
+              runtime.pendingInputs.delete(message.uuid);
+            }
+          }
+          if (!runtime.activeTurn && (queuedInput || message.isSynthetic === true || isScheduledPrompt(runtime))) {
+            const base = queuedInput?.input ?? runtime.baseInput;
+            const interactions = runtime.interactions;
+            if (interactions) {
+              const source = queuedInput?.source ?? 'scheduled';
+              const turn: ClaudeLiveTurn = {
+                inputId: queuedInput?.id ?? message.uuid ?? crypto.randomUUID(),
+                source,
+                projectId: base.projectId,
+                branchId: base.conversationId,
+                output: new AsyncPushQueue<AgentRunEvent>((event) => {
+                  for (const subscriber of runtime.subscribers) subscriber.push(event);
+                }),
+                interactions,
+                tools: base.tools,
+                // Scheduled wakeups refresh project/task state through the
+                // provider callback instead of reusing the stale turn envelope.
+                dynamicSystemContext: source === 'scheduled' ? undefined : base.dynamicSystemContext,
+                timeline: new AgentTimelineBuilder(`turn-${Date.now()}`),
+                subagentRegistry: new SubagentRegistry(`turn-${Date.now()}`),
+                projectionScheduler: new AgentStreamScheduler(),
+                mainProjectionDirty: false,
+                pendingSubagentRunIds: new Set<string>(),
+                sessionReported: false,
+                completed: false,
+              };
+              runtime.activeTurn = turn;
+              turn.output.push({ type: 'input_started', projectId: base.projectId, branchId: base.conversationId, inputId: turn.inputId, source, prompt: queuedInput?.prompt ?? extractSdkPrompt(message), queuedAt: queuedInput?.queuedAt, startedAt: new Date().toISOString() });
+              turn.output.push({ type: 'turn_started', projectId: base.projectId, branchId: base.conversationId, inputId: turn.inputId, source, startedAt: new Date().toISOString() });
+              if (runtime.sessionId) turn.output.push({ type: 'session', sessionId: runtime.sessionId, model: runtime.model, projectId: base.projectId, branchId: base.conversationId });
+            }
           }
         }
         const turn = runtime.activeTurn;
@@ -640,7 +804,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
       if (!runtime.closing) this.failLiveRuntime(runtime, error);
     } finally {
       runtime.input.end();
-      if (this.liveRuntime === runtime) this.liveRuntime = null;
+      if (this.liveRuntimes.get(runtime.key) === runtime) this.liveRuntimes.delete(runtime.key);
     }
   }
 
@@ -667,13 +831,16 @@ export class ClaudeAgentAdapter implements AgentAdapter {
       turn.mainProjectionDirty = false;
       turn.output.push({
         type: 'turn_snapshot',
+        projectId: turn.projectId,
+        branchId: turn.branchId,
+        inputId: turn.inputId,
         content: turn.timeline.getText(),
         activities: turn.timeline.snapshot(),
       });
     }
     for (const runId of turn.pendingSubagentRunIds) {
       const run = turn.subagentRegistry.getRun(runId);
-      if (run) turn.output.push({ type: 'subagent_snapshot', run });
+      if (run) turn.output.push({ type: 'subagent_snapshot', projectId: turn.projectId, branchId: turn.branchId, run });
     }
     turn.pendingSubagentRunIds.clear();
   }
@@ -701,6 +868,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
       this.cancelAndFlushTurnProjection(turn);
       turn.completed = true;
       runtime.activeTurn = null;
+      this.broadcastRuntimeState(runtime);
       turn.output.fail(error);
       return;
     }
@@ -712,15 +880,39 @@ export class ClaudeAgentAdapter implements AgentAdapter {
     const content = turn.timeline.getText().trim() || '(Claude returned no text response)';
     turn.output.push({
       type: 'turn_completed',
+      projectId: turn.projectId,
+      branchId: turn.branchId,
+      inputId: turn.inputId,
+      source: turn.source,
       content,
       activities: turn.timeline.snapshot(),
       backendMessageId: turn.lastAssistantBackendMessageId,
     });
     turn.completed = true;
     runtime.activeTurn = null;
+    this.broadcastRuntimeState(runtime);
     turn.output.end();
     this.authenticated = true;
     this.lastError = null;
+  }
+
+  private broadcastRuntimeState(runtime: ClaudeLiveRuntime) {
+    const snapshot: AgentRuntimeSnapshot = {
+      projectId: runtime.baseInput.projectId,
+      branchId: runtime.baseInput.conversationId,
+      active: Boolean(runtime.activeTurn),
+      pendingInputs: runtime.pendingInputs.size,
+      pendingCrons: runtime.pendingCrons.length,
+      interactionPending: false,
+    };
+    for (const subscriber of runtime.subscribers) {
+      subscriber.push({
+        type: 'runtime_state',
+        projectId: runtime.baseInput.projectId,
+        branchId: runtime.baseInput.conversationId,
+        snapshot,
+      });
+    }
   }
 
   private finishTurnSubagents(turn: ClaudeLiveTurn, status: 'completed' | 'failed' | 'stopped') {
@@ -761,7 +953,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
   private async disposeLiveRuntime(runtime: ClaudeLiveRuntime) {
     if (runtime.closing) {
       await Promise.race([runtime.reader.catch(() => undefined), wait(3_000)]);
-      if (this.liveRuntime === runtime) this.liveRuntime = null;
+      if (this.liveRuntimes.get(runtime.key) === runtime) this.liveRuntimes.delete(runtime.key);
       return;
     }
     runtime.closing = true;
@@ -772,7 +964,33 @@ export class ClaudeAgentAdapter implements AgentAdapter {
       this.failLiveRuntime(runtime, new AgentBackendError('Claude conversation runtime was closed', this.id, 'cancelled'));
     }
     await Promise.race([runtime.reader.catch(() => undefined), wait(3_000)]);
-    if (this.liveRuntime === runtime) this.liveRuntime = null;
+    if (this.liveRuntimes.get(runtime.key) === runtime) this.liveRuntimes.delete(runtime.key);
+  }
+
+  private enqueueLiveInput(runtime: ClaudeLiveRuntime, input: AgentQueuedInput) {
+    runtime.pendingInputs.set(input.id, input);
+    runtime.input.push({
+      ...buildAgentSdkUserMessage(input.prompt, input.input.attachments, input.command),
+      uuid: input.id as SDKUserMessage['uuid'],
+    });
+  }
+
+  enqueueLiveInputForHandle(runtime: ClaudeLiveRuntime, input: AgentQueuedInput) {
+    this.enqueueLiveInput(runtime, input);
+  }
+
+  private async interruptLiveRuntime(runtime: ClaudeLiveRuntime): Promise<AgentInterruptReceipt> {
+    const receipt = await runtime.query.interrupt();
+    const stillQueued = receipt?.still_queued ?? [...runtime.pendingInputs.keys()];
+    return { stillQueued };
+  }
+
+  interruptLiveRuntimeForHandle(runtime: ClaudeLiveRuntime) {
+    return this.interruptLiveRuntime(runtime);
+  }
+
+  disposeConversationRuntimeForHandle(runtime: ClaudeLiveRuntime) {
+    return this.disposeLiveRuntime(runtime);
   }
 
   private createLivePermissionHandler(
@@ -1259,10 +1477,16 @@ function liveRuntimeKey(input: AgentRunInput, fingerprint: string) {
   ].join('\u0000');
 }
 
-function createDynamicContextHook(activeTurn: () => ClaudeLiveTurn | null): HookCallback {
+function createDynamicContextHook(
+  activeTurn: () => ClaudeLiveTurn | null,
+  onPrompt?: (source: 'user' | 'sdk' | 'system' | 'loop_wakeup' | 'schedule_wakeup' | undefined) => void,
+  fallbackContext?: () => Promise<string | undefined> | string | undefined,
+): HookCallback {
   return async (input) => {
     if (input.hook_event_name !== 'UserPromptSubmit') return {};
-    const context = activeTurn()?.dynamicSystemContext?.trim();
+    onPrompt?.(input.source);
+    const fallback = fallbackContext ? await fallbackContext() : undefined;
+    const context = activeTurn()?.dynamicSystemContext?.trim() ?? fallback?.trim();
     if (!context) return {};
     return {
       hookSpecificOutput: {
@@ -1271,6 +1495,32 @@ function createDynamicContextHook(activeTurn: () => ClaudeLiveTurn | null): Hook
       },
     };
   };
+}
+
+function createSessionCronHook(
+  onCrons: (crons: Array<{ id: string; schedule: string; recurring: boolean; prompt: string }>) => void,
+): HookCallback {
+  return async (input) => {
+    if (input.hook_event_name !== 'Stop') return {};
+    onCrons(input.session_crons ?? []);
+    return {};
+  };
+}
+
+function isScheduledPrompt(runtime: ClaudeLiveRuntime) {
+  return runtime.lastPromptSource === 'schedule_wakeup'
+    || runtime.lastPromptSource === 'loop_wakeup'
+    || (runtime.pendingCrons.length > 0 && runtime.lastPromptSource !== 'user');
+}
+
+function extractSdkPrompt(message: SDKUserMessage) {
+  const content = message.message?.content;
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.flatMap((block) => {
+    if (typeof block === 'object' && block !== null && 'text' in block && typeof block.text === 'string') return [block.text];
+    return [];
+  }).join('\n');
 }
 
 function resolveClaudeToolRisk(toolName: string, definitions: AgentToolDefinition[]) {
@@ -1303,7 +1553,66 @@ function createManagedRecordGuard(): HookCallback {
   };
 }
 
+function createSessionCronScopeGuard(): HookCallback {
+  return async (input) => {
+    if (input.hook_event_name !== 'PreToolUse') return {};
+    const name = input.tool_name.replace(/^mcp__[^_]+__/, '');
+    if (name !== 'CronCreate') return { continue: true };
+    const value = input.tool_input as Record<string, unknown>;
+    if (value.recurring === true || value.durable === true) {
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: 'Hexestra supports one-shot session CronCreate only; recurring and durable schedules are unavailable.',
+        },
+      };
+    }
+    return { continue: true };
+  };
+}
+
+class ClaudeConversationHandle implements AgentConversationHandle {
+  constructor(
+    private readonly adapter: ClaudeAgentAdapter,
+    private readonly runtime: ClaudeLiveRuntime,
+    private readonly eventQueue: AsyncPushQueue<AgentRunEvent>,
+    private readonly interactions: AgentInteractionHandler,
+  ) {}
+
+  async enqueue(input: AgentQueuedInput) {
+    if (this.runtime.closing) throw new AgentBackendError('Claude conversation runtime is closed', CLAUDE_BACKEND_ID, 'runtime');
+    this.adapter.enqueueLiveInputForHandle(this.runtime, input);
+  }
+
+  events() {
+    return this.eventQueue;
+  }
+
+  async interrupt() {
+    return this.adapter.interruptLiveRuntimeForHandle(this.runtime);
+  }
+
+  snapshot(): AgentRuntimeSnapshot {
+    return {
+      projectId: this.runtime.baseInput.projectId,
+      branchId: this.runtime.baseInput.conversationId,
+      active: Boolean(this.runtime.activeTurn),
+      pendingInputs: this.runtime.pendingInputs.size,
+      pendingCrons: this.runtime.pendingCrons.length,
+      interactionPending: false,
+    };
+  }
+
+  async dispose() {
+    this.runtime.subscribers.delete(this.eventQueue);
+    this.eventQueue.end();
+    await this.adapter.disposeConversationRuntimeForHandle(this.runtime);
+  }
+}
+
 class AsyncPushQueue<T> implements AsyncIterableIterator<T> {
+  constructor(private readonly onPush?: (value: T) => void) {}
   private readonly values: T[] = [];
   private waiter: {
     resolve: (result: IteratorResult<T>) => void;
@@ -1314,6 +1623,7 @@ class AsyncPushQueue<T> implements AsyncIterableIterator<T> {
 
   push(value: T) {
     if (this.ended || this.failure !== undefined) return;
+    this.onPush?.(value);
     if (this.waiter) {
       const waiter = this.waiter;
       this.waiter = null;

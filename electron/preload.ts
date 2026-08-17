@@ -40,7 +40,7 @@ const INVOKE_CHANNELS = new Set([
   'agent:activate', 'agent:send', 'agent:branch', 'agent:branch:activate', 'agent:conversation:new',
   'agent:attachments:pick',
   'agent:approve-tool', 'agent:reject-tool', 'agent:answer-question', 'agent:cancel', 'agent:clear', 'agent:status',
-  'agent:history:page', 'agent:history:activities', 'agent:subagent:detail',
+  'agent:history:page', 'agent:history:activities', 'agent:subagent:detail', 'agent:attention:list', 'agent:attention:read', 'agent:attention:clear',
   'agent:commands:list',
   'agent:settings:get', 'agent:settings:update', 'agent:settings:reset', 'agent:settings:test',
   'claude:skills:list', 'claude:skills:read', 'claude:skills:save', 'claude:skills:toggle', 'claude:skills:delete',
@@ -68,7 +68,7 @@ const INVOKE_CHANNELS = new Set([
 const EVENT_CHANNELS = new Set([
   'app:windowId', 'app:window:maximized', 'terminal:output', 'terminal:exit',
   'tools:output', 'tools:complete',
-  'agent:message', 'agent:tool-request', 'agent:status', 'agent:subagent-update',
+  'agent:message', 'agent:tool-request', 'agent:status', 'agent:subagent-update', 'agent:attention', 'agent:attention:resolved',
   'session:data-changed',
   'browser:state-changed',
   'browser:context-action', 'browser:open-tab',

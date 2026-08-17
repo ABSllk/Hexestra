@@ -4,6 +4,7 @@ import type { AgentActivity, SubagentRun } from '@/types';
 import { useI18n } from '@/i18n';
 import { useChatStore } from '@/stores';
 import { AgentActivityList } from './AgentTimelineMessage';
+import { subagentStatusText, subagentTitle, useSubagentClock } from './subagent-presentation';
 
 export function SubagentDetailView({
   run,
@@ -30,7 +31,7 @@ export function SubagentDetailView({
   }, [onBack]);
 
   const status = statusPresentation(run.status, t);
-  const duration = formatDuration(run);
+  const duration = useSubagentClock(run);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas">
@@ -48,10 +49,11 @@ export function SubagentDetailView({
           <div className="flex items-center gap-1.5">
             <Icon name="bot" size={14} className="text-accent-blue" />
             <h2 className="truncate text-sm font-semibold text-text-primary">
-              {run.agentType || t('agent.subagent')}
+              {subagentTitle(run)}
             </h2>
           </div>
-          <p className="truncate text-[11px] text-text-muted">{run.description}</p>
+          {run.agentType && <p className="truncate text-[11px] uppercase tracking-wide text-accent-blue">{run.agentType}</p>}
+          <p className="truncate text-[11px] text-text-muted">{subagentStatusText(run, t('agent.subagentWaiting'))}</p>
         </div>
         <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] uppercase tracking-[0.1em] ${status.className}`}>
           {status.label}
@@ -130,13 +132,4 @@ function countTools(activities: SubagentRun['activities']) {
 
 function formatCount(value: number) {
   return value >= 1_000 ? `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}k` : String(value);
-}
-
-function formatDuration(run: SubagentRun) {
-  const started = Date.parse(run.startedAt);
-  const ended = run.endedAt ? Date.parse(run.endedAt) : Date.now();
-  if (!Number.isFinite(started) || !Number.isFinite(ended)) return '—';
-  const seconds = Math.max(0, Math.round((ended - started) / 1_000));
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }

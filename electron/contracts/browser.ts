@@ -40,6 +40,7 @@ export interface BrowserLayoutRequest extends BrowserIdentity {
 export interface BrowserReconcileRequest {
   projectId: string | null;
   tabIds: string[];
+  pinnedProjectIds?: string[];
 }
 
 export interface BrowserNavigateRequest extends BrowserIdentity {

@@ -5,6 +5,7 @@ import { Icon } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import type { AgentActivity, ChatMessage, SubagentRun } from '@/types';
 import { useI18n } from '@/i18n';
+import { subagentStatusText, subagentTitle, useSubagentClock } from './subagent-presentation';
 
 export const AgentTimelineMessage = memo(function AgentTimelineMessage({
   message,
@@ -215,6 +216,7 @@ function ToolActivity({
   compact?: boolean;
 }) {
   const { t } = useI18n();
+  const liveDuration = useSubagentClock(subagentRun);
   if (activity.subagentRunId && onOpenSubagent) {
     const run = subagentRun;
     const status = run?.status ?? (activity.status === 'running' ? 'running' : activity.status === 'error' ? 'failed' : 'completed');
@@ -228,31 +230,26 @@ function ToolActivity({
           compact && 'text-[11px]',
         )}
         onClick={() => onOpenSubagent(activity.subagentRunId!)}
-        aria-label={`Open ${activity.agentType || 'subagent'} output`}
+        aria-label={`Open ${run ? subagentTitle(run) : activity.agentType || 'subagent'} output`}
       >
         <div className="flex items-start gap-2">
           <Icon name="bot" size={14} className="mt-0.5 text-accent-blue" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="font-semibold text-text-primary">
-                {activity.agentType || t('agent.subagent')}
+                {run ? subagentTitle(run) : activity.subagentDescription || activity.agentType || t('agent.subagent')}
               </span>
-              <span className="text-[11px] uppercase tracking-[0.12em] text-accent-blue">{t('agent.subagentDelegated')}</span>
+              <span className="text-[11px] uppercase tracking-[0.12em] text-accent-blue">{run?.agentType || activity.agentType || t('agent.subagentDelegated')}</span>
             </div>
             <p className="mt-1 truncate text-[11px] text-text-secondary">
-              {activity.subagentDescription || activity.summary || t('agent.subagentWaiting')}
+              {run ? subagentStatusText(run, t('agent.subagentWaiting')) : activity.summary || t('agent.subagentWaiting')}
             </p>
             <p className="mt-1 text-[11px] text-text-muted">
               {formatSubagentStatus(status, t)}
-              {run && ` · ${formatDuration(run)}`}
+              {run && ` · ${liveDuration}`}
               {toolCount !== undefined && ` · ${toolCount} tools`}
               {tokens !== undefined && ` · ${tokens.toLocaleString()} tokens`}
             </p>
-            {(run?.summary || run?.lastToolName) && (
-              <p className="mt-1 truncate text-[11px] text-accent-blue">
-                {run.summary || run.lastToolName}
-              </p>
-            )}
           </div>
           <Icon name="chevron-right" size={12} className="mt-1 text-text-muted" />
         </div>
@@ -423,12 +420,4 @@ function formatSubagentStatus(status: SubagentRun['status'], t: ReturnType<typeo
   if (status === 'interrupted') return t('agent.subagentInterrupted');
   if (status === 'stopped' || status === 'killed') return t('agent.subagentStopped');
   return t('agent.subagentCompleted');
-}
-
-function formatDuration(run: SubagentRun) {
-  const end = run.endedAt ? Date.parse(run.endedAt) : Date.now();
-  const start = Date.parse(run.startedAt);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return '—';
-  const seconds = Math.max(0, Math.round((end - start) / 1_000));
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }

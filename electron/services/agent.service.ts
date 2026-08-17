@@ -1,5 +1,6 @@
 import { BrowserWindow, dialog, ipcMain, type WebContents } from 'electron';
 import fs from 'fs';
+import crypto from 'crypto';
 import { sessionService } from './session.service';
 import { shellService } from './shell.service';
 import {
@@ -61,6 +62,7 @@ import { KnowledgeRefineryService, refineryInvocation } from './knowledge-refine
 import { buildAgentDistillPrompt, resolveAgentInputCommand } from './agent-distill';
 import { AgentAdapterRegistry } from './agent-adapters/registry';
 import { AgentStreamScheduler } from './agent-stream-scheduler';
+import { acquireProjectRuntimeLease, releaseProjectRuntimeLease } from './project-runtime-lease';
 import {
   CLAUDE_BACKEND_ID,
   type AgentInteractionHandler,
@@ -70,6 +72,11 @@ import {
   type AgentStatus,
   type AgentBackendId,
   AgentBackendError,
+  type AgentAttentionItem,
+  type AgentAttentionInteraction,
+  type AgentConversationHandle,
+  type AgentRunEvent,
+  type AgentRunInput,
 } from '../contracts/agent-runtime';
 
 type AutonomyLevel = 'low' | 'medium' | 'high';
@@ -163,6 +170,14 @@ interface PendingPermission {
   agentId?: string;
   subagentRunId?: string;
   agentType?: string;
+  projectId?: string;
+  branchId?: string;
+}
+
+interface QueuedAgentRequest {
+  sender: WebContents;
+  request: AgentRequest;
+  messageId: string;
 }
 
 class AgentService {
@@ -185,15 +200,24 @@ class AgentService {
   private subagentRuns: SubagentRun[] = [];
   private historyRepository: AgentHistoryRepository | null = null;
   private subagentPersistTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Fallback queues are isolated by the full project/branch runtime key. */
+  private readonly queuedRequests = new Map<string, QueuedAgentRequest[]>();
+  /** A running turn is scoped to one project/branch; abortController is only the foreground alias. */
+  private readonly activeRuns = new Map<string, AbortController>();
+  private readonly attentionItems = new Map<string, AgentAttentionItem>();
+  private readonly conversationHandles = new Map<string, AgentConversationHandle>();
+  private readonly conversationReaders = new Set<string>();
+  private readonly runtimeSubagentRuns = new Map<string, Map<string, SubagentRun>>();
+  private readonly readerOwnedTurnIds = new Map<string, Set<string>>();
 
   constructor() {
     this.adapterRegistry.register(this.claudeAdapter);
     this.refineryService = new KnowledgeRefineryService({
       analyze: (input) => this.claudeAdapter.distillKnowledge(input),
-      isMainAgentBusy: () => this.abortController !== null,
+      isMainAgentBusy: () => this.activeRuns.size > 0,
       modelSnapshot: () => this.claudeAdapter.status().model ?? agentSettingsService.getClaudeSettings().model ?? 'Current Agent',
     });
-    agentSettingsService.setRuntimeGuard(() => this.abortController !== null);
+    agentSettingsService.setRuntimeGuard(() => this.activeRuns.size > 0);
     this.registerHandlers();
   }
 
@@ -257,26 +281,30 @@ class AgentService {
         this.createConversation(sessionId, conversationId, backendId),
     );
 
-    ipcMain.handle('agent:approve-tool', (event, requestId: string) => {
-      this.resolvePermission(requestId, true, event.sender.id);
+    ipcMain.handle('agent:approve-tool', (event, requestId: string, projectId?: string, branchId?: string) => {
+      this.resolvePermission(requestId, true, event.sender.id, projectId, branchId);
     });
 
-    ipcMain.handle('agent:reject-tool', (event, requestId: string) => {
-      this.resolvePermission(requestId, false, event.sender.id);
+    ipcMain.handle('agent:reject-tool', (event, requestId: string, projectId?: string, branchId?: string) => {
+      this.resolvePermission(requestId, false, event.sender.id, projectId, branchId);
     });
 
     ipcMain.handle(
       'agent:answer-question',
-      (event, requestId: string, answers: AskUserQuestionAnswers) => {
-        this.answerUserQuestion(requestId, answers, event.sender.id);
+      (event, requestId: string, answers: AskUserQuestionAnswers, projectId?: string, branchId?: string) => {
+      this.answerUserQuestion(requestId, answers, event.sender.id, projectId, branchId);
       },
     );
 
-    ipcMain.handle('agent:cancel', (_event, sessionId?: string) => {
+    ipcMain.handle('agent:cancel', async (_event, sessionId?: string) => {
       if (sessionId && sessionId !== this.activeSessionId) return;
-      this.abortController?.abort();
-      this.resolveAllPermissions(false);
-      if (!this.abortController) this.setState(this.activeBackendAvailable() ? 'ready' : 'error');
+      const projectId = this.activeSessionId ?? undefined;
+      const branchId = this.activeBranchId;
+      const controller = this.activeRuns.get(this.activeRuntimeKey()) ?? this.abortController;
+      controller?.abort();
+      if (!controller) await this.conversationHandles.get(this.activeRuntimeKey())?.interrupt();
+      this.resolvePermissionsForRuntime(projectId, branchId, false);
+      if (!this.activeRuns.has(this.activeRuntimeKey())) this.setState(this.activeBackendAvailable() ? 'ready' : 'error');
     });
 
     ipcMain.handle('agent:clear', async (_event, sessionId?: string) => {
@@ -315,6 +343,13 @@ class AgentService {
       return sessionService.getAgentHistory(sessionId).getSubagentDetail(branchId, runId, beforeCursor, HISTORY_ACTIVITY_PAGE_LIMIT);
     });
     ipcMain.handle('agent:status', (_event, sessionId?: string) => this.getStatus(sessionId));
+    ipcMain.handle('agent:attention:list', () => [...this.attentionItems.values()]);
+    ipcMain.handle('agent:attention:read', (_event, itemId: string) => {
+      const item = this.attentionItems.get(itemId);
+      if (item) item.read = true;
+      return item ?? null;
+    });
+    ipcMain.handle('agent:attention:clear', (_event, itemId: string) => this.attentionItems.delete(itemId));
     ipcMain.handle('refinery:jobs:create-from-conversation', async (event, sessionId: string, branchId: string) => {
       if (sessionId !== this.activeSessionId) await this.activateProject(sessionId);
       const job = this.refineryService.createJobFromConversation(sessionId, branchId);
@@ -347,25 +382,35 @@ class AgentService {
   private async activateProject(sessionId: string) {
     const previousSessionId = this.activeSessionId;
     if (this.activeSessionId !== sessionId) {
-      await this.stopActiveRequest();
-      await this.disposeActiveConversationRuntime();
+      // A live runtime is session-scoped. Foreground activation changes the
+      // projection but must not terminate a pinned background conversation.
     }
-    if (previousSessionId && previousSessionId !== sessionId) {
+    if (previousSessionId && previousSessionId !== sessionId && !this.claudeAdapter.hasPinnedRuntimeForProject(previousSessionId)) {
       shellService.destroyProject(previousSessionId);
     }
     return this.loadProject(sessionId);
   }
 
   private async stopActiveRequest() {
-    if (!this.abortController) return;
-    this.abortController.abort();
-    this.resolveAllPermissions(false);
-    await this.waitForActiveRequest();
+    const runtimeKey = this.activeRuntimeKey();
+    const controller = this.activeRuns.get(runtimeKey) ?? this.abortController;
+    if (controller) {
+      controller.abort();
+      this.resolvePermissionsForRuntime(this.activeSessionId ?? undefined, this.activeBranchId, false);
+      await this.waitForActiveRequest();
+    } else if (this.conversationHandles.has(runtimeKey)) {
+      await this.conversationHandles.get(runtimeKey)?.interrupt();
+      this.resolvePermissionsForRuntime(this.activeSessionId ?? undefined, this.activeBranchId, false);
+    }
   }
 
   private async disposeActiveConversationRuntime() {
     const branch = this.branches.find((candidate) => candidate.id === this.activeBranchId);
     if (!branch) return;
+    if (this.activeSessionId && branch.backendId === CLAUDE_BACKEND_ID
+      && this.claudeAdapter.hasPinnedRuntimeForConversation(this.activeSessionId, branch.id)) {
+      return;
+    }
     const adapter = this.adapterRegistry.get(branch.backendId);
     await adapter?.disposeConversation?.(this.activeSessionId ?? undefined, branch.id);
   }
@@ -379,9 +424,12 @@ class AgentService {
     this.branches = project.agent.branches.map(cloneBranch);
     this.activeBranchId = project.agent.activeBranchId;
     this.hydrateActiveBranch();
+    this.abortController = this.activeRuns.get(this.activeRuntimeKey()) ?? null;
     this.model = project.agent.model;
     this.lastError = project.agent.lastError;
-    if (!this.abortController) this.state = this.activeBackendAvailable() ? 'ready' : 'loading';
+    this.state = this.activeRuntimeIsRunning()
+      ? 'running'
+      : this.activeBackendAvailable() ? 'ready' : 'loading';
     const status = this.getStatus(sessionId);
     this.emitStatus();
     return this.buildActivation(sessionId, status, project.preferences, project.workspace);
@@ -415,6 +463,27 @@ class AgentService {
     });
   }
 
+  private persistBranchRuntime(projectId: string | undefined, branchId: string, sessionId: string | null, connectionFingerprint = this.connectionFingerprint) {
+    if (!projectId) return;
+    const state = sessionService.getProjectState(projectId);
+    const branch = state.agent.branches.find((candidate) => candidate.id === branchId);
+    if (!branch) return;
+    sessionService.updateProjectState(projectId, {
+      agent: {
+        branches: state.agent.branches.map((candidate) => candidate.id === branchId
+          ? {
+              ...candidate,
+              runtime: {
+                backendId: candidate.backendId,
+                sessionId,
+                connectionFingerprint,
+              },
+            }
+          : candidate),
+      },
+    });
+  }
+
   private syncActiveBranchMetadata() {
     const branch = this.branches.find((candidate) => candidate.id === this.activeBranchId);
     if (!branch || !this.historyRepository) return;
@@ -436,7 +505,13 @@ class AgentService {
       this.branches = [branch];
     }
     this.activeBranchId = branch.id;
-    this.chatHistory = this.historyRepository?.getMessages(branch.id).map(cloneMessage) ?? [];
+    const hasLiveClaudeRuntime = this.activeSessionId
+      ? this.claudeAdapter.hasLiveRuntimeForConversation(this.activeSessionId, branch.id)
+      : false;
+    const persistedMessages = hasLiveClaudeRuntime
+      ? this.historyRepository?.getMessages(branch.id) ?? []
+      : this.historyRepository?.recoverAbandonedMessages(branch.id) ?? [];
+    this.chatHistory = persistedMessages.map(cloneMessage);
     this.subagentRuns = this.historyRepository?.getSubagentRuns(branch.id).map(cloneSubagentRun) ?? [];
     const live = this.historyRepository?.recoverLive(branch.id);
     if (live?.message && !this.chatHistory.some((message) => message.id === live.message?.id)) {
@@ -477,7 +552,7 @@ class AgentService {
     );
     const activeRealtimeMessage = this.chatHistory.at(-1);
     const pageItems = page?.items ?? [];
-    const items = activeRealtimeMessage && (activeRealtimeMessage.status === 'streaming' || activeRealtimeMessage.status === 'sending')
+    const items = activeRealtimeMessage && (activeRealtimeMessage.status === 'queued' || activeRealtimeMessage.status === 'streaming' || activeRealtimeMessage.status === 'sending')
       ? [
           ...pageItems.filter((message) => message.id !== activeRealtimeMessage.id),
           cloneMessage(activeRealtimeMessage),
@@ -500,15 +575,18 @@ class AgentService {
     sessionId: string,
     branchId: string,
   ) {
-    if (this.abortController) throw new Error('Cannot switch branches while Claude is running');
     this.ensureActiveProject(sessionId);
     const branch = this.branches.find((candidate) => candidate.id === branchId);
     if (!branch) throw new Error(`Conversation branch ${branchId} not found`);
     if (branch.id !== this.activeBranchId) {
-      await this.disposeActiveConversationRuntime();
+      if (!this.activeRuntimeIsRunning()) await this.disposeActiveConversationRuntime();
       this.syncActiveBranchMetadata();
       this.activeBranchId = branch.id;
       this.hydrateActiveBranch();
+      this.abortController = this.activeRuns.get(this.activeRuntimeKey()) ?? null;
+      this.state = this.activeRuntimeIsRunning()
+        ? 'running'
+        : this.activeBackendAvailable() ? 'ready' : 'loading';
       this.persistAgentState();
     }
     const project = sessionService.getProjectState(sessionId);
@@ -520,9 +598,6 @@ class AgentService {
     conversationId: string,
     backendId: AgentBackendId = CLAUDE_BACKEND_ID,
   ) {
-    if (this.abortController) {
-      throw new Error('Cannot create a conversation while Claude is running');
-    }
     if (!/^[a-zA-Z0-9_-]{1,200}$/.test(conversationId)) {
       throw new Error('Invalid conversation identifier');
     }
@@ -540,11 +615,15 @@ class AgentService {
       `New conversation ${this.branches.length + 1}`,
       { backendId },
     );
-    await this.disposeActiveConversationRuntime();
+    if (!this.activeRuntimeIsRunning()) await this.disposeActiveConversationRuntime();
     this.historyRepository?.ensureBranch(conversation);
     this.branches.push(conversation);
     this.activeBranchId = conversation.id;
     this.hydrateActiveBranch();
+    this.abortController = this.activeRuns.get(this.activeRuntimeKey()) ?? null;
+    this.state = this.activeRuntimeIsRunning()
+      ? 'running'
+      : this.activeBackendAvailable() ? 'ready' : 'loading';
     this.persistAgentState();
 
     const project = sessionService.getProjectState(sessionId);
@@ -552,7 +631,6 @@ class AgentService {
   }
 
   private async branchFromMessage(sender: WebContents, input: AgentBranchRequest) {
-    if (this.abortController) throw new Error('Cannot branch while Claude is running');
     if (!/^[a-zA-Z0-9_-]{1,200}$/.test(input.newBranchId)) {
       throw new Error('Invalid conversation branch identifier');
     }
@@ -599,7 +677,7 @@ class AgentService {
           : null,
       },
     );
-    await this.disposeActiveConversationRuntime();
+    if (!this.activeRuntimeIsRunning()) await this.disposeActiveConversationRuntime();
     this.historyRepository?.createBranch(branch, sourceMessage.id);
     this.branches.push(branch);
     this.activeBranchId = branch.id;
@@ -616,20 +694,107 @@ class AgentService {
     if (this.activeSessionId !== sessionId) this.loadProject(sessionId);
   }
 
+  private async enqueueRequest(sender: WebContents, request: AgentRequest) {
+    this.ensureActiveProject(request.session?.id);
+    const branch = this.branches.find((candidate) => candidate.id === this.activeBranchId);
+    if (!branch) throw new Error('Active conversation branch is missing');
+    const projectId = request.session?.id ?? this.activeSessionId ?? undefined;
+    const runtimeKey = this.runtimeKey(projectId, branch.id);
+    const adapter = this.adapterRegistry.get(branch.backendId);
+    const { nativeCommand } = resolveAgentInputCommand(request.content, adapter?.capabilities.slashCommands ?? false);
+    const normalizedContextRefs = normalizeAgentContextRefs(request.contextRefs, projectId);
+    if (nativeCommand && ((request.attachments?.length ?? 0) > 0 || normalizedContextRefs.length > 0)) {
+      throw new Error('Slash commands cannot include attachments or staged context');
+    }
+    const messageId = request.clientMessageId ?? crypto.randomUUID();
+    if (!this.chatHistory.some((message) => message.id === messageId)) {
+      const message: PersistedChatMessage = {
+        id: messageId,
+        role: 'user',
+        content: request.content,
+        timestamp: new Date().toISOString(),
+        status: 'queued',
+        source: 'operator',
+        ...(request.attachments?.length ? { attachments: request.attachments.map(attachmentMetadata) } : {}),
+        ...(normalizedContextRefs.length ? { contextRefs: normalizedContextRefs } : {}),
+        ...(request.workflowInvocation ? { workflowInvocation: request.workflowInvocation } : {}),
+      };
+      this.chatHistory.push(message);
+      this.historyRepository?.appendMessage(this.activeBranchId, message);
+      this.persistAgentState();
+      this.emitMessage(sender, message);
+    }
+    const pending = this.queuedRequests.get(runtimeKey) ?? [];
+    pending.push({ sender, request: { ...request, clientMessageId: messageId }, messageId });
+    this.queuedRequests.set(runtimeKey, pending);
+    const handle = this.conversationHandles.get(runtimeKey);
+    if (handle) {
+      const input = this.buildQueuedInput(sender, request, branch, messageId, this.activeRuns.get(runtimeKey)?.signal);
+      await handle.enqueue({ id: messageId, source: 'operator', prompt: input.prompt, queuedAt: new Date().toISOString(), input });
+      const queued = this.queuedRequests.get(runtimeKey) ?? [];
+      const queuedIndex = queued.findIndex((item) => item.messageId === messageId);
+      if (queuedIndex >= 0) queued.splice(queuedIndex, 1);
+      if (queued.length === 0) this.queuedRequests.delete(runtimeKey);
+    }
+    this.emitStatus();
+  }
+
+  private buildQueuedInput(
+    sender: WebContents,
+    request: AgentRequest,
+    branch: PersistedConversationBranch,
+    inputId: string,
+    signal?: AbortSignal,
+  ): AgentRunInput {
+    const projectId = request.session?.id ?? this.activeSessionId ?? undefined;
+    const sessionPath = projectId ? sessionService.getSessionPath(projectId) : null;
+    const settings = agentSettingsService.getClaudeSettings();
+    const permissionMode = normalizeAgentMode(request.permissionMode);
+    const contextRefs = normalizeAgentContextRefs(request.contextRefs, projectId);
+    const adapter = this.adapterRegistry.get(branch.backendId);
+    const { nativeCommand } = resolveAgentInputCommand(request.content, adapter?.capabilities.slashCommands ?? false);
+    return {
+      conversationId: branch.id,
+      inputId,
+      source: 'operator',
+      queuedAt: new Date().toISOString(),
+      prompt: nativeCommand
+        ?? buildAgentUserPrompt({ content: request.content, attachments: request.attachments, explicitContext: contextRefs }),
+      command: nativeCommand ?? undefined,
+      systemInstructions: buildSystemInstructions(),
+      signal: signal ?? new AbortController().signal,
+      attachments: request.attachments ?? [],
+      cwd: sessionPath && fs.existsSync(sessionPath) ? sessionPath : process.cwd(),
+      additionalDirectories: sessionPath && fs.existsSync(sessionPath) ? [sessionPath] : undefined,
+      model: settings.model,
+      permissionMode,
+      runtime: branch.runtime,
+      fork: false,
+      settingSources: settings.settingSources,
+      tools: this.createHexestraToolDefinitions(sender, projectId, request.selectedTarget?.id, permissionMode),
+      projectId,
+    };
+  }
+
   private async sendMessage(
     sender: WebContents,
     request: AgentRequest,
     resumeOptions: BranchResumeOptions = { fork: false },
   ) {
     if (!request.content.trim()) return;
-    if (this.abortController) {
-      throw new Error('Claude is already processing a request');
-    }
     this.ensureActiveProject(request.session?.id);
     const contextRefs = normalizeAgentContextRefs(request.contextRefs, request.session?.id);
+    const originProjectId = request.session?.id ?? this.activeSessionId;
 
     const activeBranch = this.branches.find((branch) => branch.id === this.activeBranchId);
     if (!activeBranch) throw new Error('Active conversation branch is missing');
+    const originBranchId = activeBranch.id;
+    const runtimeKey = this.runtimeKey(originProjectId ?? undefined, originBranchId);
+    if (this.activeRuns.has(runtimeKey) || this.conversationHandles.has(runtimeKey)) {
+      await this.enqueueRequest(sender, request);
+      return;
+    }
+    const originHistoryRepository = originProjectId ? sessionService.getAgentHistory(originProjectId) : this.historyRepository;
     const focusedTaskId = activeBranch.focusedTaskId ?? undefined;
     const adapter = this.adapterRegistry.require(activeBranch.backendId);
     const available = await adapter.initialize(request.session?.id);
@@ -658,9 +823,11 @@ class AgentService {
       this.backendSessionId = null;
       this.connectionFingerprint = currentFingerprint;
     }
+    const originBackendSessionId = this.backendSessionId;
+    const originConnectionFingerprint = this.connectionFingerprint;
 
-    const userMessageId = request.clientMessageId ?? `user-${Date.now()}`;
-    if (this.chatHistory.length === 0) {
+    const userMessageId = request.clientMessageId ?? crypto.randomUUID();
+    if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId && this.chatHistory.length === 0) {
       const activeConversation = this.branches.find(
         (branch) => branch.id === this.activeBranchId,
       );
@@ -668,23 +835,39 @@ class AgentService {
         activeConversation.title = branchTitle(request.content, this.branches.length);
       }
     }
-    this.lastError = null;
-    this.chatHistory.push({
-      id: userMessageId,
-      role: 'user',
-      content: request.content,
-      timestamp: new Date().toISOString(),
-      status: 'complete',
-      ...(request.attachments?.length
-        ? { attachments: request.attachments.map(attachmentMetadata) }
-        : {}),
-      ...(contextRefs.length ? { contextRefs } : {}),
-      ...(request.workflowInvocation ? { workflowInvocation: request.workflowInvocation } : {}),
-    });
-    this.historyRepository?.appendMessage(this.activeBranchId, this.chatHistory.at(-1)!);
-    this.persistAgentState();
-    this.abortController = new AbortController();
-    this.setState('running');
+    if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.lastError = null;
+    const existingUserMessage = this.chatHistory.find((message) => message.id === userMessageId);
+    const userMessage: PersistedChatMessage = existingUserMessage
+      ? { ...existingUserMessage, status: 'complete', source: existingUserMessage.source ?? 'operator' }
+      : {
+          id: userMessageId,
+          role: 'user',
+          content: request.content,
+          timestamp: new Date().toISOString(),
+          status: 'complete',
+          source: 'operator',
+          ...(request.attachments?.length
+            ? { attachments: request.attachments.map(attachmentMetadata) }
+            : {}),
+          ...(contextRefs.length ? { contextRefs } : {}),
+          ...(request.workflowInvocation ? { workflowInvocation: request.workflowInvocation } : {}),
+        };
+    if (existingUserMessage) {
+      const index = this.chatHistory.findIndex((message) => message.id === userMessageId);
+      if (index >= 0) this.chatHistory[index] = userMessage;
+    } else if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) {
+      this.chatHistory.push(userMessage);
+    }
+    originHistoryRepository?.appendMessage(originBranchId, userMessage);
+    if (existingUserMessage) this.emitMessage(sender, userMessage);
+    if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.persistAgentState();
+    if (originProjectId) acquireProjectRuntimeLease(originProjectId);
+    const runController = new AbortController();
+    this.activeRuns.set(runtimeKey, runController);
+    if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) {
+      this.abortController = runController;
+      this.setState('running');
+    }
 
     const messageId = `msg-${Date.now()}`;
     let latestContent = '';
@@ -694,29 +877,31 @@ class AgentService {
     let completedEvent: Extract<import('../contracts/agent-runtime').AgentRunEvent, { type: 'turn_completed' }> | undefined;
     const streamScheduler = new AgentStreamScheduler();
     const pendingSubagentRunIds = new Set<string>();
+    const runSubagentRuns = new Map<string, SubagentRun>();
+    this.runtimeSubagentRuns.set(runtimeKey, runSubagentRuns);
     let mainProjectionDirty = false;
     let lastLivePersistedAt = 0;
-    const publishPendingProjection = () => {
+    const publishPendingProjection = (subagentRuns: Map<string, SubagentRun> = runSubagentRuns) => {
       if (mainProjectionDirty) {
         mainProjectionDirty = false;
-        this.emitStreamingMessage(sender, messageId, latestContent, latestActivities);
+        this.emitStreamingMessage(sender, messageId, latestContent, latestActivities, originProjectId, originBranchId);
       }
       if (pendingSubagentRunIds.size > 0) {
-        this.emitSubagentUpdates(sender, pendingSubagentRunIds);
+        this.emitSubagentUpdates(sender, pendingSubagentRunIds, originProjectId, originBranchId, subagentRuns);
         pendingSubagentRunIds.clear();
       }
     };
     const persistLiveSnapshotIfDue = () => {
       const now = Date.now();
       if (lastLivePersistedAt > 0 && now - lastLivePersistedAt < LIVE_PERSIST_INTERVAL_MS) return;
-      this.historyRepository?.writeLive(this.activeBranchId, {
+      originHistoryRepository?.writeLive(originBranchId, {
         id: messageId,
         role: 'assistant',
         content: latestContent,
         timestamp: new Date().toISOString(),
         status: 'streaming',
         activities: latestActivities,
-      }, this.subagentRuns);
+      }, [...runSubagentRuns.values()]);
       lastLivePersistedAt = now;
     };
     this.emitMessage(sender, {
@@ -736,6 +921,8 @@ class AgentService {
       sender,
       request.autonomyLevel ?? 'medium',
       permissionMode,
+      originProjectId,
+      originBranchId,
     );
     let projectContext: AgentProjectSystemContext | undefined;
     let focusedTaskContext: TaskContextPackage | undefined;
@@ -776,22 +963,28 @@ class AgentService {
     );
     const queryCwd = sessionPath && fs.existsSync(sessionPath) ? sessionPath : process.cwd();
     const connectionSettings = agentSettingsService.getClaudeSettings();
-    const runtime = this.backendSessionId || this.connectionFingerprint
+    const runtime = originBackendSessionId || originConnectionFingerprint
       ? {
           backendId: activeBranch.backendId,
-          sessionId: resumeOptions.sessionId ?? this.backendSessionId,
-          connectionFingerprint: this.connectionFingerprint,
+          sessionId: resumeOptions.sessionId ?? originBackendSessionId,
+          connectionFingerprint: originConnectionFingerprint,
         }
       : null;
 
     try {
       const runInput = {
-        conversationId: this.activeBranchId,
+        conversationId: originBranchId,
+        inputId: userMessageId,
+        source: 'operator' as const,
+        queuedAt: userMessage.timestamp,
         prompt,
         command: command ?? undefined,
         systemInstructions: buildSystemInstructions(),
         dynamicSystemContext,
-        signal: this.abortController.signal,
+        dynamicSystemContextProvider: !command && originProjectId
+          ? () => this.resolveRuntimeDynamicContext(originProjectId, originBranchId, request.selectedTarget?.id)
+          : undefined,
+        signal: runController.signal,
         attachments: request.attachments ?? [],
         cwd: queryCwd,
         additionalDirectories: sessionPath && fs.existsSync(sessionPath) ? [sessionPath] : undefined,
@@ -804,13 +997,29 @@ class AgentService {
         tools: hexestraTools,
         projectId: request.session?.id,
       };
+      if (adapter.openConversation && originProjectId) {
+        const runtimeKey = `${originProjectId}\u0000${originBranchId}`;
+        let handle = this.conversationHandles.get(runtimeKey);
+        if (!handle) {
+          handle = await adapter.openConversation(runInput, interactions);
+          this.conversationHandles.set(runtimeKey, handle);
+          this.startConversationReader(runtimeKey, handle, sender, originProjectId ?? undefined);
+        }
+        const readerOwned = this.readerOwnedTurnIds.get(runtimeKey) ?? new Set<string>();
+        readerOwned.add(userMessageId);
+        this.readerOwnedTurnIds.set(runtimeKey, readerOwned);
+      }
       for await (const event of adapter.runTurn(runInput, interactions)) {
         if (event.type === 'session') {
-          this.backendSessionId = event.sessionId;
-          this.model = event.model;
-          this.authenticated = true;
-          this.persistAgentState();
-          this.emitStatus();
+          if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) {
+            this.backendSessionId = event.sessionId;
+            this.model = event.model;
+            this.authenticated = true;
+            this.persistAgentState();
+            this.emitStatus();
+          } else {
+            this.persistBranchRuntime(originProjectId ?? undefined, originBranchId, event.sessionId, originConnectionFingerprint);
+          }
         } else if (event.type === 'turn_snapshot') {
           latestContent = event.content;
           latestActivities = this.bindActivitiesToFocusedTask(focusedTaskId, event.activities, activityTaskBindings);
@@ -822,15 +1031,16 @@ class AgentService {
           streamScheduler.schedule(publishPendingProjection);
           persistLiveSnapshotIfDue();
         } else if (event.type === 'subagent_snapshot') {
-          this.mergeSubagentRuns([event.run]);
+          runSubagentRuns.set(event.run.id, cloneSubagentRun(event.run));
+          if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.mergeSubagentRuns([event.run]);
           const terminal = isTerminalSubagentRun(event.run);
-          if (terminal) this.historyRepository?.appendSubagent(this.activeBranchId, event.run);
+          if (terminal) originHistoryRepository?.appendSubagent(originBranchId, event.run);
           pendingSubagentRunIds.add(event.run.id);
           if (terminal) {
             streamScheduler.cancel();
-            publishPendingProjection();
+            publishPendingProjection(runSubagentRuns);
           } else {
-            streamScheduler.schedule(publishPendingProjection);
+            streamScheduler.schedule(() => publishPendingProjection(runSubagentRuns));
           }
           persistLiveSnapshotIfDue();
         } else if (event.type === 'commands_changed') {
@@ -843,7 +1053,7 @@ class AgentService {
       }
       if (!completedEvent) throw new Error('Agent backend ended without a completion event');
       streamScheduler.cancel();
-      publishPendingProjection();
+      publishPendingProjection(runSubagentRuns);
       const finalContent = completedEvent.content;
       const finalMessage: PersistedChatMessage = {
         id: messageId,
@@ -854,19 +1064,32 @@ class AgentService {
         activities: latestActivities,
         backendMessageId: completedEvent.backendMessageId,
       };
-      this.chatHistory.push(finalMessage);
-      this.historyRepository?.appendMessage(this.activeBranchId, finalMessage);
-      this.historyRepository?.clearLive(this.activeBranchId);
-      this.persistAgentState();
-      this.emitMessage(sender, finalMessage);
-      this.setState('ready');
+      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.chatHistory.push(finalMessage);
+      originHistoryRepository?.appendMessage(originBranchId, finalMessage);
+      originHistoryRepository?.clearLive(originBranchId);
+      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.persistAgentState();
+      this.emitMessage(sender, finalMessage, originProjectId, originBranchId);
+      if (originProjectId && (originProjectId !== this.activeSessionId || originBranchId !== this.activeBranchId)) {
+        this.publishAttention({
+          id: `attention-${messageId}`,
+          projectId: originProjectId,
+          branchId: originBranchId,
+          kind: 'completed',
+          title: 'Agent turn completed',
+          createdAt: new Date().toISOString(),
+          read: false,
+        });
+      }
+      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.setState('ready');
     } catch (error) {
       streamScheduler.cancel();
-      publishPendingProjection();
+      publishPendingProjection(runSubagentRuns);
       const message = toErrorMessage(error);
-      const cancelled = this.abortController?.signal.aborted || /cancelled|canceled/i.test(message);
-      this.lastError = cancelled ? null : message;
-      if (error instanceof AgentBackendError && error.code === 'authentication') {
+      const cancelled = runController.signal.aborted || /cancelled|canceled/i.test(message);
+      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) {
+        this.lastError = cancelled ? null : message;
+      }
+      if (originProjectId === this.activeSessionId && error instanceof AgentBackendError && error.code === 'authentication') {
         this.authenticated = false;
       }
       const failureContent = cancelled ? 'Request cancelled.' : formatAgentFailure(message);
@@ -888,18 +1111,49 @@ class AgentService {
         activities: failureActivities,
         backendMessageId: undefined,
       };
-      this.chatHistory.push(failureMessage);
-      this.historyRepository?.appendMessage(this.activeBranchId, failureMessage);
-      this.historyRepository?.clearLive(this.activeBranchId);
-      this.persistAgentState();
-      this.emitMessage(sender, failureMessage);
-      this.setState(cancelled ? 'ready' : 'error');
+      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.chatHistory.push(failureMessage);
+      originHistoryRepository?.appendMessage(originBranchId, failureMessage);
+      originHistoryRepository?.clearLive(originBranchId);
+      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.persistAgentState();
+      this.emitMessage(sender, failureMessage, originProjectId, originBranchId);
+      if (originProjectId && (originProjectId !== this.activeSessionId || originBranchId !== this.activeBranchId)) {
+        this.publishAttention({
+          id: `attention-${messageId}`,
+          projectId: originProjectId,
+          branchId: originBranchId,
+          kind: 'failed',
+          title: 'Agent turn failed',
+          detail: failureContent,
+          createdAt: new Date().toISOString(),
+          read: false,
+        });
+      }
+      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.setState(cancelled ? 'ready' : 'error');
     } finally {
       streamScheduler.cancel();
-      this.abortController = null;
-      this.resolvePermissionsForWebContents(sender.id, false);
-      this.emitStatus();
+      if (this.activeRuns.get(runtimeKey) === runController) this.activeRuns.delete(runtimeKey);
+      if (this.abortController === runController) this.abortController = null;
+      this.resolvePermissionsForWebContents(sender.id, false, originProjectId ?? undefined, originBranchId);
+      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.emitStatus();
       this.refineryService.resumeQueued();
+      if (originProjectId) {
+        const snapshot = this.conversationHandles.get(runtimeKey)?.snapshot();
+        if (!snapshot || (!snapshot.active && snapshot.pendingInputs === 0 && snapshot.pendingCrons === 0)) {
+          releaseProjectRuntimeLease(originProjectId);
+        }
+      }
+      if (originProjectId && originProjectId !== this.activeSessionId && !this.claudeAdapter.hasPinnedRuntimeForProject(originProjectId)) {
+        shellService.destroyProject(originProjectId);
+      }
+      const ownedTurns = this.readerOwnedTurnIds.get(runtimeKey);
+      ownedTurns?.delete(userMessageId);
+      if (ownedTurns?.size === 0) this.readerOwnedTurnIds.delete(runtimeKey);
+      const queued = this.queuedRequests.get(runtimeKey) ?? [];
+      const next = queued.shift();
+      if (queued.length === 0) this.queuedRequests.delete(runtimeKey);
+      if (next) {
+        queueMicrotask(() => { void this.sendMessage(next.sender, next.request); });
+      }
     }
   }
 
@@ -918,6 +1172,157 @@ class AgentService {
     });
   }
 
+  private runtimeKey(projectId: string | undefined, branchId: string) {
+    return `${projectId ?? ''}\u0000${branchId}`;
+  }
+
+  private activeRuntimeKey() {
+    return this.runtimeKey(this.activeSessionId ?? undefined, this.activeBranchId);
+  }
+
+  private activeRuntimeIsRunning() {
+    return this.activeRuns.has(this.activeRuntimeKey());
+  }
+
+  private async resolveRuntimeDynamicContext(projectId: string, branchId: string, selectedTargetId?: string) {
+    try {
+      const project = await sessionService.loadSession(projectId);
+      const state = sessionService.getProjectState(projectId);
+      const branch = state.agent.branches.find((candidate) => candidate.id === branchId);
+      const taskContext = await sessionService.resolveTaskContext(projectId, branch?.focusedTaskId ?? undefined, selectedTargetId);
+      return buildAgentDynamicSystemContext({
+        project: {
+          id: project.id,
+          name: project.name,
+          status: project.status,
+          opsecLevel: project.opsecLevel,
+          autonomyLevel: project.autonomyLevel,
+          scope: project.scope,
+        },
+        taskContext,
+        selectedTargetId,
+        selectedTargetAdvisory: selectedTargetId
+          ? taskContext.targets.find((target) => target.id === selectedTargetId)?.scopeAdvisory
+          : undefined,
+      });
+    } catch {
+      return undefined;
+    }
+  }
+
+  private startConversationReader(
+    runtimeKey: string,
+    handle: AgentConversationHandle,
+    sender: WebContents,
+    initialLeaseProjectId?: string,
+  ) {
+    if (this.conversationReaders.has(runtimeKey)) return;
+    this.conversationReaders.add(runtimeKey);
+    const liveTurns = new Map<string, { projectId: string; branchId: string; messageId: string; content: string; activities: AgentActivity[]; source: 'operator' | 'scheduled' | 'runtime'; runs: Map<string, SubagentRun> }>();
+    // The owning turn acquires the first lease. The reader only keeps that
+    // lease alive while Claude reports queued inputs or session crons.
+    let leaseProjectId: string | null = initialLeaseProjectId ?? null;
+    void (async () => {
+      try {
+        for await (const event of handle.events()) {
+          const projectId = event.projectId;
+          const branchId = event.branchId;
+          if (event.type === 'runtime_state') {
+            if (event.snapshot.pendingCrons > 0 && projectId && leaseProjectId !== projectId) {
+              if (leaseProjectId) releaseProjectRuntimeLease(leaseProjectId);
+              // The active turn lease is retained for the scheduled runtime.
+              leaseProjectId = projectId;
+            } else if (event.snapshot.pendingCrons === 0 && leaseProjectId && !event.snapshot.active && event.snapshot.pendingInputs === 0) {
+              releaseProjectRuntimeLease(leaseProjectId);
+              leaseProjectId = null;
+            }
+            if (projectId === this.activeSessionId && branchId === this.activeBranchId) {
+              this.setState(event.snapshot.active || event.snapshot.pendingInputs > 0 ? 'running' : 'ready');
+            }
+            continue;
+          }
+          if (!projectId || !branchId) continue;
+          if ((event.type === 'turn_started' || event.type === 'input_started')
+            && projectId === this.activeSessionId
+            && branchId === this.activeBranchId) {
+            this.setState('running');
+          }
+          if (event.type === 'input_started' && (event.source === 'operator' || event.source === 'scheduled' || event.source === 'runtime')) {
+            const owned = this.readerOwnedTurnIds.get(runtimeKey)?.has(event.inputId) ?? false;
+            const history = sessionService.getAgentHistory(projectId);
+            const queued = history.getMessages(branchId).find((message) => message.id === event.inputId);
+            if (queued && queued.status === 'queued' && !owned) {
+              const started = { ...queued, status: 'complete' as const, source: 'operator' as const };
+              history.appendMessage(branchId, started);
+              this.emitMessage(sender, started, projectId, branchId);
+            }
+            if (!owned) {
+              const source = event.source;
+              const userMessageId = `${source}-${event.inputId}`;
+              const messageId = source === 'operator' ? `assistant-${event.inputId}` : `${source}-assistant-${event.inputId}`;
+              if (source !== 'operator' && !history.getMessages(branchId).some((message) => message.id === userMessageId)) {
+                const userMessage: PersistedChatMessage = {
+                  id: userMessageId,
+                  role: 'user',
+                  content: event.prompt?.trim() || (source === 'scheduled' ? 'Scheduled Agent wakeup' : 'Runtime Agent input'),
+                  timestamp: new Date().toISOString(),
+                  status: 'complete',
+                  source,
+                };
+                history.appendMessage(branchId, userMessage);
+                this.emitMessage(sender, userMessage, projectId, branchId);
+              }
+              liveTurns.set(event.inputId, { projectId, branchId, messageId, content: '', activities: [], source, runs: new Map() });
+            }
+            continue;
+          }
+          const current = 'inputId' in event && event.inputId ? liveTurns.get(event.inputId) : undefined;
+          if (!current) continue;
+          const history = sessionService.getAgentHistory(current.projectId);
+          if (event.type === 'turn_snapshot') {
+            current.content = event.content;
+            current.activities = event.activities;
+            this.emitStreamingMessage(sender, current.messageId, current.content, current.activities, current.projectId, current.branchId);
+            history.writeLive(current.branchId, { id: current.messageId, role: 'assistant', content: current.content, timestamp: new Date().toISOString(), status: 'streaming', source: current.source, activities: current.activities }, [...current.runs.values()]);
+          } else if (event.type === 'subagent_snapshot') {
+            current.runs.set(event.run.id, cloneSubagentRun(event.run));
+            this.runtimeSubagentRuns.get(runtimeKey)?.set(event.run.id, cloneSubagentRun(event.run));
+            this.emitSubagentUpdates(sender, new Set([event.run.id]), current.projectId, current.branchId, current.runs);
+            if (isTerminalSubagentRun(event.run)) history.appendSubagent(current.branchId, event.run);
+          } else if (event.type === 'turn_completed') {
+            current.content = event.content;
+            current.activities = event.activities;
+            const finalMessage: PersistedChatMessage = {
+              id: current.messageId,
+              role: 'assistant',
+              content: current.content,
+              timestamp: new Date().toISOString(),
+              status: 'complete',
+              source: current.source,
+              activities: current.activities,
+              backendMessageId: event.backendMessageId,
+            };
+            history.appendMessage(current.branchId, finalMessage);
+            history.clearLive(current.branchId);
+            this.emitMessage(sender, finalMessage, current.projectId, current.branchId);
+            if (current.projectId !== this.activeSessionId || current.branchId !== this.activeBranchId) {
+              this.publishAttention({ id: `attention-${current.messageId}`, projectId: current.projectId, branchId: current.branchId, kind: 'completed', title: current.source === 'scheduled' ? 'Scheduled Agent turn completed' : 'Queued Agent turn completed', createdAt: new Date().toISOString(), read: false });
+            }
+            liveTurns.delete(event.inputId!);
+          }
+        }
+      } catch (error) {
+        const [projectId, branchId] = runtimeKey.split('\u0000');
+        if (projectId && branchId) this.publishAttention({ id: `attention-runtime-${runtimeKey}`, projectId, branchId, kind: 'failed', title: 'Background Agent runtime failed', detail: toErrorMessage(error), createdAt: new Date().toISOString(), read: false });
+      } finally {
+        if (leaseProjectId) releaseProjectRuntimeLease(leaseProjectId);
+        if (this.conversationHandles.get(runtimeKey) === handle) this.conversationHandles.delete(runtimeKey);
+        this.runtimeSubagentRuns.delete(runtimeKey);
+        this.conversationReaders.delete(runtimeKey);
+      }
+    })();
+  }
+
   private emitCommandsChanged(
     sender: WebContents,
     sessionId: string | null,
@@ -931,15 +1336,17 @@ class AgentService {
     sender: WebContents,
     autonomyLevel: AutonomyLevel,
     permissionMode: SupportedAgentMode,
+    projectId: string | null = this.activeSessionId,
+    branchId = this.activeBranchId,
   ): AgentInteractionHandler {
     return {
       authorizeTool: async (request): Promise<AgentToolPermissionDecision> => {
       const { toolName, input, signal, toolUseId, agentId } = request;
-      const subagentContext = this.getSubagentContext(agentId);
+      const subagentContext = this.getSubagentContext(agentId, projectId ?? undefined, branchId);
 
-      if (this.activeSessionId && !/^(task_|restriction_|tool_catalog_)/.test(toolName) && /^(browser|shell|traffic|egress-proxy|mcp|subagent|Task$|Agent)/.test(toolName)) {
+      if (projectId && !/^(task_|restriction_|tool_catalog_)/.test(toolName) && /^(browser|shell|traffic|egress-proxy|mcp|subagent|Task$|Agent)/.test(toolName)) {
         try {
-          await sessionService.assertTaskExecutionReady(this.activeSessionId, toolName);
+          await sessionService.assertTaskExecutionReady(projectId, toolName);
         } catch (error) {
           return {
             behavior: 'deny',
@@ -973,9 +1380,11 @@ class AgentService {
 
       const requestId = `permission-${++this.requestCounter}`;
       const displayInput = sanitizeAgentToolInputForDisplay(toolName, input);
-      this.setState('awaiting_approval');
+      if (projectId === this.activeSessionId && branchId === this.activeBranchId) this.setState('awaiting_approval');
       sender.send('agent:tool-request', {
-        sessionId: this.activeSessionId,
+        sessionId: projectId,
+        projectId: projectId ?? undefined,
+        branchId,
         request: {
           kind: 'tool_approval',
           id: requestId,
@@ -988,6 +1397,29 @@ class AgentService {
           ...subagentContext,
         },
       });
+      if (projectId && (projectId !== this.activeSessionId || branchId !== this.activeBranchId)) {
+        this.publishAttention({
+          id: requestId,
+          projectId,
+          branchId,
+          kind: 'waiting_approval',
+          title: 'Agent approval required',
+          detail: describeToolUse(toolName, displayInput),
+          interaction: {
+            id: requestId,
+            kind: 'tool_approval',
+            toolUseId,
+            toolName,
+            input,
+            description: describeToolUse(toolName, displayInput),
+            riskLevel: request.riskLevel ?? 'write',
+            createdAt: new Date().toISOString(),
+            ...subagentContext,
+          } satisfies AgentAttentionInteraction,
+          createdAt: new Date().toISOString(),
+          read: false,
+        });
+      }
 
       const result = await this.waitForUserInteraction({
         requestId,
@@ -996,18 +1428,22 @@ class AgentService {
         kind: 'tool_approval',
         input,
         toolUseId,
-        timeoutMs: 5 * 60_000,
+        timeoutMs: projectId === this.activeSessionId && branchId === this.activeBranchId ? 5 * 60_000 : undefined,
+        projectId: projectId ?? undefined,
+        branchId,
         ...subagentContext,
       });
-      this.setState(this.abortController ? 'running' : 'ready');
+      if (projectId === this.activeSessionId && branchId === this.activeBranchId) this.setState(this.activeRuntimeIsRunning() ? 'running' : 'ready');
       return result;
       },
       requestAnswers: async (request) => {
         const questions = request.questions;
         const requestId = `question-${++this.requestCounter}`;
-        this.setState('awaiting_input');
+        if (projectId === this.activeSessionId && branchId === this.activeBranchId) this.setState('awaiting_input');
         sender.send('agent:tool-request', {
-          sessionId: this.activeSessionId,
+          sessionId: projectId,
+          projectId: projectId ?? undefined,
+          branchId,
           request: {
             kind: 'ask_user_question',
             id: requestId,
@@ -1015,9 +1451,29 @@ class AgentService {
             toolName: 'AskUserQuestion',
             questions,
             createdAt: new Date().toISOString(),
-            ...this.getSubagentContext(request.agentId),
+            ...this.getSubagentContext(request.agentId, projectId ?? undefined, branchId),
           },
         });
+        if (projectId && (projectId !== this.activeSessionId || branchId !== this.activeBranchId)) {
+        this.publishAttention({
+            id: requestId,
+            projectId,
+            branchId,
+          kind: 'waiting_input',
+          interaction: {
+            id: requestId,
+            kind: 'ask_user_question',
+            toolUseId: request.toolUseId,
+            toolName: 'AskUserQuestion',
+            questions,
+            createdAt: new Date().toISOString(),
+            ...this.getSubagentContext(request.agentId),
+          } satisfies AgentAttentionInteraction,
+            title: 'Agent input required',
+            createdAt: new Date().toISOString(),
+            read: false,
+          });
+        }
         const result = await this.waitForUserInteraction({
           requestId,
           webContentsId: sender.id,
@@ -1026,9 +1482,11 @@ class AgentService {
           input: request.input,
           toolUseId: request.toolUseId,
           questions,
-          ...this.getSubagentContext(request.agentId),
+          projectId: projectId ?? undefined,
+          branchId,
+          ...this.getSubagentContext(request.agentId, projectId ?? undefined, branchId),
         });
-        this.setState(this.abortController ? 'running' : 'ready');
+        if (projectId === this.activeSessionId && branchId === this.activeBranchId) this.setState(this.activeRuntimeIsRunning() ? 'running' : 'ready');
         if (result.behavior !== 'allow' || !result.updatedInput?.answers) {
           throw new Error(result.message ?? 'The clarifying question was not answered.');
         }
@@ -1049,6 +1507,8 @@ class AgentService {
     agentId?: string;
     subagentRunId?: string;
     agentType?: string;
+    projectId?: string;
+    branchId?: string;
   }) {
     return new Promise<AgentToolPermissionDecision>((resolve) => {
       let settled = false;
@@ -1080,14 +1540,17 @@ class AgentService {
         agentId: input.agentId,
         subagentRunId: input.subagentRunId,
         agentType: input.agentType,
+        projectId: input.projectId,
+        branchId: input.branchId,
       });
       this.emitStatus();
     });
   }
 
-  private getSubagentContext(agentId?: string) {
+  private getSubagentContext(agentId?: string, projectId?: string, branchId = this.activeBranchId) {
+    const scoped = projectId ? this.runtimeSubagentRuns.get(this.runtimeKey(projectId, branchId)) : undefined;
     const run = agentId
-      ? this.subagentRuns.find((candidate) => candidate.agentId === agentId)
+      ? scoped?.get(agentId) ?? [...(scoped?.values() ?? []), ...this.subagentRuns].find((candidate) => candidate.agentId === agentId)
       : undefined;
     return {
       ...(agentId ? { agentId } : {}),
@@ -1095,9 +1558,18 @@ class AgentService {
     };
   }
 
-  private resolvePermission(requestId: string, approved: boolean, webContentsId?: number) {
+  private resolvePermission(
+    requestId: string,
+    approved: boolean,
+    webContentsId?: number,
+    projectId?: string,
+    branchId?: string,
+  ) {
     const pending = this.pendingPermissions.get(requestId);
-    if (!pending || (webContentsId !== undefined && pending.webContentsId !== webContentsId)) return;
+    if (!pending
+      || (webContentsId !== undefined && pending.webContentsId !== webContentsId)
+      || (projectId !== undefined && pending.projectId !== projectId)
+      || (branchId !== undefined && pending.branchId !== branchId)) return;
     if (approved && pending.kind !== 'tool_approval') {
       throw new Error('Clarifying questions require explicit answers');
     }
@@ -1116,12 +1588,18 @@ class AgentService {
           decisionClassification: 'user_reject',
         });
     this.emitStatus();
+    this.attentionItems.delete(requestId);
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send('agent:attention:resolved', { id: requestId });
+    }
   }
 
   private answerUserQuestion(
     requestId: string,
     input: unknown,
     webContentsId?: number,
+    projectId?: string,
+    branchId?: string,
   ) {
     const pending = this.pendingPermissions.get(requestId);
     if (!pending || pending.kind !== 'ask_user_question' || !pending.questions) {
@@ -1129,6 +1607,10 @@ class AgentService {
     }
     if (webContentsId !== undefined && pending.webContentsId !== webContentsId) {
       throw new Error('The clarifying question belongs to another window');
+    }
+    if ((projectId !== undefined && pending.projectId !== projectId)
+      || (branchId !== undefined && pending.branchId !== branchId)) {
+      throw new Error('The clarifying question belongs to another project or branch');
     }
     pending.resolve({
       behavior: 'allow',
@@ -1139,6 +1621,7 @@ class AgentService {
       ),
       decisionClassification: 'user_temporary',
     });
+    this.attentionItems.delete(requestId);
     this.emitStatus();
   }
 
@@ -1149,9 +1632,24 @@ class AgentService {
     this.pendingPermissions.clear();
   }
 
-  private resolvePermissionsForWebContents(webContentsId: number, approved: boolean) {
+  private resolvePermissionsForRuntime(projectId: string | undefined, branchId: string, approved: boolean) {
     for (const [requestId, pending] of [...this.pendingPermissions.entries()]) {
-      if (pending.webContentsId === webContentsId) {
+      if (pending.projectId === projectId && pending.branchId === branchId) {
+        this.resolvePermission(requestId, approved && pending.kind === 'tool_approval');
+      }
+    }
+  }
+
+  private resolvePermissionsForWebContents(
+    webContentsId: number,
+    approved: boolean,
+    projectId?: string,
+    branchId?: string,
+  ) {
+    for (const [requestId, pending] of [...this.pendingPermissions.entries()]) {
+      if (pending.webContentsId === webContentsId
+        && (projectId === undefined || pending.projectId === projectId)
+        && (branchId === undefined || pending.branchId === branchId)) {
         this.resolvePermission(requestId, approved && pending.kind === 'tool_approval');
       }
     }
@@ -1162,6 +1660,8 @@ class AgentService {
     id: string,
     content: string,
     activities: AgentActivity[],
+    projectId = this.activeSessionId,
+    branchId = this.activeBranchId,
   ) {
     this.emitMessage(sender, {
       id,
@@ -1170,14 +1670,15 @@ class AgentService {
       timestamp: new Date().toISOString(),
       status: 'streaming',
       activities,
-    });
+    }, projectId, branchId);
   }
 
-  private emitMessage(sender: WebContents, message: PersistedChatMessage) {
+  private emitMessage(sender: WebContents, message: PersistedChatMessage, projectId = this.activeSessionId, branchId = this.activeBranchId) {
     if (!sender.isDestroyed()) {
       sender.send('agent:message', {
-        sessionId: this.activeSessionId,
-        branchId: this.activeBranchId,
+        sessionId: projectId,
+        projectId,
+        branchId,
         message,
       });
     }
@@ -1198,14 +1699,21 @@ class AgentService {
     this.emitMessage(sender, message);
   }
 
-  private emitSubagentUpdates(sender: WebContents, runIds: Set<string>) {
+  private emitSubagentUpdates(
+    sender: WebContents,
+    runIds: Set<string>,
+    projectId = this.activeSessionId,
+    branchId = this.activeBranchId,
+    scopedRuns?: Map<string, SubagentRun>,
+  ) {
     if (sender.isDestroyed()) return;
     for (const runId of runIds) {
-      const run = this.subagentRuns.find((candidate) => candidate.id === runId);
+      const run = scopedRuns?.get(runId) ?? this.subagentRuns.find((candidate) => candidate.id === runId);
       if (!run) continue;
       sender.send('agent:subagent-update', {
-        sessionId: this.activeSessionId,
-        branchId: this.activeBranchId,
+        sessionId: projectId,
+        projectId,
+        branchId,
         run: cloneSubagentRun(run),
       });
     }
@@ -1301,6 +1809,10 @@ class AgentService {
       ? this.backendSessionId
       : null;
     const backendStatus = backend?.status();
+    const statusBranchId = storedBranch?.id ?? (sessionId === this.activeSessionId ? this.activeBranchId : undefined);
+    const runtimePending = statusBranchId
+      ? (this.queuedRequests.get(this.runtimeKey(sessionId, statusBranchId))?.length ?? 0)
+      : 0;
     return {
       state: this.state,
       backendId,
@@ -1308,7 +1820,7 @@ class AgentService {
       authenticated: stored ? this.authenticated : backendStatus?.authenticated ?? this.authenticated,
       model: stored?.model ?? this.model ?? backendStatus?.model ?? null,
       backendSessionId: stored ? storedSessionId : activeBackendSessionId,
-      pendingRequests: this.pendingPermissions.size,
+      pendingRequests: this.pendingPermissions.size + runtimePending,
       historyLength: storedBranch?.history.messageCount ?? this.chatHistory.length,
       lastError: stored?.lastError ?? backendStatus?.lastError ?? this.lastError
         ?? (backend ? null : `Agent backend "${backendId}" is unavailable`),
@@ -1325,9 +1837,18 @@ class AgentService {
       if (!window.isDestroyed()) {
         window.webContents.send('agent:status', {
           sessionId: this.activeSessionId,
+          projectId: this.activeSessionId,
+          branchId: this.activeBranchId,
           status,
         });
       }
+    }
+  }
+
+  private publishAttention(item: AgentAttentionItem) {
+    this.attentionItems.set(item.id, item);
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send('agent:attention', { item });
     }
   }
 }

@@ -20,6 +20,8 @@ import {
   type ProjectWorkspaceState,
   type AgentHistoryPage,
   type AgentActivityPage,
+  type AgentAttentionEvent,
+  type AgentAttentionItem,
   type SubagentDetailPage,
   type SubagentRun,
   type WorkflowInvocation,
@@ -58,6 +60,7 @@ interface ChatStore {
   loadingEarlierHistory: boolean;
   loadingHistoryActivities: string | null;
   loadingSubagentDetail: string | null;
+  attentionItems: AgentAttentionItem[];
 
   activateProject: (sessionId: string) => Promise<ProjectWorkspaceState>;
   deactivateProject: () => void;
@@ -86,6 +89,8 @@ interface ChatStore {
   loadEarlierHistory: () => Promise<boolean>;
   loadEarlierActivities: (messageId: string) => Promise<boolean>;
   loadSubagentDetail: (runId: string) => Promise<boolean>;
+  openAttention: (item: AgentAttentionItem) => Promise<void>;
+  clearAttention: (itemId: string) => Promise<void>;
 
   /** Subscribe to agent events from main process */
   subscribeToAgent: () => () => void;
@@ -126,6 +131,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   loadingEarlierHistory: false,
   loadingHistoryActivities: null,
   loadingSubagentDetail: null,
+  attentionItems: [],
 
   activateProject: async (sessionId) => {
     const requestEpoch = ++historyRequestEpoch;
@@ -220,7 +226,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       role: 'user',
       content,
       timestamp: new Date().toISOString(),
-      status: 'complete',
+      status: get().isProcessing ? 'queued' : 'complete',
+      source: 'operator',
       ...(attachments.length ? { attachments: attachments.map(attachmentMetadata) } : {}),
       ...(contextRefs.length ? { contextRefs } : {}),
       ...(workflowInvocation ? { workflowInvocation } : {}),
@@ -264,10 +271,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const requestEpoch = ++historyRequestEpoch;
     if (!window.hexestra || !state.activeProjectId) {
       set({ error: 'Open a project folder before creating a conversation.' });
-      return false;
-    }
-    if (state.isProcessing) {
-      set({ error: 'Wait for the active Claude request to finish.' });
       return false;
     }
 
@@ -348,10 +351,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const sourceContextRefs = sourceIndex >= 0 ? state.messages[sourceIndex].contextRefs ?? [] : [];
     if (!session || session.id !== state.activeProjectId || sourceIndex < 0) {
       set({ error: 'The selected conversation turn is unavailable.' });
-      return;
-    }
-    if (state.isProcessing) {
-      set({ error: 'Wait for the active Claude request to finish before branching.' });
       return;
     }
 
@@ -439,7 +438,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   switchBranch: async (branchId) => {
     const state = get();
     const requestEpoch = ++historyRequestEpoch;
-    if (branchId === state.activeBranchId || state.isProcessing) return;
+    if (branchId === state.activeBranchId) return;
     if (!window.hexestra || !state.activeProjectId) return;
     const previous = {
       activeBranchId: state.activeBranchId,
@@ -525,7 +524,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           totalActivities: s.history.totalActivities + activityDelta,
           items: msgs,
         },
-        isProcessing: msg.status === 'streaming' || msg.status === 'sending',
+        isProcessing: msg.status === 'streaming' || msg.status === 'sending'
+          ? true
+          : msg.status === 'queued' || msg.role === 'user'
+            ? s.isProcessing
+            : s.messages.some((message) => message.status === 'queued'),
       };
     }),
 
@@ -604,14 +607,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   approveToolRequest: async (requestId) => {
     if (window.hexestra) {
-      await window.hexestra.invoke('agent:approve-tool', requestId);
+      await window.hexestra.invoke('agent:approve-tool', requestId, get().activeProjectId, get().activeBranchId);
     }
     set({ pendingToolRequest: null });
   },
 
   rejectToolRequest: (requestId) => {
     if (window.hexestra) {
-      window.hexestra.invoke('agent:reject-tool', requestId);
+      window.hexestra.invoke('agent:reject-tool', requestId, get().activeProjectId, get().activeBranchId);
     }
     set({ pendingToolRequest: null });
   },
@@ -619,7 +622,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   answerUserQuestion: async (requestId, answers) => {
     if (!window.hexestra) return;
     try {
-      await window.hexestra.invoke('agent:answer-question', requestId, answers);
+      await window.hexestra.invoke('agent:answer-question', requestId, answers, get().activeProjectId, get().activeBranchId);
       if (get().pendingToolRequest?.id === requestId) {
         set({ pendingToolRequest: null, error: null });
       }
@@ -776,6 +779,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
+  openAttention: async (item) => {
+    if (window.hexestra) await window.hexestra.invoke('agent:attention:read', item.id);
+    set((state) => ({ attentionItems: state.attentionItems.map((candidate) => candidate.id === item.id ? { ...candidate, read: true } : candidate) }));
+    if (useSessionStore.getState().currentSession?.id !== item.projectId) {
+      await useSessionStore.getState().loadSession(item.projectId);
+    }
+    if (get().activeProjectId !== item.projectId) await get().activateProject(item.projectId);
+    if (get().activeBranchId !== item.branchId) await get().switchBranch(item.branchId);
+    if (item.interaction) {
+      set({ pendingToolRequest: item.interaction as ChatStore['pendingToolRequest'] });
+    }
+  },
+
+  clearAttention: async (itemId) => {
+    if (window.hexestra) await window.hexestra.invoke('agent:attention:clear', itemId);
+    set((state) => ({ attentionItems: state.attentionItems.filter((item) => item.id !== itemId) }));
+  },
+
   refreshStatus: async () => {
     const sessionId = get().activeProjectId;
     if (!window.hexestra || !sessionId) return;
@@ -824,7 +845,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const unsub = window.hexestra.on('agent:message', (data: unknown) => {
       const event = data as AgentMessageEvent;
       if (event.sessionId !== get().activeProjectId || event.branchId !== get().activeBranchId) return;
-      const isLiveUpdate = event.message.status === 'streaming' || event.message.status === 'sending';
+      const isLiveUpdate = event.message.status === 'streaming' || event.message.status === 'sending' || event.message.status === 'queued';
       const alreadyProjected = get().messages.some((message) => message.id === event.message.id);
       if (!isLiveUpdate || !alreadyProjected) {
         pendingMessages.delete(event.message.id);
@@ -837,14 +858,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     const unsubTool = window.hexestra.on('agent:tool-request', (data: unknown) => {
       const event = data as AgentToolRequestEvent;
-      if (event.sessionId === get().activeProjectId) {
+      if (event.sessionId === get().activeProjectId && (!event.branchId || event.branchId === get().activeBranchId)) {
         set({ pendingToolRequest: event.request });
       }
     });
 
     const unsubStatus = window.hexestra.on('agent:status', (data: unknown) => {
       const event = data as AgentStatusEvent;
-      if (event.sessionId !== get().activeProjectId) return;
+      if (event.sessionId !== get().activeProjectId || (event.branchId && event.branchId !== get().activeBranchId)) return;
       const agentStatus = event.status;
       set({
         agentStatus,
@@ -868,7 +889,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (!subagentFlushTimer) subagentFlushTimer = setTimeout(flushSubagents, LIVE_EVENT_FLUSH_MS);
     });
 
+    const unsubAttention = window.hexestra.on('agent:attention', (data: unknown) => {
+      const event = data as AgentAttentionEvent;
+      if (!event?.item?.id) return;
+      set((state) => ({
+        attentionItems: state.attentionItems.some((item) => item.id === event.item.id)
+          ? state.attentionItems.map((item) => item.id === event.item.id ? event.item : item)
+          : [...state.attentionItems, event.item],
+      }));
+    });
+    const unsubAttentionResolved = window.hexestra.on('agent:attention:resolved', (data: unknown) => {
+      const id = (data as { id?: string })?.id;
+      if (id) set((state) => ({ attentionItems: state.attentionItems.filter((item) => item.id !== id) }));
+    });
+
     void get().refreshStatus();
+    void window.hexestra.invoke<AgentAttentionItem[]>('agent:attention:list').then((items) => set({ attentionItems: items })).catch(() => undefined);
 
     return () => {
       if (messageFlushTimer) clearTimeout(messageFlushTimer);
@@ -879,6 +915,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       unsubTool();
       unsubStatus();
       unsubSubagent();
+      unsubAttention();
+      unsubAttentionResolved();
     };
   },
 }));

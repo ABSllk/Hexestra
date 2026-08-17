@@ -143,7 +143,7 @@ export function ChatInput() {
   }, [text]);
 
   const handleSend = useCallback(async () => {
-    if ((!text.trim() && attachments.length === 0 && contextRefs.length === 0) || isProcessing) return;
+    if (!text.trim() && attachments.length === 0 && contextRefs.length === 0) return;
     const content = text.trim() || 'Analyze the attached material in the context of this penetration-testing project.';
     if (normalizeAgentSlashCommand(content) && (attachments.length > 0 || contextRefs.length > 0)) {
       setComposerError(t('agent.commandContextError'));
@@ -159,7 +159,7 @@ export function ChatInput() {
       // The store owns request errors; preserve only composer-specific errors here.
     }
     textareaRef.current?.focus();
-  }, [attachments, contextRefs.length, isProcessing, sendMessage, text]);
+  }, [attachments, contextRefs.length, sendMessage, text]);
 
   const pickAttachments = async (picker: AgentAttachmentPicker) => {
     if (!window.hexestra) return;
@@ -322,7 +322,6 @@ export function ChatInput() {
             aria-controls={showCommandSuggestions ? 'agent-command-suggestions' : undefined}
             aria-activedescendant={showCommandSuggestions ? `agent-command-option-${activeCommandIndex}` : undefined}
             className="max-h-36 min-h-10 min-w-0 flex-1 resize-none rounded-xl border-0 bg-transparent p-0 font-sans text-xs leading-5 text-text-primary placeholder:text-text-muted focus-visible:outline-none"
-            disabled={isProcessing}
           />
         </div>
 
@@ -338,13 +337,22 @@ export function ChatInput() {
             <ComposerTrigger active={openMenu === 'model'} ariaLabel={`Model ${modelLabel}`} onClick={() => setOpenMenu((current) => current === 'model' ? null : 'model')} icon="bot" label="MODEL" />
             <ComposerTrigger active={openMenu === 'autonomy'} ariaLabel={`Autonomy ${autonomyLevel}`} onClick={() => setOpenMenu((current) => current === 'autonomy' ? null : 'autonomy')} icon="sparkles" label={autonomyLevel.toUpperCase()} />
             <button
-              aria-label={isProcessing ? t('agent.cancelRequest') : t('agent.send')}
-              onClick={() => isProcessing ? void cancelRequest() : void handleSend()}
-              disabled={!isProcessing && !text.trim() && attachments.length === 0 && contextRefs.length === 0}
-              className={cn('ml-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors', isProcessing ? 'bg-severity-medium/15 text-severity-medium hover:bg-severity-medium/25' : 'bg-text-primary text-canvas hover:bg-accent-blue disabled:cursor-not-allowed disabled:bg-raised disabled:text-text-muted')}
+              aria-label={t('agent.send')}
+              onClick={() => void handleSend()}
+              disabled={!text.trim() && attachments.length === 0 && contextRefs.length === 0}
+              className="ml-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-text-primary text-canvas transition-colors hover:bg-accent-blue disabled:cursor-not-allowed disabled:bg-raised disabled:text-text-muted"
             >
-              <Icon name={isProcessing ? 'close' : 'send'} size={14} />
+              <Icon name="send" size={14} />
             </button>
+            {isProcessing && (
+              <button
+                aria-label={t('agent.cancelRequest')}
+                onClick={() => void cancelRequest()}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-severity-medium/15 text-severity-medium transition-colors hover:bg-severity-medium/25"
+              >
+                <Icon name="close" size={14} />
+              </button>
+            )}
           </div>
         </div>
       </div>

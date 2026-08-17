@@ -1,5 +1,6 @@
 import type { AgentActivity, AgentPermissionMode, AgentStatus, ChatMessage } from './chat';
 import type { AgentBackendId } from '../../electron/contracts/agent-runtime';
+import type { AgentAttentionEvent, AgentAttentionItem, AgentAttentionKind } from '../../electron/contracts/agent-runtime';
 import type { AutonomyLevel } from './session';
 import type { ShellProjectState } from '@electron/contracts/shell';
 import type { SubagentRun } from '../../electron/agent-subagent-contract';
@@ -81,21 +82,29 @@ export interface ProjectStatePatch {
 export interface AgentMessageEvent {
   sessionId: string | null;
   branchId: string;
+  projectId?: string | null;
   message: ChatMessage;
 }
 
 export interface AgentStatusEvent {
   sessionId: string | null;
+  branchId?: string;
+  projectId?: string | null;
   status: AgentStatus;
 }
 
 export interface AgentSubagentUpdateEvent {
   sessionId: string | null;
   branchId: string;
+  projectId?: string | null;
   run: SubagentRun;
 }
 
 export interface AgentToolRequestEvent {
   sessionId: string | null;
+  branchId?: string;
+  projectId?: string | null;
   request: import('./chat').ToolRequest;
 }
+
+export type { AgentAttentionEvent, AgentAttentionItem, AgentAttentionKind };

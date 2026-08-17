@@ -44,6 +44,7 @@ import {
 } from './browser-policy';
 import { buildBrowserContextMenuModel, type BrowserContextMenuCommand } from './browser-context-menu';
 import { getProjectEgressRoute, onProjectEgressRoute } from './project-egress';
+import { isProjectRuntimePinned } from './project-runtime-lease';
 
 const DEFAULT_BROWSER_URL = 'https://example.com/';
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/;
@@ -193,6 +194,7 @@ class BrowserService {
         owner.id,
         request.projectId,
         retainedTabIds,
+        new Set(request.pinnedProjectIds ?? []),
       )) {
         this.destroyRuntime(runtime);
       }
@@ -673,7 +675,10 @@ function parseReconcileRequest(value: unknown): BrowserReconcileRequest {
   if (!Array.isArray(value.tabIds) || value.tabIds.length > 50) {
     throw new Error('Invalid browser tab list');
   }
-  return { projectId, tabIds: value.tabIds.map((tabId) => parseId(tabId, 'tab')) };
+  const pinnedProjectIds = Array.isArray(value.pinnedProjectIds)
+    ? value.pinnedProjectIds.slice(0, 50).map((id) => parseId(id, 'project'))
+    : undefined;
+  return { projectId, tabIds: value.tabIds.map((tabId) => parseId(tabId, 'tab')), pinnedProjectIds };
 }
 
 function parseId(value: unknown, label: string): string {

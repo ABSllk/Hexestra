@@ -5,7 +5,6 @@ export function ConversationSelector() {
   const activeProjectId = useChatStore((state) => state.activeProjectId);
   const activeBranchId = useChatStore((state) => state.activeBranchId);
   const branches = useChatStore((state) => state.branches);
-  const isProcessing = useChatStore((state) => state.isProcessing);
   const newConversation = useChatStore((state) => state.newConversation);
   const switchBranch = useChatStore((state) => state.switchBranch);
 
@@ -14,7 +13,7 @@ export function ConversationSelector() {
       <select
         aria-label="Select conversation"
         className="ui-control min-w-0 flex-1 px-2.5 py-1.5 text-[11px] text-text-secondary disabled:opacity-50"
-        disabled={!activeProjectId || isProcessing}
+        disabled={!activeProjectId}
         onChange={(event) => void switchBranch(event.target.value)}
         value={activeBranchId}
       >
@@ -27,7 +26,7 @@ export function ConversationSelector() {
       <button
         aria-label="New conversation"
         className="ui-icon-button border-border-subtle hover:border-accent-blue/30 hover:bg-accent-blue/10 hover:text-accent-blue disabled:cursor-not-allowed disabled:opacity-40"
-        disabled={!activeProjectId || isProcessing}
+        disabled={!activeProjectId}
         onClick={() => void newConversation()}
         title="New conversation"
       >

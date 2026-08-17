@@ -567,7 +567,7 @@ describe('useChatStore project isolation', () => {
     });
     expect(invoke).toHaveBeenCalledWith('agent:answer-question', 'question-1', {
       'Which target should I test?': 'API',
-    });
+    }, 'project-a', 'main');
     expect(useChatStore.getState().pendingToolRequest).toBeNull();
     unsubscribe();
   });

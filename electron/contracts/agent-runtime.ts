@@ -27,6 +27,8 @@ export interface AgentBackendCapabilities {
   tools: boolean;
   interactiveQuestions: boolean;
   slashCommands: boolean;
+  queuedInput?: boolean;
+  scheduledWakeups?: boolean;
 }
 
 export interface AgentBackendRuntimeState {
@@ -85,6 +87,8 @@ export interface AgentRunInput {
   command?: string;
   systemInstructions: string;
   dynamicSystemContext?: string;
+  /** Internal main-process callback used to refresh scheduled context without exposing provider types. */
+  dynamicSystemContextProvider?: () => Promise<string | undefined> | string | undefined;
   signal: AbortSignal;
   attachments: AgentAttachment[];
   cwd: string;
@@ -97,6 +101,79 @@ export interface AgentRunInput {
   settingSources?: string[];
   tools: AgentToolDefinition[];
   projectId?: string;
+  /** Stable UUID/source used when the provider queue starts this input. */
+  inputId?: string;
+  source?: AgentInputSource;
+  queuedAt?: string;
+}
+
+export type AgentInputSource = 'operator' | 'scheduled' | 'runtime';
+
+export type AgentAttentionKind = 'completed' | 'failed' | 'waiting_approval' | 'waiting_input';
+
+export interface AgentAttentionInteraction {
+  id: string;
+  kind: 'tool_approval' | 'ask_user_question';
+  toolUseId: string;
+  toolName?: string;
+  input?: Record<string, unknown>;
+  description?: string;
+  riskLevel?: 'read' | 'write';
+  questions?: AskUserQuestion[];
+  createdAt: string;
+  agentId?: string;
+  subagentRunId?: string;
+  agentType?: string;
+}
+
+export interface AgentAttentionItem {
+  id: string;
+  projectId: string;
+  branchId: string;
+  kind: AgentAttentionKind;
+  title: string;
+  detail?: string;
+  interaction?: AgentAttentionInteraction;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface AgentAttentionEvent {
+  item: AgentAttentionItem;
+}
+
+export interface AgentQueuedInput {
+  id: string;
+  source: AgentInputSource;
+  prompt: string;
+  command?: string;
+  queuedAt: string;
+  input: AgentRunInput;
+}
+
+export interface AgentConversationOpenInput extends Omit<AgentRunInput, 'signal'> {
+  signal?: AbortSignal;
+}
+
+export interface AgentInterruptReceipt {
+  stillQueued: string[];
+}
+
+export interface AgentRuntimeSnapshot {
+  projectId?: string;
+  branchId: string;
+  active: boolean;
+  pendingInputs: number;
+  pendingCrons: number;
+  interactionPending: boolean;
+}
+
+export interface AgentConversationHandle {
+  enqueue(input: AgentQueuedInput): Promise<void>;
+  events(): AsyncIterable<AgentRunEvent>;
+  interrupt(): Promise<AgentInterruptReceipt>;
+  snapshot(): AgentRuntimeSnapshot;
+  dispose(): Promise<void>;
 }
 
 export interface AgentCommandDiscoveryInput {
@@ -110,21 +187,66 @@ export interface AgentSessionEvent {
   type: 'session';
   sessionId: string;
   model: string | null;
+  projectId?: string;
+  branchId?: string;
+}
+
+export interface AgentInputStartedEvent {
+  type: 'input_started';
+  projectId?: string;
+  branchId: string;
+  inputId: string;
+  source: AgentInputSource;
+  prompt?: string;
+  queuedAt?: string;
+  startedAt: string;
+}
+
+export interface AgentTurnStartedEvent {
+  type: 'turn_started';
+  projectId?: string;
+  branchId: string;
+  inputId: string;
+  source: AgentInputSource;
+  startedAt: string;
+}
+
+export interface AgentRuntimeStateEvent {
+  type: 'runtime_state';
+  projectId?: string;
+  branchId: string;
+  snapshot: AgentRuntimeSnapshot;
+}
+
+export interface AgentSchedulesChangedEvent {
+  type: 'schedules_changed';
+  projectId?: string;
+  branchId: string;
+  crons: Array<{ id: string; schedule: string; recurring: boolean; prompt: string }>;
 }
 
 export interface AgentTurnSnapshotEvent {
   type: 'turn_snapshot';
+  projectId?: string;
+  branchId?: string;
+  inputId?: string;
   content: string;
   activities: AgentActivity[];
 }
 
 export interface AgentSubagentSnapshotEvent {
   type: 'subagent_snapshot';
+  projectId?: string;
+  branchId?: string;
   run: import('../agent-subagent-contract').SubagentRun;
 }
 
 export interface AgentTurnCompletedEvent {
   type: 'turn_completed';
+  projectId?: string;
+  branchId?: string;
+  inputId?: string;
+  source?: AgentInputSource;
   content: string;
   activities: AgentActivity[];
   backendMessageId?: string;
@@ -132,11 +254,17 @@ export interface AgentTurnCompletedEvent {
 
 export interface AgentCommandsChangedEvent {
   type: 'commands_changed';
+  projectId?: string;
+  branchId?: string;
   commands: AgentSlashCommandDescriptor[];
 }
 
 export type AgentRunEvent =
   | AgentSessionEvent
+  | AgentInputStartedEvent
+  | AgentTurnStartedEvent
+  | AgentRuntimeStateEvent
+  | AgentSchedulesChangedEvent
   | AgentTurnSnapshotEvent
   | AgentSubagentSnapshotEvent
   | AgentCommandsChangedEvent
@@ -154,6 +282,10 @@ export interface AgentAdapter {
     input: AgentRunInput,
     interactions: AgentInteractionHandler,
   ): AsyncIterable<AgentRunEvent>;
+  openConversation?(
+    input: AgentConversationOpenInput,
+    interactions: AgentInteractionHandler,
+  ): Promise<AgentConversationHandle>;
   disposeConversation?(projectId: string | undefined, conversationId: string): Promise<void> | void;
 }
 

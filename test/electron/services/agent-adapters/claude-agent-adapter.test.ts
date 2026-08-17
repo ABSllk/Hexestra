@@ -225,7 +225,83 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
     await adapter.disposeConversation('project-1', 'main');
   });
 
-  it('closes the previous streaming query when the conversation changes', async () => {
+  it('stamps stable UUIDs and keeps native queued input order', async () => {
+    const prompts: unknown[] = [];
+    let firstPromptReceived!: () => void;
+    const promptReceived = new Promise<void>((resolve) => { firstPromptReceived = resolve; });
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    sdk.query.mockImplementation((params) => ({
+      supportedCommands: vi.fn(async () => []),
+      setPermissionMode: vi.fn(async () => undefined),
+      interrupt: vi.fn(async () => undefined),
+      close: vi.fn(),
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'system', subtype: 'init', session_id: 'claude-session-1', model: 'deepseek-v4-pro' };
+        let count = 0;
+        for await (const prompt of params.prompt) {
+          prompts.push(prompt);
+          count += 1;
+          if (count === 1) {
+            firstPromptReceived();
+            await firstGate;
+          }
+          yield { type: 'result', subtype: 'success', result: `reply-${count}` };
+        }
+      },
+    }));
+
+    const adapter = new ClaudeAgentAdapter();
+    const firstInput = { ...runInput('context'), inputId: '11111111-1111-4111-8111-111111111111' };
+    const first = collect(adapter.runTurn(firstInput, interactions));
+    await promptReceived;
+    const handle = await adapter.openConversation(runInput('context'), interactions);
+    const queuedInput = { ...runInput('context'), inputId: '22222222-2222-4222-8222-222222222222' };
+    await handle.enqueue({ id: queuedInput.inputId!, source: 'operator', prompt: queuedInput.prompt, queuedAt: new Date().toISOString(), input: queuedInput });
+    releaseFirst();
+    await first;
+    await vi.waitFor(() => expect(prompts).toHaveLength(2));
+    expect((prompts[0] as { uuid?: string }).uuid).toBe(firstInput.inputId);
+    expect((prompts[1] as { uuid?: string }).uuid).toBe(queuedInput.inputId);
+    await handle.dispose();
+  });
+
+  it('turns a one-shot schedule wakeup into a scheduled event stream', async () => {
+    sdk.query.mockImplementation((params) => ({
+      supportedCommands: vi.fn(async () => []),
+      setPermissionMode: vi.fn(async () => undefined),
+      interrupt: vi.fn(async () => undefined),
+      close: vi.fn(),
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'system', subtype: 'init', session_id: 'claude-session-1', model: 'deepseek-v4-pro' };
+        for await (const prompt of params.prompt) {
+          yield prompt;
+          const hook = params.options.hooks.UserPromptSubmit[0].hooks[0];
+          await hook({ hook_event_name: 'UserPromptSubmit', source: 'schedule_wakeup' });
+          yield { type: 'result', subtype: 'success', result: 'scheduled reply' };
+        }
+      },
+    }));
+    const adapter = new ClaudeAgentAdapter();
+    const handle = await adapter.openConversation(runInput('context'), interactions);
+    const events: AgentRunEvent[] = [];
+    const reader = (async () => {
+      for await (const event of handle.events()) {
+        events.push(event);
+        if (event.type === 'turn_completed') break;
+      }
+    })();
+    const input = { ...runInput('context'), inputId: '33333333-3333-4333-8333-333333333333' };
+    await handle.enqueue({ id: input.inputId!, source: 'scheduled', prompt: 'check shell', queuedAt: new Date().toISOString(), input });
+    await reader;
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'input_started', source: 'scheduled', inputId: input.inputId }),
+      expect.objectContaining({ type: 'turn_completed', source: 'scheduled', content: 'scheduled reply' }),
+    ]));
+    await handle.dispose();
+  });
+
+  it('keeps independent streaming queries when conversations change', async () => {
     const closes: Array<ReturnType<typeof vi.fn>> = [];
     sdk.query.mockImplementation((params) => {
       const close = vi.fn();
@@ -256,11 +332,13 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
     await collect(adapter.runTurn(secondConversation, interactions));
 
     expect(sdk.query).toHaveBeenCalledTimes(2);
-    expect(closes[0]).toHaveBeenCalledTimes(1);
+    expect(closes[0]).not.toHaveBeenCalled();
     expect(closes[1]).not.toHaveBeenCalled();
 
     await adapter.disposeConversation('project-1', 'secondary');
     expect(closes[1]).toHaveBeenCalledTimes(1);
+    await adapter.disposeConversation('project-1', 'main');
+    expect(closes[0]).toHaveBeenCalledTimes(1);
   });
 
   it('uses an idle non-persisted query and returns only sanitized status fields', async () => {

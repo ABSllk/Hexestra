@@ -248,6 +248,22 @@ describe('AgentHistoryRepository', () => {
     ]));
   });
 
+  it('marks queued records interrupted when no runtime survived the process exit', () => {
+    const { repository } = createRepository();
+    repository.ensureBranch(createConversationBranch('main', 'Main'));
+    repository.appendMessage('main', {
+      id: 'queued-message',
+      role: 'user',
+      content: 'queued input',
+      timestamp: '2026-08-15T00:00:00.000Z',
+      status: 'queued',
+      source: 'operator',
+    });
+    expect(repository.recoverAbandonedMessages('main')).toEqual([
+      expect.objectContaining({ id: 'queued-message', status: 'interrupted', source: 'operator' }),
+    ]);
+  });
+
   it('recovers the latest valid legacy record from a torn tail and compacts it', () => {
     const { directory, repository } = createRepository();
     repository.ensureBranch(createConversationBranch('main', 'Main'));

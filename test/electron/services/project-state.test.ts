@@ -146,7 +146,7 @@ describe('project state', () => {
     });
 
     expect(state.agent.branches[0].messages?.[0]).toMatchObject({
-      status: 'complete',
+      status: 'interrupted',
       backendMessageId: 'sdk-message-1',
     });
     expect(state.agent.branches[0].messages?.[0]?.activities?.[0])
@@ -159,6 +159,30 @@ describe('project state', () => {
     expect(state.workspace.tabs[0].data).toBeUndefined();
     expect(state.workspace.tabs[1].data).toEqual({ url: 'https://example.test' });
     expect(state.workspace.tabs[2].data).toEqual({ recordKind: 'finding', recordId: 'finding-1' });
+  });
+
+  it('keeps queued and scheduled message metadata compatible across restart', () => {
+    const state = normalizeProjectState({
+      version: 9,
+      agent: {
+        activeBranchId: 'main',
+        branches: [{
+          id: 'main',
+          title: 'Main',
+          backendId: 'claude',
+          runtime: null,
+          history: { messageCount: 2, activityCount: 0, subagentRunCount: 0 },
+          focusedTaskId: null,
+          createdAt: '2026-08-17T00:00:00.000Z',
+          messages: [
+            { id: 'queued', role: 'user', content: 'queued', timestamp: '2026-08-17T00:00:00.000Z', status: 'queued', source: 'operator' },
+            { id: 'scheduled', role: 'user', content: 'wake', timestamp: '2026-08-17T00:00:00.000Z', status: 'complete', source: 'scheduled' },
+          ],
+        }],
+      },
+    });
+    expect(state.agent.branches[0].messages?.[0]).toMatchObject({ status: 'interrupted', source: 'operator' });
+    expect(state.agent.branches[0].messages?.[1]).toMatchObject({ status: 'complete', source: 'scheduled' });
   });
 
   it('preserves complete long conversations when project state is reloaded', () => {
