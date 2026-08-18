@@ -28,6 +28,11 @@ export interface ClaudeRuntimeResolutionOptions {
   projectId?: string;
 }
 
+export interface ClaudeRuntimeCommand {
+  command: string;
+  prefixArgs: string[];
+}
+
 export async function resolveClaudeRuntime(
   settings: AgentConnectionSettings,
   options: ClaudeRuntimeResolutionOptions = {},
@@ -69,7 +74,9 @@ export async function resolveClaudeRuntime(
       executablePath: null,
       source: 'none',
       environment: withProjectEnvironment(environment),
-      error: `Configured Claude executable was not found or is not executable: ${explicit}. ${guidance}`,
+      error: platform === 'win32' && /\.(?:cmd|bat)$/i.test(explicit)
+        ? `Configured Claude command shim could not be resolved to a runnable entrypoint: ${explicit}. Reinstall Claude Code or select claude.exe.`
+        : `Configured Claude executable was not found or is not executable: ${explicit}. ${guidance}`,
       installGuidance: guidance,
     };
   }
@@ -119,6 +126,16 @@ export function runtimeFingerprint(
   }
   const executable = runtime?.executablePath ?? (settings.claudeExecutable || 'auto');
   return `native:${executable}`;
+}
+
+export function claudeRuntimeCommand(
+  executablePath: string,
+  platform: NodeJS.Platform = process.platform,
+): ClaudeRuntimeCommand {
+  if (platform === 'win32' && /\.(?:js|mjs)$/i.test(executablePath)) {
+    return { command: 'node', prefixArgs: [executablePath] };
+  }
+  return { command: executablePath, prefixArgs: [] };
 }
 
 function success(
@@ -192,13 +209,36 @@ function executableNames(candidate: string, platform: NodeJS.Platform) {
   return [candidate, `${candidate}.exe`, `${candidate}.cmd`, `${candidate}.bat`];
 }
 
+export function resolveWindowsClaudeNpmEntrypoint(
+  shimPath: string,
+  isFile: (candidate: string) => boolean = fileIsRegular,
+) {
+  if (win32.extname(shimPath).toLowerCase() !== '.cmd') return null;
+  const directory = win32.dirname(shimPath);
+  const entrypoints = [
+    win32.join(directory, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
+    win32.join(directory, '..', '@anthropic-ai', 'claude-code', 'cli.js'),
+  ];
+  return entrypoints.find(isFile) ?? null;
+}
+
 function normalizeExecutable(candidate: string, platform: NodeJS.Platform): string | null {
   try {
-    const stat = fs.statSync(candidate);
-    if (!stat.isFile()) return null;
+    if (!fileIsRegular(candidate)) return null;
     if (platform !== 'win32') fs.accessSync(candidate, fs.constants.X_OK);
-    return fs.realpathSync(candidate);
+    const resolved = fs.realpathSync(candidate);
+    if (platform !== 'win32' || !/\.(?:cmd|bat)$/i.test(resolved)) return resolved;
+    const entrypoint = resolveWindowsClaudeNpmEntrypoint(resolved);
+    return entrypoint ? fs.realpathSync(entrypoint) : null;
   } catch {
     return null;
+  }
+}
+
+function fileIsRegular(candidate: string) {
+  try {
+    return fs.statSync(candidate).isFile();
+  } catch {
+    return false;
   }
 }

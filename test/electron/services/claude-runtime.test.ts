@@ -1,9 +1,14 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentConnectionSettings } from '@electron/contracts/agent-settings';
-import { resolveClaudeRuntime } from '@electron/services/claude-runtime';
+import {
+  claudeRuntimeCommand,
+  resolveClaudeRuntime,
+  resolveWindowsClaudeNpmEntrypoint,
+} from '@electron/services/claude-runtime';
 import { parseNullDelimitedEnvironment } from '@electron/services/shell-environment';
 
 const temporaryDirectories: string[] = [];
@@ -67,5 +72,63 @@ describe('Claude runtime resolution', () => {
     const result = await resolveClaudeRuntime({ ...baseSettings, executionMode: 'wsl', claudeExecutable: '' }, { platform: 'win32' });
     expect(result).toMatchObject({ executablePath: '/usr/bin/claude', source: 'wsl' });
     expect(result.installGuidance).toContain('wsl.exe --install');
+  });
+
+  it('maps a Windows npm command shim to the Claude Code JavaScript entrypoint', () => {
+    const shim = String.raw`C:\fixture\npm\claude.cmd`;
+    const entrypoint = String.raw`C:\fixture\npm\node_modules\@anthropic-ai\claude-code\cli.js`;
+    const localShim = String.raw`C:\fixture\project\node_modules\.bin\claude.cmd`;
+    const localEntrypoint = String.raw`C:\fixture\project\node_modules\@anthropic-ai\claude-code\cli.js`;
+
+    expect(resolveWindowsClaudeNpmEntrypoint(shim, (candidate) => candidate === entrypoint)).toBe(entrypoint);
+    expect(resolveWindowsClaudeNpmEntrypoint(localShim, (candidate) => candidate === localEntrypoint)).toBe(localEntrypoint);
+    expect(resolveWindowsClaudeNpmEntrypoint(String.raw`C:\tools\claude.bat`, () => true)).toBeNull();
+    expect(resolveWindowsClaudeNpmEntrypoint(shim, () => false)).toBeNull();
+  });
+
+  it('runs a mapped Windows JavaScript entrypoint through Node without a shell', () => {
+    const entrypoint = String.raw`C:\fixture\npm\node_modules\@anthropic-ai\claude-code\cli.js`;
+
+    expect(claudeRuntimeCommand(entrypoint, 'win32')).toEqual({
+      command: 'node',
+      prefixArgs: [entrypoint],
+    });
+    expect(claudeRuntimeCommand('/usr/local/bin/claude', 'darwin')).toEqual({
+      command: '/usr/local/bin/claude',
+      prefixArgs: [],
+    });
+  });
+
+  it.runIf(process.platform === 'win32')('resolves a real Windows npm shim before spawning Claude Code', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-claude-npm-shim-'));
+    temporaryDirectories.push(root);
+    const shim = path.join(root, 'claude.cmd');
+    const entrypoint = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+    fs.mkdirSync(path.dirname(entrypoint), { recursive: true });
+    fs.writeFileSync(shim, '@echo off\r\nnode "%~dp0\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\r\n');
+    fs.writeFileSync(entrypoint, 'if (process.argv.includes("--version")) process.stdout.write("Claude Code fixture\\n");\n');
+
+    const direct = spawnSync(shim, ['--version'], { shell: false, encoding: 'utf8' });
+    expect((direct.error as NodeJS.ErrnoException | undefined)?.code).toBe('EINVAL');
+
+    const runtime = await resolveClaudeRuntime(
+      { ...baseSettings, claudeExecutable: shim },
+      { platform: 'win32', environment: { PATH: path.dirname(process.execPath) } },
+    );
+    expect(runtime).toMatchObject({
+      executablePath: fs.realpathSync(entrypoint),
+      source: 'explicit',
+      error: null,
+    });
+
+    const invocation = claudeRuntimeCommand(runtime.executablePath!, 'win32');
+    const mapped = spawnSync(invocation.command, [...invocation.prefixArgs, '--version'], {
+      env: { ...process.env, PATH: path.dirname(process.execPath) },
+      shell: false,
+      encoding: 'utf8',
+    });
+    expect(mapped.error).toBeUndefined();
+    expect(mapped.status).toBe(0);
+    expect(mapped.stdout).toContain('Claude Code fixture');
   });
 });

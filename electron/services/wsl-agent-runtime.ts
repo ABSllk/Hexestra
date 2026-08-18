@@ -11,7 +11,7 @@ import type {
   AgentConnectionSettings,
   AgentDiagnosticCheck,
 } from '../contracts/agent-settings';
-import { resolveClaudeRuntime } from './claude-runtime';
+import { claudeRuntimeCommand, resolveClaudeRuntime } from './claude-runtime';
 
 const FORWARDED_ENV = /^(?:ANTHROPIC_|CLAUDE_|MCP_|HEXESTRA_|HTTP_PROXY$|HTTPS_PROXY$|NO_PROXY$)/i;
 const EXCLUDED_ENV = new Set([
@@ -143,10 +143,11 @@ export async function diagnoseAgentConnection(
   const environment = dependencyOverrides.environment ?? process.env;
   const checks: AgentDiagnosticCheck[] = [];
   const runtime = await resolveClaudeRuntime(settings, { environment });
-  const command = settings.executionMode === 'wsl' ? 'wsl.exe' : runtime.executablePath ?? '';
+  const nativeCommand = claudeRuntimeCommand(runtime.executablePath ?? '');
+  const command = settings.executionMode === 'wsl' ? 'wsl.exe' : nativeCommand.command;
   const prefix = settings.executionMode === 'wsl'
     ? ['--distribution', settings.wslDistribution, '--exec', runtime.executablePath ?? '/usr/bin/claude']
-    : [];
+    : nativeCommand.prefixArgs;
   const runWithRuntimeEnvironment = (command: string, args: string[]) => run(command, args, runtime.environment);
 
   if (settings.executionMode === 'wsl') {

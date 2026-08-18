@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentConnectionSettings } from '@electron/contracts/agent-settings';
 import {
   buildWslEnvironment,
@@ -16,6 +19,11 @@ const settings: AgentConnectionSettings = {
   model: null,
   settingSources: ['user', 'project', 'local'],
 };
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
+});
 
 describe('WSL Agent runtime', () => {
   it('decodes UTF-16LE WSL errors before stripping control characters', () => {
@@ -60,6 +68,38 @@ describe('WSL Agent runtime', () => {
     expect(env.WSLENV).toContain('HEXESTRA_TEST/u');
     expect(env.WSLENV).not.toContain('CLAUDE_CONFIG_DIR');
     expect(env.WSLENV).not.toContain('PATH/u');
+  });
+
+  it.runIf(process.platform === 'win32')('diagnoses a Windows npm Claude shim through Node without a shell', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-claude-diagnostic-'));
+    temporaryDirectories.push(root);
+    const shim = path.join(root, 'claude.cmd');
+    const entrypoint = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+    fs.mkdirSync(path.dirname(entrypoint), { recursive: true });
+    fs.writeFileSync(shim, '@echo off\r\nnode "%~dp0\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\r\n');
+    fs.writeFileSync(entrypoint, '');
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const runFile = vi.fn(async (command: string, args: string[]) => {
+      calls.push({ command, args });
+      if (args.includes('--version')) return { stdout: '2.1.0', stderr: '' };
+      return { stdout: JSON.stringify({ loggedIn: true, authMethod: 'oauth' }), stderr: '' };
+    });
+
+    const diagnostic = await diagnoseAgentConnection({
+      ...settings,
+      executionMode: 'native',
+      claudeExecutable: shim,
+    }, {
+      runFile,
+      environment: { PATH: path.dirname(process.execPath) },
+    });
+
+    expect(diagnostic.ok).toBe(true);
+    expect(calls).toContainEqual({ command: 'node', args: [fs.realpathSync(entrypoint), '--version'] });
+    expect(calls).toContainEqual({
+      command: 'node',
+      args: [fs.realpathSync(entrypoint), 'auth', 'status', '--json'],
+    });
   });
 
   it.skipIf(process.platform !== 'win32')('checks the ANTHROPIC_BASE_URL from WSL Claude user settings', async () => {
