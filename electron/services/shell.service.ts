@@ -80,6 +80,12 @@ interface ActiveCommand {
   webshellAbort?: AbortController;
 }
 
+interface RemoteTransferState {
+  canceled: boolean;
+  temporaryPaths: string[];
+  abort?: () => void;
+}
+
 interface InternalSession {
   value: ShellSession;
   transcript: string;
@@ -92,7 +98,7 @@ interface InternalSession {
   sftpOpening?: Promise<SFTPWrapper>;
   sftpHome?: string;
   remoteMutation: Promise<void>;
-  remoteTransfers: Map<string, { canceled: boolean; temporaryPaths: string[] }>;
+  remoteTransfers: Map<string, RemoteTransferState>;
   webshell?: WebShellRuntime;
   activeCommand?: ActiveCommand;
   previewBytes: number;
@@ -932,6 +938,7 @@ export class ShellService {
     const transfer = session.remoteTransfers.get(transferId);
     if (!transfer) return false;
     transfer.canceled = true;
+    transfer.abort?.();
     return true;
   }
 
@@ -1015,6 +1022,24 @@ export class ShellService {
     try { await callSftp<void>(sftp, 'unlink', remotePath); } catch { /* best effort cleanup */ }
   }
 
+  private async unlinkRemoteAfterTransfer(session: InternalSession, sftp: SFTPWrapper, remotePath: string) {
+    if (session.sftp === sftp) {
+      await this.unlinkRemoteQuietly(sftp, remotePath);
+      return;
+    }
+    try {
+      await this.unlinkRemoteQuietly(await this.getSftp(session), remotePath);
+    } catch { /* the session may have disconnected while canceling */ }
+  }
+
+  private abortSftpTransfer(session: InternalSession, sftp: SFTPWrapper) {
+    if (session.sftp === sftp) {
+      session.sftp = undefined;
+      session.sftpOpening = undefined;
+    }
+    sftp.end();
+  }
+
   private async remoteExists(session: InternalSession, remotePath: string) {
     try { await callSftp<Stats>(await this.getSftp(session), 'lstat', remotePath); return true; } catch (error) {
       if (isMissingRemotePath(error)) return false;
@@ -1056,7 +1081,7 @@ export class ShellService {
     exactTarget?: string,
   ) {
     const transferId = createShellId('transfer');
-    const transfer = { canceled: false, temporaryPaths: [] as string[] };
+    const transfer: RemoteTransferState = { canceled: false, temporaryPaths: [] };
     session.remoteTransfers.set(transferId, transfer);
     const results: Array<{ name: string; size: number; status: 'completed' | 'canceled' }> = [];
     try {
@@ -1069,11 +1094,16 @@ export class ShellService {
         const temporary = `${target}.hexestra-${transferId}`;
         transfer.temporaryPaths.push(temporary);
         const sftp = await this.getSftp(session);
+        transfer.abort = () => this.abortSftpTransfer(session, sftp);
+        if (transfer.canceled) {
+          transfer.abort();
+          break;
+        }
         this.emitTransfer({ projectId, sessionId, transferId, direction: 'upload', name: file.name, transferred: 0, total: file.size, status: 'running' });
         try {
           await callSftp<void>(sftp, 'fastPut', file.localPath, temporary, {
             fileSize: file.size,
-            step: (_total: number, transferred: number) => this.emitTransfer({ projectId, sessionId, transferId, direction: 'upload', name: file.name, transferred, total: file.size, status: 'running' }),
+            step: (transferred: number) => this.emitTransfer({ projectId, sessionId, transferId, direction: 'upload', name: file.name, transferred, total: file.size, status: 'running' }),
           });
           if (transfer.canceled) break;
           await this.replaceRemoteFile(sftp, temporary, target, replacing);
@@ -1081,7 +1111,8 @@ export class ShellService {
           this.emitTransfer({ projectId, sessionId, transferId, direction: 'upload', name: file.name, transferred: file.size, total: file.size, status: 'completed' });
           this.emitFileChanged({ projectId, sessionId, directory: remoteDirectory });
         } finally {
-          await this.unlinkRemoteQuietly(sftp, temporary);
+          transfer.abort = undefined;
+          await this.unlinkRemoteAfterTransfer(session, sftp, temporary);
         }
       }
       if (transfer.canceled) this.emitTransfer({ projectId, sessionId, transferId, direction: 'upload', name: '', transferred: 0, total: 0, status: 'canceled' });
@@ -1101,16 +1132,22 @@ export class ShellService {
 
   private async downloadFile(session: InternalSession, projectId: string, sessionId: string, source: string, destination: string) {
     const transferId = createShellId('transfer');
-    const transfer = { canceled: false, temporaryPaths: [] as string[] };
+    const transfer: RemoteTransferState = { canceled: false, temporaryPaths: [] };
     session.remoteTransfers.set(transferId, transfer);
     const temporary = `${destination}.hexestra-${transferId}.part`;
     transfer.temporaryPaths.push(temporary);
     try {
-      const stat = await callSftp<Stats>(await this.getSftp(session), 'lstat', source);
+      const sftp = await this.getSftp(session);
+      transfer.abort = () => this.abortSftpTransfer(session, sftp);
+      if (transfer.canceled) {
+        this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred: 0, total: 0, status: 'canceled' });
+        return { transferId, canceled: true };
+      }
+      const stat = await callSftp<Stats>(sftp, 'lstat', source);
       this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred: 0, total: Number(stat.size), status: 'running' });
-      await callSftp<void>(await this.getSftp(session), 'fastGet', source, temporary, {
+      await callSftp<void>(sftp, 'fastGet', source, temporary, {
         fileSize: Number(stat.size),
-        step: (_total: number, transferred: number) => this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred, total: Number(stat.size), status: 'running' }),
+        step: (transferred: number) => this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred, total: Number(stat.size), status: 'running' }),
       });
       if (transfer.canceled) {
         this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred: 0, total: Number(stat.size), status: 'canceled' });
@@ -1128,6 +1165,7 @@ export class ShellService {
       this.emitTransfer({ projectId, sessionId, transferId, direction: 'download', name: path.basename(source), transferred: 0, total: 0, status: 'failed', error: message });
       throw error;
     } finally {
+      transfer.abort = undefined;
       try { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); } catch { /* best effort cleanup */ }
       session.remoteTransfers.delete(transferId);
     }

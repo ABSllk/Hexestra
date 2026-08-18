@@ -10,10 +10,11 @@ const mocks = vi.hoisted(() => ({
   target: { id: 'asset-1', status: 'active' } as { id: string; status: string } | null,
   sftp: null as FakeSftp | null,
   clientEnd: vi.fn(),
+  window: { isDestroyed: vi.fn(() => false), webContents: { send: vi.fn() } },
 }));
 
 vi.mock('electron', () => ({
-  BrowserWindow: { getAllWindows: vi.fn(() => []), fromWebContents: vi.fn() },
+  BrowserWindow: { getAllWindows: vi.fn(() => [mocks.window]), fromWebContents: vi.fn() },
   ipcMain: { handle: vi.fn() },
   app: { getPath: vi.fn(() => mocks.projectPath) },
   dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn() },
@@ -103,17 +104,27 @@ class FakeSftp {
     this.files.set(path.posix.normalize(value), { data: Buffer.from(data), stats: fileStats(data.byteLength) });
     callback(null);
   }
-  fastPut(localPath: string, remotePath: string, options: { fileSize?: number; step?: (total: number, transferred: number) => void }, callback: (error?: Error | null) => void) {
+  fastPut(localPath: string, remotePath: string, options: { fileSize?: number; step?: (transferred: number, chunk: number, total: number) => void }, callback: (error?: Error | null) => void) {
     const data = fs.readFileSync(localPath);
-    options.step?.(data.byteLength, data.byteLength);
+    const midpoint = Math.ceil(data.byteLength / 2);
+    options.step?.(midpoint, midpoint, data.byteLength);
+    options.step?.(data.byteLength, data.byteLength - midpoint, data.byteLength);
     this.files.set(path.posix.normalize(remotePath), { data, stats: fileStats(data.byteLength) });
     callback(null);
   }
-  fastGet(remotePath: string, localPath: string, options: { fileSize?: number; step?: (total: number, transferred: number) => void }, callback: (error?: Error | null) => void) {
+  deferFastGet = false;
+  private pendingFastGet?: { callback: (error?: Error | null) => void; localPath: string; data: Buffer; options: { fileSize?: number; step?: (transferred: number, chunk: number, total: number) => void } };
+  fastGet(remotePath: string, localPath: string, options: { fileSize?: number; step?: (transferred: number, chunk: number, total: number) => void }, callback: (error?: Error | null) => void) {
     const entry = this.files.get(path.posix.normalize(remotePath));
     if (!entry) { callback(Object.assign(new Error('no such file'), { code: 'ENOENT' })); return; }
+    if (this.deferFastGet) {
+      this.pendingFastGet = { callback, localPath, data: entry.data, options };
+      return;
+    }
     fs.writeFileSync(localPath, entry.data);
-    options.step?.(entry.data.byteLength, entry.data.byteLength);
+    const midpoint = Math.ceil(entry.data.byteLength / 2);
+    options.step?.(midpoint, midpoint, entry.data.byteLength);
+    options.step?.(entry.data.byteLength, entry.data.byteLength - midpoint, entry.data.byteLength);
     callback(null);
   }
   mkdir(value: string, _options: unknown, callback: (error?: Error | null) => void) { this.directories.add(path.posix.normalize(value)); callback(null); }
@@ -121,7 +132,12 @@ class FakeSftp {
   ext_openssh_rename(source: string, target: string, callback: (error?: Error | null) => void) { this.move(source, target); callback(null); }
   unlink(value: string, callback: (error?: Error | null) => void) { this.files.delete(path.posix.normalize(value)); callback(null); }
   rmdir(value: string, callback: (error?: Error | null) => void) { this.directories.delete(path.posix.normalize(value)); callback(null); }
-  end() { this.closed = true; }
+  end() {
+    this.closed = true;
+    const pending = this.pendingFastGet;
+    this.pendingFastGet = undefined;
+    pending?.callback(new Error('SFTP channel closed'));
+  }
 
   private move(source: string, target: string) {
     const from = path.posix.normalize(source);
@@ -160,6 +176,7 @@ describe('SSH SFTP file manager', () => {
     mocks.projectPath = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-remote-files-'));
     mocks.state.shells = { profiles: [], listeners: [] };
     mocks.clientEnd.mockReset();
+    mocks.window.webContents.send.mockReset();
     sftp = new FakeSftp();
     mocks.sftp = sftp;
     service = new ShellService(false);
@@ -221,6 +238,12 @@ describe('SSH SFTP file manager', () => {
     const uploaded = await service.uploadRemoteFile('project-1', sessionId, localSource, '/remote/alice/uploaded.txt');
     expect(uploaded).toMatchObject({ results: [{ name: 'uploaded.txt', status: 'completed' }] });
     expect(sftp.files.get('/remote/alice/uploaded.txt')?.data.toString()).toBe('uploaded');
+    const uploadProgress = mocks.window.webContents.send.mock.calls
+      .map((call) => call[1] as { direction?: string; status?: string; transferred?: number })
+      .filter((event) => event.direction === 'upload' && event.status === 'running')
+      .map((event) => event.transferred);
+    expect(uploadProgress).toContain(4);
+    expect(uploadProgress).toContain(8);
     await expect(service.downloadRemoteFileTo('project-1', sessionId, '/remote/alice/uploaded.txt', localDestination)).resolves.toMatchObject({ size: 8 });
     expect(fs.readFileSync(localDestination, 'utf8')).toBe('uploaded');
     await expect(service.downloadRemoteFileTo('project-1', sessionId, '/remote/alice/uploaded.txt', localDestination)).rejects.toThrow('already exists');
@@ -228,5 +251,33 @@ describe('SSH SFTP file manager', () => {
     await service.downloadRemoteFileTo('project-1', sessionId, '/remote/alice/uploaded.txt', localDestination, true);
     expect(fs.readFileSync(localDestination, 'utf8')).toBe('uploaded');
     expect(fs.readdirSync(mocks.projectPath).some((name) => name.includes('.hexestra-'))).toBe(false);
+  });
+
+  it('reports cumulative transfer progress and aborts a canceled download', async () => {
+    const sessionId = injectSshSession(service);
+    const destination = path.join(mocks.projectPath, 'canceled.txt');
+    sftp.deferFastGet = true;
+    const pending = service.downloadRemoteFileTo('project-1', sessionId, '/remote/alice/readme.txt', destination);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const runningEvents = mocks.window.webContents.send.mock.calls
+      .map((call) => call[1] as { direction?: string; status?: string; transferred?: number; transferId?: string })
+      .filter((event) => event.direction === 'download');
+    const transferId = runningEvents.find((event) => event.status === 'running')?.transferId;
+    expect(transferId).toBeTruthy();
+    expect(service.cancelRemoteTransfer('project-1', sessionId, transferId!)).toBe(true);
+    await expect(pending).resolves.toMatchObject({ canceled: true });
+    expect(sftp.closed).toBe(true);
+    expect(fs.existsSync(destination)).toBe(false);
+    expect(runningEvents[0]?.transferred).toBe(0);
+
+    sftp.deferFastGet = false;
+    const completedDestination = path.join(mocks.projectPath, 'completed.txt');
+    await service.downloadRemoteFileTo('project-1', sessionId, '/remote/alice/readme.txt', completedDestination);
+    const progress = mocks.window.webContents.send.mock.calls
+      .map((call) => call[1] as { direction?: string; status?: string; transferred?: number })
+      .filter((event) => event.direction === 'download' && event.status === 'running')
+      .map((event) => event.transferred);
+    expect(progress).toContain(3);
+    expect(progress).toContain(6);
   });
 });
