@@ -129,7 +129,7 @@ export class EgressProxyService {
       diagnostic.version = parseMihomoVersion(output);
       diagnostic.supported = true;
     } catch (error) {
-      diagnostic.error = errorMessage(error);
+      diagnostic.error = runtimeDiagnosticError(error);
     }
     return diagnostic;
   }
@@ -760,6 +760,19 @@ function assertProjectId(value: string) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function runtimeDiagnosticError(error: unknown) {
+  const code = error && typeof error === 'object' && 'code' in error
+    ? String((error as { code?: unknown }).code)
+    : '';
+  if (code === 'EACCES' || code === 'EPERM') {
+    return 'Mihomo cannot run: permission denied. Grant execute permission, then try again.';
+  }
+  if (code === 'ENOEXEC') {
+    return 'The selected file is not a runnable Mihomo executable for this system.';
+  }
+  return `Unable to verify Mihomo: ${errorMessage(error)}`;
 }
 
 export const egressProxyService = new EgressProxyService();

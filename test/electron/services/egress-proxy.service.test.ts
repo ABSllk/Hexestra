@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   runtimeChild: null as FakeChild | null,
   validateFail: false,
   controllerPutFail: false,
+  versionErrorCode: null as string | null,
   parsedVersion: '1.19.29' as string | null,
   handles: vi.fn(),
   state: null as any,
@@ -82,6 +83,7 @@ describe('EgressProxyService lifecycle', () => {
     mocks.runtimeChild = null;
     mocks.validateFail = false;
     mocks.controllerPutFail = false;
+    mocks.versionErrorCode = null;
     mocks.parsedVersion = '1.19.29';
     mocks.state = {
       proxy: {
@@ -108,7 +110,10 @@ describe('EgressProxyService lifecycle', () => {
       const child = new FakeChild();
       if (args.includes('-f') && !args.includes('-t')) mocks.runtimeChild = child;
       else queueMicrotask(() => {
-        if (args.includes('-t') && mocks.validateFail) {
+        if (args.includes('-v') && mocks.versionErrorCode) {
+          const error = Object.assign(new Error('spawn failed'), { code: mocks.versionErrorCode });
+          child.emit('error', error);
+        } else if (args.includes('-t') && mocks.validateFail) {
           child.stderr.emit('data', Buffer.from('invalid config'));
           child.exitCode = 1;
           child.emit('exit', 1, null);
@@ -180,6 +185,17 @@ describe('EgressProxyService lifecycle', () => {
       supported: true,
       error: null,
       warning: null,
+    });
+  });
+
+  it('returns an actionable diagnostic when the executable permission is denied', async () => {
+    mocks.versionErrorCode = 'EACCES';
+    const service = new EgressProxyService();
+
+    await expect(service.diagnoseRuntime()).resolves.toMatchObject({
+      executable: false,
+      supported: false,
+      error: 'Mihomo cannot run: permission denied. Grant execute permission, then try again.',
     });
   });
 

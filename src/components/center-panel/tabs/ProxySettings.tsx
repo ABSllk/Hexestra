@@ -97,6 +97,7 @@ export function ProxySettings() {
   const busy = Boolean(proxy.busy);
   const nodeCredentialLabel = credentialLabel(form.protocol, zh);
   const showPassword = protocolUsesPassword(form.protocol);
+  const runtimeError = proxy.diagnostic?.error ?? proxy.status?.error;
   const canSubmitNode = mode === 'form'
     ? Boolean(form.server.trim() && form.port.trim())
     : Boolean(source.trim());
@@ -270,9 +271,9 @@ export function ProxySettings() {
                   <Metric label={zh ? '出口' : 'Exit'} value={proxy.status?.exitIp ?? 'UNKNOWN'} mono />
                 </div>
 
-                {(proxy.status?.error || proxy.diagnostic?.warning) && (
+                {(runtimeError || proxy.diagnostic?.warning) && (
                   <div aria-live="polite" className="space-y-1 border-l-2 border-status-error/60 pl-3 text-[11px] leading-4">
-                    {proxy.status?.error && <p className="text-status-error">{proxy.status.error}</p>}
+                    {runtimeError && <p className="text-status-error">{runtimeError}</p>}
                     {proxy.diagnostic?.warning && <p className="text-status-warning">{proxy.diagnostic.warning}</p>}
                   </div>
                 )}

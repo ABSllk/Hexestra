@@ -72,6 +72,33 @@ describe('useEgressProxyStore', () => {
     });
   });
 
+  it('refreshes a stale runtime error after choosing a working executable', async () => {
+    const diagnostic = {
+      configuredPath: '/tmp/mihomo', exists: true, executable: true, version: '1.19.29',
+      supported: true, error: null, warning: null,
+    };
+    const ready = snapshot(6, 'ready');
+    const invoke = vi.fn((channel: string) => {
+      if (channel === EGRESS_PROXY_IPC.RUNTIME_CHOOSE) return Promise.resolve(diagnostic);
+      if (channel === EGRESS_PROXY_IPC.STATUS) return Promise.resolve(ready);
+      throw new Error(`Unexpected IPC channel: ${channel}`);
+    });
+    Object.defineProperty(window, 'hexestra', {
+      configurable: true,
+      value: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn() },
+    });
+    useEgressProxyStore.setState({
+      projectId: 'project-race',
+      status: { ...snapshot(5, 'blocked'), error: 'Select a Mihomo executable' },
+    });
+
+    await useEgressProxyStore.getState().chooseRuntime();
+
+    expect(invoke).toHaveBeenNthCalledWith(1, EGRESS_PROXY_IPC.RUNTIME_CHOOSE);
+    expect(invoke).toHaveBeenNthCalledWith(2, EGRESS_PROXY_IPC.STATUS, 'project-race');
+    expect(useEgressProxyStore.getState()).toMatchObject({ diagnostic, status: ready, error: null, busy: null });
+  });
+
   it('keeps a newer event while the post-test status refresh is in flight', async () => {
     let resolveStatus!: (value: EgressProxyStatusSnapshot) => void;
     const statusPromise = new Promise<EgressProxyStatusSnapshot>((resolve) => { resolveStatus = resolve; });

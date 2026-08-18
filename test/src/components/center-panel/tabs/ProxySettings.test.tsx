@@ -147,6 +147,36 @@ describe('ProxySettings', () => {
     expect(screen.queryByText(/unsupported/i)).not.toBeInTheDocument();
   });
 
+  it('shows the runtime diagnostic when executable permission is denied', async () => {
+    invoke.mockImplementation((channel: string) => {
+      if (channel === EGRESS_PROXY_IPC.STATUS) return Promise.resolve({
+        projectId: 'project-1', revision: 1, state: 'blocked', enabled: true,
+        activeChainId: null, activeChainName: null, mixedPort: null, tcpReady: false,
+        udpReady: false, exitIp: null, lastCheckedAt: null, error: 'Select a Mihomo executable',
+        chainLatencyMs: null, latencyCheckedAt: null, nodeLatencyMs: {},
+      });
+      if (channel === EGRESS_PROXY_IPC.RUNTIME_DIAGNOSE) return Promise.resolve({
+        configuredPath: null, exists: false, executable: false,
+        version: null, supported: false, error: 'Select a Mihomo executable', warning: null,
+      });
+      if (channel === EGRESS_PROXY_IPC.RUNTIME_CHOOSE) return Promise.resolve({
+        configuredPath: '/tmp/mihomo', exists: true, executable: false,
+        version: null, supported: false,
+        error: 'Mihomo cannot run: permission denied. Grant execute permission, then try again.',
+        warning: null,
+      });
+      if (channel === EGRESS_PROXY_IPC.NODES_LIST || channel === EGRESS_PROXY_IPC.CHAINS_LIST) return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+
+    render(<I18nProvider><ProxySettings /></I18nProvider>);
+
+    expect(await screen.findByText('Select a Mihomo executable')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Mihomo' }));
+    expect(await screen.findByText('Mihomo cannot run: permission denied. Grant execute permission, then try again.')).toBeInTheDocument();
+    expect(screen.queryByText('Select a Mihomo executable')).not.toBeInTheDocument();
+  });
+
   it('shows per-hop and total latency without TCP or UDP readiness labels', async () => {
     invoke.mockImplementation((channel: string) => {
       if (channel === EGRESS_PROXY_IPC.STATUS) return Promise.resolve({

@@ -56,7 +56,15 @@ export const useEgressProxyStore = create<EgressProxyStore>((set, get) => ({
   diagnose: async () => run(set, 'diagnose', async () => set({ diagnostic: await window.hexestra.invoke(EGRESS_PROXY_IPC.RUNTIME_DIAGNOSE) })),
   chooseRuntime: async () => run(set, 'choose', async () => {
     const diagnostic = await window.hexestra.invoke<EgressProxyRuntimeDiagnostic | null>(EGRESS_PROXY_IPC.RUNTIME_CHOOSE);
-    if (diagnostic) set({ diagnostic });
+    if (!diagnostic) return;
+    set({ diagnostic });
+    if (!diagnostic.supported) return;
+    const projectId = get().projectId;
+    if (!projectId) return;
+    const status = await window.hexestra.invoke<EgressProxyStatusSnapshot>(EGRESS_PROXY_IPC.STATUS, projectId);
+    const current = get();
+    if (current.projectId !== projectId) return;
+    set({ status: selectNewestStatus(current, projectId, status) });
   }),
   setEnabled: async (enabled) => withProject(get, set, 'enforcement', async (projectId) => set({ status: await window.hexestra.invoke(EGRESS_PROXY_IPC.ENFORCEMENT_SET, projectId, enabled) })),
   start: async () => withProject(get, set, 'start', async (projectId) => set({ status: await window.hexestra.invoke(EGRESS_PROXY_IPC.RUNTIME_START, projectId) })),
