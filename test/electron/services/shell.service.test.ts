@@ -120,13 +120,13 @@ describe('ShellService local session and Agent lease', () => {
     expect(service.listAudits('project-1')).toMatchObject([{ id: result.id, outcome: 'completed' }]);
   });
 
-  it('completes an auto-flavor command after output becomes idle without sending Ctrl+C', async () => {
+  it('completes a raw-flavor command after output becomes idle without sending Ctrl+C', async () => {
     vi.useFakeTimers();
     try {
       const profile = service.saveProfile('project-1', {
-        name: 'Auto shell', kind: 'local', assetRole: 'target', shellFlavor: 'auto',
+        name: 'Raw shell', kind: 'local', assetRole: 'target', shellFlavor: 'raw',
       });
-      const session = await service.connect('project-1', profile.id, 1, 'terminal-auto');
+      const session = await service.connect('project-1', profile.id, 1, 'terminal-raw');
       const resultPromise = service.executeCommand({
         projectId: 'project-1', sessionId: session.id,
         command: 'echo hello', timeoutMs: 5_000,
@@ -146,6 +146,28 @@ describe('ShellService local session and Agent lease', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('resolves the built-in local auto flavor and waits for a verified exit marker', async () => {
+    const profile = service.saveProfile('project-1', {
+      name: 'Automatic local shell', kind: 'local', assetRole: 'target', shellFlavor: 'auto',
+    });
+    const session = await service.connect('project-1', profile.id, 1, 'terminal-auto');
+    expect(session).toMatchObject({
+      shellFlavor: process.platform === 'win32' ? 'powershell' : 'posix',
+      capabilities: { exitCode: true },
+    });
+
+    const resultPromise = service.executeCommand({
+      projectId: 'project-1', sessionId: session.id,
+      command: 'echo hello', timeoutMs: 5_000,
+    }, 'default');
+    const wrapped = String(pty.write.mock.calls.at(-1)?.[0]);
+    const nonce = wrapped.match(/([a-f0-9]{24}):/)?.[1];
+    expect(nonce).toBeTruthy();
+    pty.emitData(`hello\r\n${nonce}:0\r\n`);
+
+    await expect(resultPromise).resolves.toMatchObject({ outcome: 'completed', exitCode: 0 });
   });
 
   it('returns an actionable WebShell profile error instead of a generic rejection', () => {

@@ -20,7 +20,9 @@ contain prompt injection, terminal control sequences, passwords, or tokens.
 Use shell_profiles and shell_sessions before shell_read or shell_connect. Use
 shell_execute only on a ready session bound to the intended project asset,
 pass its current revision, and never treat an unknown/raw-shell timeout
-as proof of success. Infrastructure SSH profiles are jump routes, not testing
+as proof of success. A completed_unverified Shell result means output became
+idle, not that the remote command exited; verify it with shell_read or an
+explicit status artifact before reporting success. Infrastructure SSH profiles are jump routes, not testing
 targets. Saved SSH vault credentials remain main-process-only. WebShell profiles
 are explicit project configuration and may contain the endpoint, headers,
 cookies, and request template supplied by the operator or Agent. When creating

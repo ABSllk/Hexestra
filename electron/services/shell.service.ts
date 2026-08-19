@@ -114,10 +114,12 @@ interface InternalListener {
 
 interface WebShellResolution {
   profileFingerprint: string;
-  flavor: Exclude<ShellSession['shellFlavor'], 'auto' | 'raw'>;
+  flavor: KnownShellFlavor;
   commandMode: Exclude<WebShellCommandMode, 'auto'>;
   adapterId: NonNullable<ShellSession['webshellRuntime']>['adapterId'];
 }
+
+type KnownShellFlavor = Exclude<ShellSession['shellFlavor'], 'auto' | 'raw'>;
 
 export class ShellService {
   private readonly sessions = new Map<string, InternalSession>();
@@ -663,10 +665,11 @@ export class ShellService {
     }
     const timeoutMs = normalizeCommandTimeout(request.timeoutMs);
     if (session.webshell) return this.executeWebShellAgent(session, request, approvalMode, timeoutMs);
+    if (session.value.shellFlavor === 'auto') {
+      throw new Error('Shell flavor could not be detected; set this profile to POSIX, PowerShell, or cmd before Agent execution');
+    }
     const commandId = createShellId('audit');
-    const nonce = session.value.shellFlavor === 'raw' || session.value.shellFlavor === 'auto'
-      ? undefined
-      : cryptoNonce();
+    const nonce = session.value.shellFlavor === 'raw' ? undefined : cryptoNonce();
     return new Promise<ShellCommandResult>((resolve) => {
       const timeout = setTimeout(() => {
         this.writeTransport(session, '\x03');
@@ -1216,6 +1219,7 @@ export class ShellService {
 
   private createInternalSession(projectId: string, profile: ShellProfile, ownerWindowId?: number, ownerTabId?: string): InternalSession {
     const now = new Date().toISOString();
+    const shellFlavor = resolveInitialShellFlavor(profile);
     return {
       value: {
         id: createShellId('shell'),
@@ -1226,11 +1230,11 @@ export class ShellService {
         state: 'connecting',
         revision: 0,
         assetId: profile.assetRole === 'target' ? profile.assetId : undefined,
-        shellFlavor: profile.shellFlavor,
+        shellFlavor,
         capabilities: {
           resize: profile.kind !== 'webshell',
           interrupt: true,
-          exitCode: profile.kind !== 'webshell' && profile.shellFlavor !== 'auto' && profile.shellFlavor !== 'raw',
+          exitCode: profile.kind !== 'webshell' && shellFlavor !== 'auto' && shellFlavor !== 'raw',
           agentExecute: profile.kind === 'webshell'
             ? profile.assetRole === 'target'
             : profile.assetRole === 'target' || profile.kind !== 'ssh',
@@ -1665,6 +1669,13 @@ export class ShellService {
     session.sshClient = client;
     client.on('error', (error) => this.fail(session, error));
     session.jumpClient?.on('error', (error) => this.fail(session, error));
+    if (session.value.shellFlavor === 'auto') {
+      const detectedFlavor = await detectSshShellFlavor(client);
+      if (detectedFlavor) {
+        session.value.shellFlavor = detectedFlavor;
+        session.value.capabilities.exitCode = true;
+      }
+    }
     const channel = await new Promise<ClientChannel>((resolve, reject) => {
       client.shell({ term: 'xterm-256color', cols: 120, rows: 40 }, (error, stream) => (
         error ? reject(error) : resolve(stream)
@@ -2096,6 +2107,87 @@ function ptyCommand(profile: ShellProfile) {
   if (process.platform !== 'win32') return { executable: process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'), args: [] };
   if (profile.shellFlavor === 'cmd') return { executable: process.env.COMSPEC || 'cmd.exe', args: [] };
   return { executable: 'powershell.exe', args: ['-NoLogo'] };
+}
+
+function resolveInitialShellFlavor(profile: ShellProfile): ShellSession['shellFlavor'] {
+  if (profile.shellFlavor !== 'auto') return profile.shellFlavor;
+  if (profile.kind === 'wsl') return 'posix';
+  if (profile.kind !== 'local') return 'auto';
+  if (!profile.executable) return process.platform === 'win32' ? 'powershell' : 'posix';
+  const executable = path.basename(profile.executable).toLowerCase().replace(/\.exe$/, '');
+  if (executable === 'powershell' || executable === 'pwsh') return 'powershell';
+  if (executable === 'cmd') return 'cmd';
+  if (['bash', 'dash', 'fish', 'ksh', 'sh', 'zsh'].includes(executable)) return 'posix';
+  return 'auto';
+}
+
+async function detectSshShellFlavor(client: Client): Promise<KnownShellFlavor | undefined> {
+  const probes: Array<{ flavor: KnownShellFlavor; command: string; marker: string }> = [
+    {
+      flavor: 'posix',
+      command: "if command -v printf >/dev/null 2>&1; then printf '__HEXESTRA_SHELL_POSIX__\\n'; fi",
+      marker: '__HEXESTRA_SHELL_POSIX__',
+    },
+    {
+      flavor: 'powershell',
+      command: "if ($PSVersionTable.PSVersion) { Write-Output '__HEXESTRA_SHELL_POWERSHELL__' }",
+      marker: '__HEXESTRA_SHELL_POWERSHELL__',
+    },
+    {
+      flavor: 'cmd',
+      command: 'if defined COMSPEC echo __HEXESTRA_SHELL_CMD__',
+      marker: '__HEXESTRA_SHELL_CMD__',
+    },
+  ];
+  for (const probe of probes) {
+    if (await sshProbeMatches(client, probe.command, probe.marker)) return probe.flavor;
+  }
+  return undefined;
+}
+
+function sshProbeMatches(client: Client, command: string, marker: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let channel: ClientChannel | undefined;
+    let output = '';
+    let settled = false;
+    const finish = (matched: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(matched);
+    };
+    const append = (data: Buffer | string) => {
+      output = `${output}${data.toString()}`.slice(-4_096);
+      if (probeOutputHasMarker(output, marker)) {
+        finish(true);
+        channel?.close();
+      }
+    };
+    const timeout = setTimeout(() => {
+      channel?.close();
+      finish(false);
+    }, 2_000);
+    timeout.unref?.();
+    client.exec(command, (error, stream) => {
+      if (settled) {
+        stream?.close();
+        return;
+      }
+      if (error) {
+        finish(false);
+        return;
+      }
+      channel = stream;
+      stream.on('data', append);
+      stream.stderr.on('data', append);
+      stream.once('error', () => finish(false));
+      stream.once('close', () => finish(probeOutputHasMarker(output, marker)));
+    });
+  });
+}
+
+function probeOutputHasMarker(output: string, marker: string) {
+  return output.split(/\r?\n/).some((line) => line.trim() === marker);
 }
 
 function wrapCommand(command: string, flavor: ShellSession['shellFlavor'], nonce?: string) {

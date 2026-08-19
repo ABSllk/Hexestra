@@ -393,7 +393,7 @@ export function createShellAgentTools({ sender, sessionId, permissionMode }: Age
     ),
     createAgentTool(
       'shell_execute',
-      'Run one command in a visible, ready Shell session with exclusive access.',
+      'Run one command in a visible, ready Shell session with exclusive access. Known shells wait for a verified exit; raw shells return completed_unverified after output becomes idle and may still be running.',
       {
         shellSessionId: z.string().min(1).max(200),
         command: z.string().min(1).max(65_536),

@@ -49,6 +49,7 @@ describe('ShellService SSH loopback integration', () => {
   let port: number;
   let jumpPort: number;
   let service: ShellService;
+  let allowFlavorProbe = true;
 
   beforeAll(async () => {
     mocks.projectPath = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-shell-ssh-'));
@@ -65,12 +66,24 @@ describe('ShellService SSH loopback integration', () => {
           const session = accept();
           session.on('pty', (acceptPty) => acceptPty?.());
           session.on('window-change', (acceptWindow) => acceptWindow?.());
+          session.on('exec', (acceptExec, _rejectExec, info) => {
+            const stream = acceptExec();
+            const marker = allowFlavorProbe && info.command.includes('__HEXESTRA_SHELL_POSIX__')
+              ? '__HEXESTRA_SHELL_POSIX__\n'
+              : '';
+            if (marker) stream.write(marker);
+            else stream.write(`${info.command}\n`);
+            stream.exit(marker ? 0 : 1);
+            stream.end();
+          });
           session.on('shell', (acceptShell) => {
             const stream = acceptShell() as ServerChannel;
             stream.on('data', (data: Buffer) => {
               const command = data.toString('utf8');
               const nonce = command.match(/([a-f0-9]{24}):/)?.[1];
-              if (nonce) stream.write(`loopback-user\r\n${nonce}:0\r\n`);
+              if (nonce && command.includes('long-silent-command')) {
+                setTimeout(() => stream.write(`loopback-user\r\n${nonce}:0\r\n`), 1_400);
+              } else if (nonce) stream.write(`loopback-user\r\n${nonce}:0\r\n`);
               else stream.write(command);
             });
           });
@@ -127,7 +140,7 @@ describe('ShellService SSH loopback integration', () => {
     const initial = service.saveProfile('project-1', {
       name: 'Loopback SSH', kind: 'ssh', host: '127.0.0.1', port,
       username: 'tester', authMethod: 'password', credentialId: 'credential-1',
-      assetId: 'target-1', assetRole: 'target', shellFlavor: 'posix',
+      assetId: 'target-1', assetRole: 'target', shellFlavor: 'auto',
     });
 
     let firstError = '';
@@ -142,7 +155,10 @@ describe('ShellService SSH loopback integration', () => {
 
     const trusted = service.saveProfile('project-1', { ...initial, hostKeyFingerprint: confirmation![2] });
     const connected = await service.connect('project-1', trusted.id, 1, 'terminal-ssh');
-    expect(connected).toMatchObject({ state: 'ready', kind: 'ssh', assetId: 'target-1' });
+    expect(connected).toMatchObject({
+      state: 'ready', kind: 'ssh', assetId: 'target-1', shellFlavor: 'posix',
+      capabilities: { exitCode: true },
+    });
     service.resize('project-1', connected.id, 100, 30);
 
     const result = await service.executeCommand({
@@ -152,6 +168,37 @@ describe('ShellService SSH loopback integration', () => {
     expect(result).toMatchObject({ outcome: 'completed', exitCode: 0 });
     expect(result.output).toContain('loopback-user');
     expect(service.readTranscript('project-1', connected.id).content).toContain('loopback-user');
+
+    let longCommandResolved = false;
+    const longResultPromise = service.executeCommand({
+      projectId: 'project-1', sessionId: connected.id,
+      command: 'long-silent-command', targetAssetId: 'target-1', timeoutMs: 5_000,
+    }, 'auto').then((longResult) => {
+      longCommandResolved = true;
+      return longResult;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    expect(longCommandResolved).toBe(false);
+    await expect(longResultPromise).resolves.toMatchObject({ outcome: 'completed', exitCode: 0 });
+  });
+
+  it('rejects Agent execution when an automatic SSH flavor cannot be detected', async () => {
+    const directTarget = service.listProfiles('project-1').find((item) => item.name === 'Loopback SSH');
+    expect(directTarget?.hostKeyFingerprint).toMatch(/^SHA256:/);
+    allowFlavorProbe = false;
+    try {
+      const unresolved = service.saveProfile('project-1', {
+        ...directTarget!, id: undefined, name: 'Unresolved SSH', shellFlavor: 'auto',
+      });
+      const connected = await service.connect('project-1', unresolved.id, 1, 'terminal-unresolved');
+      expect(connected).toMatchObject({ shellFlavor: 'auto', capabilities: { exitCode: false } });
+      await expect(service.executeCommand({
+        projectId: 'project-1', sessionId: connected.id,
+        command: 'whoami', targetAssetId: 'target-1', timeoutMs: 5_000,
+      }, 'default')).rejects.toThrow('Shell flavor could not be detected');
+    } finally {
+      allowFlavorProbe = true;
+    }
   });
 
   it('routes one target session through a separately pinned single jump host', async () => {
