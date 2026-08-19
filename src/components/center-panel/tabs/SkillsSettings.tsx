@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   ClaudeSkillDocument,
+  ClaudeSkillImportApplyInput,
+  ClaudeSkillImportPickResult,
+  ClaudeSkillImportPreview,
+  ClaudeSkillImportResult,
+  ClaudeSkillImportSourceKind,
   ClaudeSkillListResult,
   ClaudeSkillScope,
 } from '@electron/contracts/claude-capabilities';
 import { Button, DismissibleNotice, Icon, useConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useSessionStore } from '@/stores';
-import { useI18n } from '@/i18n';
+import { useI18n, type TranslationKey } from '@/i18n';
+import { isClaudeCapabilityName } from '@electron/contracts/claude-capabilities';
 import YAML from 'yaml';
 
 const NEW_SKILL = `---
@@ -32,6 +38,20 @@ export function SkillsSettings() {
   const [metadata, setMetadata] = useState({ tactics: '', techniques: '', capabilities: '', risk: '' });
   const [busy, setBusy] = useState<string | null>('load');
   const [error, setError] = useState<string | null>(null);
+  const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const [importBatch, setImportBatch] = useState<ClaudeSkillImportPreview[]>([]);
+  const [importBatchIndex, setImportBatchIndex] = useState(0);
+  const [importBatchNames, setImportBatchNames] = useState<string[]>([]);
+  const [importScope, setImportScope] = useState<'global' | 'project'>(sessionId ? 'project' : 'global');
+  const [importName, setImportName] = useState('');
+  const [importDescription, setImportDescription] = useState('');
+
+  const importPreview = importBatch[importBatchIndex] ?? null;
+
+  const importCollision = useMemo(
+    () => importPreview?.existing.find((item) => item.scope === importScope && item.name === importName) ?? null,
+    [importName, importPreview, importScope],
+  );
 
   const load = useCallback(async (preferredId?: string) => {
     setBusy('load');
@@ -66,8 +86,109 @@ export function SkillsSettings() {
     setDocument(null);
     setName('');
     setContent('');
+    setImportBatch([]);
+    setImportBatchIndex(0);
+    setImportBatchNames([]);
+    setImportMenuOpen(false);
+    setImportScope(sessionId ? 'project' : 'global');
     void load();
   }, [load]);
+
+  const beginImport = async (kind: ClaudeSkillImportSourceKind) => {
+    setImportMenuOpen(false);
+    setBusy('import');
+    setError(null);
+    try {
+      const picked = await window.hexestra.invoke<ClaudeSkillImportPickResult | null>('claude:skills:import-pick', kind, sessionId);
+      const next = picked ? (Array.isArray(picked) ? picked : [picked]) : [];
+      if (!next.length) return;
+      const nextScope = sessionId ? 'project' : 'global';
+      setImportBatch(next);
+      setImportBatchIndex(0);
+      setImportScope(nextScope);
+      const reserved = new Set<string>();
+      const names = next.map((preview) => {
+        const scopedName = uniqueImportName(preview.suggestedName, preview, nextScope, reserved);
+        reserved.add(scopedName);
+        return scopedName;
+      });
+      setImportBatchNames(names);
+      setImportName(names[0]);
+      setImportDescription(next[0].description);
+      setDocument(null);
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const cancelImport = () => {
+    setImportBatch([]);
+    setImportBatchIndex(0);
+    setImportBatchNames([]);
+    setError(null);
+  };
+
+  const applyImport = async (replace = false) => {
+    if (!importPreview) return;
+    if (!isClaudeCapabilityName(importName.trim())) {
+      setError(t('skills.importInvalidName'));
+      return;
+    }
+    if (!importDescription.trim()) {
+      setError(t('skills.importMissingDescription'));
+      return;
+    }
+    if (importPreview.diagnostics.some((diagnostic) => diagnostic.code === 'invalid-frontmatter')) {
+      setError(t('skills.importDiagnostics'));
+      return;
+    }
+    if (importCollision && !replace) {
+      setError(t('skills.importDiagnostics'));
+      return;
+    }
+    if (replace) {
+      const confirmed = await confirm({
+        title: t('skills.importReplaceTitle'),
+        description: t('skills.importReplaceDescription', { name: importName, scope: importScope }),
+        details: importPreview.sourceLabel,
+        confirmLabel: t('skills.importReplaceConfirm'),
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+    }
+    setBusy('import');
+    setError(null);
+    try {
+      const saved = await window.hexestra.invoke<ClaudeSkillImportResult>('claude:skills:import-apply', {
+        sessionId,
+        selectionId: importPreview.selectionId,
+        scope: importScope,
+        name: importName.trim(),
+        description: importDescription.trim(),
+        collision: replace ? 'replace' : 'reject',
+        expectedTargetId: importCollision?.id ?? null,
+      } satisfies ClaudeSkillImportApplyInput);
+      await load(saved.document.id);
+      if (importBatchIndex < importBatch.length - 1) {
+        const nextIndex = importBatchIndex + 1;
+        const nextPreview = importBatch[nextIndex];
+        setImportBatchIndex(nextIndex);
+        setImportScope(importScope);
+        setImportName(importBatchNames[nextIndex] ?? uniqueImportName(nextPreview.suggestedName, nextPreview, importScope));
+        setImportDescription(nextPreview.description);
+      } else {
+        setImportBatch([]);
+        setImportBatchIndex(0);
+        setImportBatchNames([]);
+      }
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const select = async (item: ClaudeSkillListResult['items'][number]) => {
     setBusy(`read:${item.id}`);
@@ -193,9 +314,41 @@ export function SkillsSettings() {
           </div>
           <p className="mt-1 max-w-3xl text-xs leading-5 text-text-muted">{t('skills.description')}</p>
         </div>
-        <Button tone="primary" leadingIcon="plus" onClick={create}>
-          New Skill
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Button
+              tone="neutral"
+              leadingIcon="folder"
+              aria-expanded={importMenuOpen}
+              onClick={() => setImportMenuOpen((open) => !open)}
+            >
+              {t('skills.import')}
+            </Button>
+            {importMenuOpen && (
+              <div className="ui-popover absolute right-0 top-[calc(100%+0.375rem)] z-20 w-48 p-1.5">
+                <button
+                  type="button"
+                  onClick={() => void beginImport('directory')}
+                  className="flex min-h-8 w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[11px] text-text-secondary hover:bg-raised/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                >
+                  <Icon name="folder" size={13} />
+                  {t('skills.importFolder')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void beginImport('skill-file')}
+                  className="flex min-h-8 w-full items-center gap-2 rounded px-2.5 py-1.5 text-left text-[11px] text-text-secondary hover:bg-raised/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                >
+                  <Icon name="file" size={13} />
+                  {t('skills.importFile')}
+                </button>
+              </div>
+            )}
+          </div>
+          <Button tone="primary" leadingIcon="plus" onClick={create}>
+            New Skill
+          </Button>
+        </div>
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-[250px_1fr]">
@@ -225,7 +378,31 @@ export function SkillsSettings() {
         </aside>
 
         <main className="min-h-0 overflow-y-auto p-5">
-          {!document ? (
+          {importPreview ? (
+            <SkillImportReview
+              preview={importPreview}
+              sessionId={sessionId}
+              scope={importScope}
+              name={importName}
+              description={importDescription}
+              collision={importCollision}
+              busy={busy}
+              error={error}
+              onClearError={() => setError(null)}
+              batchIndex={importBatchIndex}
+              batchTotal={importBatch.length}
+              t={t}
+              onScopeChange={(nextScope) => {
+                setImportScope(nextScope);
+                setImportName(uniqueImportName(importPreview.suggestedName, importPreview, nextScope));
+              }}
+              onNameChange={setImportName}
+              onDescriptionChange={setImportDescription}
+              onCancel={cancelImport}
+              onImport={() => void applyImport(false)}
+              onReplace={() => void applyImport(true)}
+            />
+          ) : !document ? (
             <div className="flex h-full items-center justify-center text-center">
               <div>
                 <Icon name="sparkles" size={26} className="mx-auto mb-3 text-text-muted" />
@@ -293,6 +470,165 @@ export function SkillsSettings() {
 
 function ScopeBadge({ scope }: { scope: ClaudeSkillScope }) {
   return <span className="rounded border border-border-subtle px-1 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">{scope}</span>;
+}
+
+function SkillImportReview({
+  preview,
+  sessionId,
+  scope,
+  name,
+  description,
+  collision,
+  busy,
+  error,
+  onClearError,
+  batchIndex,
+  batchTotal,
+  t,
+  onScopeChange,
+  onNameChange,
+  onDescriptionChange,
+  onCancel,
+  onImport,
+  onReplace,
+}: {
+  preview: ClaudeSkillImportPreview;
+  sessionId: string | null;
+  scope: 'global' | 'project';
+  name: string;
+  description: string;
+  collision: ClaudeSkillImportPreview['existing'][number] | null;
+  busy: string | null;
+  error: string | null;
+  onClearError: () => void;
+  batchIndex: number;
+  batchTotal: number;
+  t: (key: TranslationKey, values?: Record<string, string | number>) => string;
+  onScopeChange: (scope: 'global' | 'project') => void;
+  onNameChange: (value: string) => void;
+  onDescriptionChange: (value: string) => void;
+  onCancel: () => void;
+  onImport: () => void;
+  onReplace: () => void;
+}) {
+  const invalidName = !isClaudeCapabilityName(name.trim());
+  const invalidDescription = !description.trim();
+  const invalidFrontmatter = preview.diagnostics.some((diagnostic) => diagnostic.code === 'invalid-frontmatter');
+  const ready = !busy && !invalidName && !invalidDescription && !invalidFrontmatter;
+  return (
+    <div className="mx-auto flex min-h-full max-w-4xl flex-col gap-3">
+      <div className="flex items-start justify-between gap-3 border-b border-border-subtle pb-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-text-primary">{t('skills.importReview')}</h2>
+          <p className="mt-1 truncate font-mono text-[11px] text-text-muted" title={preview.sourceLabel}>
+            {t('skills.importSource')}: {preview.sourceLabel}
+          </p>
+        </div>
+        <div className="shrink-0 text-right font-mono text-[10px] text-text-muted">
+          {batchTotal > 1 && <div>{t('skills.importProgress', { current: batchIndex + 1, total: batchTotal })}</div>}
+          <div>{t('skills.importFiles', { count: preview.fileCount })}</div>
+          <div>{t('skills.importSize', { size: formatImportBytes(preview.totalBytes) })}</div>
+        </div>
+      </div>
+
+      {error && <DismissibleNotice tone="error" onDismiss={onClearError}>{error}</DismissibleNotice>}
+      {invalidFrontmatter && <div role="alert" className="rounded border border-status-warning/30 bg-status-warning/8 px-3 py-2 text-[11px] text-status-warning">{t('skills.importDiagnostics')}</div>}
+
+      <div className="grid gap-3 sm:grid-cols-[1fr_170px]">
+        <label>
+          <span className="mb-1 block text-[11px] font-medium text-text-secondary">{t('skills.importName')}</span>
+          <input
+            aria-label={t('skills.importName')}
+            value={name}
+            onChange={(event) => onNameChange(event.target.value)}
+            className={cn('settings-input font-mono', invalidName && 'border-status-error/60')}
+          />
+          {invalidName && <span className="mt-1 block text-[10px] text-status-error">{t('skills.importInvalidName')}</span>}
+        </label>
+        <label>
+          <span className="mb-1 block text-[11px] font-medium text-text-secondary">{t('skills.importScope')}</span>
+          <select
+            aria-label={t('skills.importScope')}
+            value={scope}
+            onChange={(event) => onScopeChange(event.target.value as 'global' | 'project')}
+            className="settings-input"
+          >
+            <option value="global">{t('skills.scopeGlobal')}</option>
+            <option value="project" disabled={!sessionId}>{t('skills.scopeProject')}</option>
+          </select>
+        </label>
+      </div>
+
+      <label>
+        <span className="mb-1 block text-[11px] font-medium text-text-secondary">{t('skills.importDescription')}</span>
+        <input
+          aria-label={t('skills.importDescription')}
+          value={description}
+          onChange={(event) => onDescriptionChange(event.target.value)}
+          className={cn('settings-input', invalidDescription && 'border-status-error/60')}
+        />
+        {invalidDescription && <span className="mt-1 block text-[10px] text-status-error">{t('skills.importMissingDescription')}</span>}
+      </label>
+
+      {collision && (
+        <div role="alert" className="border-l-2 border-status-warning bg-status-warning/8 px-3 py-2 text-[11px] text-status-warning">
+          {t('skills.importReplaceDescription', { name: collision.name, scope: collision.scope })}
+        </div>
+      )}
+
+      <div className="min-h-0 flex-1">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-[11px] font-medium text-text-secondary">{t('skills.importPreview')}</span>
+          <span className="font-mono text-[10px] text-text-muted">{preview.content.length.toLocaleString()} chars</span>
+        </div>
+        <textarea
+          aria-label={t('skills.importPreview')}
+          value={preview.content}
+          readOnly
+          spellCheck={false}
+          className="h-[min(48vh,28rem)] w-full resize-y rounded border border-border-subtle bg-panel/50 p-3 font-mono text-[11px] leading-5 text-text-secondary outline-none"
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border-subtle pt-3">
+        <Button size="compact" onClick={onCancel} disabled={busy === 'import'}>
+          {t('skills.importCancel')}
+        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          {collision && (
+            <Button size="compact" tone="danger" onClick={onReplace} disabled={!ready}>
+              {t('skills.importReplace')}
+            </Button>
+          )}
+          <Button size="compact" tone="primary" leadingIcon="download" onClick={onImport} disabled={!ready || Boolean(collision)}>
+            {t('skills.importConfirm')}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function uniqueImportName(
+  suggestedName: string,
+  preview: ClaudeSkillImportPreview,
+  scope: 'global' | 'project',
+  reserved: Set<string> = new Set(),
+) {
+  const existing = new Set(preview.existing.filter((item) => item.scope === scope).map((item) => item.name));
+  const occupied = new Set([...existing, ...reserved]);
+  if (!occupied.has(suggestedName)) return suggestedName;
+  let suffix = 2;
+  const base = suggestedName.slice(0, 60);
+  let candidate = `${base}-${suffix}`;
+  while (occupied.has(candidate)) candidate = `${base.slice(0, 63 - String(++suffix).length)}-${suffix}`;
+  return candidate;
+}
+
+function formatImportBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
 function EmptyList({ text }: { text: string }) {

@@ -1,6 +1,12 @@
 export type ClaudeSkillScope = 'global' | 'project' | 'core';
 export type ClaudeMcpScope = 'user' | 'project' | 'local';
 
+export const CLAUDE_CAPABILITY_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/;
+
+export function isClaudeCapabilityName(value: string): boolean {
+  return CLAUDE_CAPABILITY_NAME_PATTERN.test(value);
+}
+
 export interface ClaudeSkillDescriptor {
   id: string;
   name: string;
@@ -36,6 +42,48 @@ export interface ClaudeSkillReference {
   scope: ClaudeSkillScope;
   name: string;
   enabled: boolean;
+}
+
+export type ClaudeSkillImportSourceKind = 'directory' | 'skill-file';
+export type ClaudeSkillImportCollision = 'reject' | 'replace';
+
+export interface ClaudeSkillImportDiagnostic {
+  code: string;
+  message: string;
+}
+
+export interface ClaudeSkillImportPreview {
+  selectionId: string;
+  sourceKind: ClaudeSkillImportSourceKind;
+  sourceLabel: string;
+  suggestedName: string;
+  description: string;
+  content: string;
+  fileCount: number;
+  totalBytes: number;
+  diagnostics: ClaudeSkillImportDiagnostic[];
+  existing: Array<{
+    scope: Exclude<ClaudeSkillScope, 'core'>;
+    name: string;
+    enabled: boolean;
+    id: string;
+  }>;
+}
+
+export type ClaudeSkillImportPickResult = ClaudeSkillImportPreview | ClaudeSkillImportPreview[];
+
+export interface ClaudeSkillImportApplyInput {
+  sessionId?: string | null;
+  selectionId: string;
+  scope: Exclude<ClaudeSkillScope, 'core'>;
+  name: string;
+  description: string;
+  collision: ClaudeSkillImportCollision;
+  expectedTargetId?: string | null;
+}
+
+export interface ClaudeSkillImportResult {
+  document: ClaudeSkillDocument;
 }
 
 export interface ClaudeMcpDescriptor {

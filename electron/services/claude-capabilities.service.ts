@@ -1,5 +1,6 @@
-import { app, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { execFile } from 'child_process';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import type { AgentConnectionSettings } from '../contracts/agent-settings';
@@ -12,11 +13,17 @@ import type {
   ClaudeMcpScope,
   ClaudeSkillDescriptor,
   ClaudeSkillDocument,
+  ClaudeSkillImportApplyInput,
+  ClaudeSkillImportPreview,
+  ClaudeSkillImportPickResult,
+  ClaudeSkillImportResult,
+  ClaudeSkillImportSourceKind,
   ClaudeSkillListResult,
   ClaudeSkillReference,
   ClaudeSkillSaveInput,
   ClaudeSkillScope,
 } from '../contracts/claude-capabilities';
+import { CLAUDE_CAPABILITY_NAME_PATTERN } from '../contracts/claude-capabilities';
 import { agentSettingsService } from './agent-settings.service';
 import { sessionService } from './session.service';
 import { windowsPathToWsl } from './wsl-agent-runtime';
@@ -24,9 +31,12 @@ import { globalUserSkillRoot, HEXESTRA_CORE_SKILL_NAMES, projectUserSkillRoot, s
 import YAML from 'yaml';
 
 const MAX_SKILL_BYTES = 512 * 1024;
+const MAX_SKILL_IMPORT_FILES = 1_000;
+const MAX_SKILL_IMPORT_BYTES = 20 * 1024 * 1024;
+const SKILL_IMPORT_TTL_MS = 10 * 60 * 1000;
 const MAX_MCP_DEFINITION_BYTES = 512 * 1024;
 const MAX_CLAUDE_CONFIG_BYTES = 4 * 1024 * 1024;
-const CAPABILITY_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/;
+const CAPABILITY_NAME = CLAUDE_CAPABILITY_NAME_PATTERN;
 const MCP_SCOPE_PRIORITY: Record<ClaudeMcpScope, number> = { user: 1, project: 2, local: 3 };
 
 interface RuntimeContext {
@@ -45,9 +55,40 @@ interface ClaudeCapabilitiesDependencies {
   getGlobalUserPath: () => string;
 }
 
+interface SkillImportFile {
+  relativePath: string;
+  sourcePath: string;
+  size: number;
+  digest: string;
+}
+
+interface SkillImportSelection {
+  id: string;
+  kind: ClaudeSkillImportSourceKind;
+  sourcePath: string;
+  sourceLabel: string;
+  sessionId: string | null;
+  projectPath: string | null;
+  files: SkillImportFile[];
+  fingerprint: string;
+  expiresAt: number;
+}
+
+interface SkillImportScan {
+  sourcePath: string;
+  sourceLabel: string;
+  files: SkillImportFile[];
+  fingerprint: string;
+  content: string;
+  suggestedName: string;
+  description: string;
+  diagnostics: Array<{ code: string; message: string }>;
+}
+
 export class ClaudeCapabilitiesService {
   private readonly dependencies: ClaudeCapabilitiesDependencies;
   private readonly runtimeHomeCache = new Map<string, string>();
+  private readonly skillImportSelections = new Map<string, SkillImportSelection>();
 
   constructor(
     dependencies: Partial<ClaudeCapabilitiesDependencies> = {},
@@ -99,6 +140,167 @@ export class ClaudeCapabilitiesService {
       items,
       errors,
     };
+  }
+
+  async pickSkillImport(
+    ownerContents: Electron.WebContents,
+    rawKind: unknown,
+    sessionId?: string | null,
+  ): Promise<ClaudeSkillImportPickResult | null> {
+    const kind = assertSkillImportSourceKind(rawKind);
+    const owner = BrowserWindow.fromWebContents(ownerContents);
+    const options: Electron.OpenDialogOptions = kind === 'directory'
+      ? { title: 'Import Skill folder', properties: ['openDirectory', 'multiSelections'] }
+      : {
+        title: 'Import SKILL.md',
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Skill file', extensions: ['md'] }],
+      };
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return null;
+    const previews: ClaudeSkillImportPreview[] = [];
+    try {
+      for (const sourcePath of result.filePaths) previews.push(await this.inspectSkillImport(sourcePath, kind, sessionId));
+      return previews.length === 1 ? previews[0] : previews;
+    } catch (error) {
+      for (const preview of previews) this.skillImportSelections.delete(preview.selectionId);
+      throw error;
+    }
+  }
+
+  async inspectSkillImport(
+    sourcePath: string,
+    kind: ClaudeSkillImportSourceKind,
+    sessionId?: string | null,
+  ): Promise<ClaudeSkillImportPreview> {
+    const normalizedSessionId = nullableSessionId(sessionId);
+    const context = await this.context(normalizedSessionId);
+    const source = path.resolve(assertNonEmptyPath(sourcePath));
+    assertSourceOutsideSkillRoots(source, [
+      this.skillRoot(context, 'global', true),
+      this.skillRoot(context, 'global', false),
+      ...(context.projectPath ? [
+        this.skillRoot(context, 'project', true),
+        this.skillRoot(context, 'project', false),
+      ] : []),
+    ]);
+    const scan = scanSkillImportSource(source, kind);
+    if (scan.diagnostics.some((diagnostic) => diagnostic.code === 'invalid-frontmatter')) {
+      throw new Error('The source Skill contains invalid YAML frontmatter.');
+    }
+    const selectionId = crypto.randomUUID();
+    this.pruneSkillImportSelections();
+    this.skillImportSelections.set(selectionId, {
+      id: selectionId,
+      kind,
+      sourcePath: source,
+      sourceLabel: scan.sourceLabel,
+      sessionId: normalizedSessionId,
+      projectPath: context.projectPath,
+      files: scan.files,
+      fingerprint: scan.fingerprint,
+      expiresAt: Date.now() + SKILL_IMPORT_TTL_MS,
+    });
+    return {
+      selectionId,
+      sourceKind: kind,
+      sourceLabel: scan.sourceLabel,
+      suggestedName: scan.suggestedName,
+      description: scan.description,
+      content: scan.content,
+      fileCount: scan.files.length,
+      totalBytes: scan.files.reduce((total, file) => total + file.size, 0),
+      diagnostics: scan.diagnostics,
+      existing: this.listSkillImportCollisions(context),
+    };
+  }
+
+  async applySkillImport(raw: ClaudeSkillImportApplyInput): Promise<ClaudeSkillImportResult> {
+    const input = normalizeSkillImportApplyInput(raw);
+    this.pruneSkillImportSelections();
+    const selection = this.skillImportSelections.get(input.selectionId);
+    if (!selection) throw new Error('Skill import preview expired. Choose the source again.');
+    this.skillImportSelections.delete(selection.id);
+    const context = await this.context(input.sessionId);
+    if (selection.sessionId !== input.sessionId || selection.projectPath !== context.projectPath) {
+      throw new Error('The active project changed. Choose the Skill source again.');
+    }
+    const refreshed = scanSkillImportSource(selection.sourcePath, selection.kind);
+    if (refreshed.fingerprint !== selection.fingerprint) {
+      throw new Error('The source Skill changed after review. Choose it again.');
+    }
+    if (refreshed.diagnostics.some((diagnostic) => diagnostic.code === 'invalid-frontmatter')) {
+      throw new Error('The source Skill contains invalid YAML frontmatter.');
+    }
+    const name = assertCapabilityName(input.name);
+    const description = input.description.trim();
+    if (!description) throw new Error('Skill description is required');
+    if (input.scope === 'project') requireProjectPath(context);
+    const content = normalizeImportedSkillContent(refreshed.content, name, description);
+    const collisions = this.listSkillImportCollisions(context)
+      .filter((item) => item.scope === input.scope && item.name === name);
+    if (collisions.length > 1) {
+      throw new Error(`Skill ${name} has both enabled and disabled copies; resolve the duplicate first.`);
+    }
+    const existing = collisions[0];
+    if (existing && input.collision === 'reject') {
+      throw new Error(`Skill ${name} already exists in the ${input.scope} scope.`);
+    }
+    if (input.collision === 'replace') {
+      if (!existing) throw new Error(`Skill ${name} is no longer present to replace.`);
+      if (input.expectedTargetId !== existing.id) {
+        throw new Error('The target Skill changed after review. Inspect the source again.');
+      }
+    }
+
+    const enabledRoot = this.skillRoot(context, input.scope, true);
+    const target = path.join(enabledRoot, name);
+    assertSourceOutsideSkillRoots(selection.sourcePath, [enabledRoot, this.skillRoot(context, input.scope, false)]);
+    fs.mkdirSync(enabledRoot, { recursive: true });
+    const staging = path.join(enabledRoot, `.${name}.import-${crypto.randomUUID()}`);
+    let backup: string | null = null;
+    let installed = false;
+    try {
+      copySkillImportFiles(refreshed.files, content, staging);
+      const verified = scanSkillImportSource(selection.sourcePath, selection.kind);
+      if (verified.fingerprint !== selection.fingerprint) {
+        throw new Error('The source Skill changed during import. Choose it again.');
+      }
+      if (existing) {
+        const existingPath = path.join(this.skillRoot(context, input.scope, existing.enabled), name);
+        backup = path.join(path.dirname(existingPath), `.${name}.backup-${crypto.randomUUID()}`);
+        fs.renameSync(existingPath, backup);
+      }
+      fs.renameSync(staging, target);
+      installed = true;
+      this.syncRuntime(context);
+      if (backup) {
+        fs.rmSync(backup, { recursive: true, force: false });
+        backup = null;
+      }
+      const file = path.join(target, 'SKILL.md');
+      return {
+        document: {
+          ...skillDescriptor(file, input.scope, name, true, content),
+          content,
+        },
+      };
+    } catch (error) {
+      try {
+        if (installed && fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true });
+        if (backup && fs.existsSync(backup)) {
+          const restoreTarget = path.join(this.skillRoot(context, input.scope, existing?.enabled ?? false), name);
+          fs.renameSync(backup, restoreTarget);
+        }
+        if (context.projectPath) this.syncRuntime(context);
+      } catch {
+        // Preserve the original failure; the filesystem recovery is best effort.
+      }
+      if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true });
+      throw error;
+    }
   }
 
   async readSkill(reference: ClaudeSkillReference): Promise<ClaudeSkillDocument> {
@@ -225,6 +427,8 @@ export class ClaudeCapabilitiesService {
     ipcMain.handle('claude:skills:save', (_event, input: ClaudeSkillSaveInput) => this.saveSkill(input));
     ipcMain.handle('claude:skills:toggle', (_event, input: ClaudeSkillReference) => this.toggleSkill(input));
     ipcMain.handle('claude:skills:delete', (_event, input: ClaudeSkillReference) => this.deleteSkill(input));
+    ipcMain.handle('claude:skills:import-pick', (event, kind: unknown, sessionId?: string | null) => this.pickSkillImport(event.sender, kind, sessionId));
+    ipcMain.handle('claude:skills:import-apply', (_event, input: ClaudeSkillImportApplyInput) => this.applySkillImport(input));
     ipcMain.handle('claude:mcp:list', (_event, sessionId?: string | null) => this.listMcpServers(sessionId));
     ipcMain.handle('claude:mcp:save', (_event, input: ClaudeMcpSaveInput) => this.saveMcpServer(input));
     ipcMain.handle('claude:mcp:delete', (_event, input: ClaudeMcpReference) => this.deleteMcpServer(input));
@@ -265,6 +469,39 @@ export class ClaudeCapabilitiesService {
 
   private syncRuntime(context: RuntimeContext) {
     if (context.projectPath) syncProjectUserSkills(context.projectPath, context.globalUserPath);
+  }
+
+  private listSkillImportCollisions(context: RuntimeContext) {
+    const collisions: ClaudeSkillImportPreview['existing'] = [];
+    const scopes: Array<{ scope: 'global' | 'project'; projectPath: string | null }> = [
+      { scope: 'global', projectPath: null },
+      ...(context.projectPath ? [{ scope: 'project' as const, projectPath: context.projectPath }] : []),
+    ];
+    for (const { scope, projectPath } of scopes) {
+      for (const enabled of [true, false]) {
+        const root = scope === 'global'
+          ? this.skillRoot(context, 'global', enabled)
+          : projectUserSkillRoot(projectPath!, enabled);
+        if (!fs.existsSync(root)) continue;
+        for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+          if (!entry.isDirectory() || !CAPABILITY_NAME.test(entry.name)) continue;
+          collisions.push({
+            scope,
+            name: entry.name,
+            enabled,
+            id: `${scope}:${enabled ? 'enabled' : 'disabled'}:${entry.name}`,
+          });
+        }
+      }
+    }
+    return collisions.sort((left, right) => left.scope.localeCompare(right.scope) || left.name.localeCompare(right.name) || Number(right.enabled) - Number(left.enabled));
+  }
+
+  private pruneSkillImportSelections() {
+    const now = Date.now();
+    for (const [id, selection] of this.skillImportSelections) {
+      if (selection.expiresAt <= now) this.skillImportSelections.delete(id);
+    }
   }
 
   private skillFile(context: RuntimeContext, scope: ClaudeSkillScope, name: string, enabled: boolean) {
@@ -316,6 +553,223 @@ export async function resolveClaudeRuntimeHome(settings: AgentConnectionSettings
   const home = result.split(/\r?\n/).map((line) => line.trim()).find((line) => line.startsWith('/'));
   if (!home) throw new Error(`Could not resolve the home directory in ${settings.wslDistribution}`);
   return wslPathToUnc(settings.wslDistribution, home);
+}
+
+function assertSkillImportSourceKind(value: unknown): ClaudeSkillImportSourceKind {
+  if (value !== 'directory' && value !== 'skill-file') throw new Error('Invalid Skill import source');
+  return value;
+}
+
+function normalizeSkillImportApplyInput(value: ClaudeSkillImportApplyInput) {
+  if (!isRecord(value)) throw new Error('Invalid Skill import payload');
+  const scope = value.scope;
+  if (scope !== 'global' && scope !== 'project') throw new Error('Skill imports cannot target core Skills');
+  const collision = value.collision;
+  if (collision !== 'reject' && collision !== 'replace') throw new Error('Invalid Skill import collision policy');
+  if (typeof value.selectionId !== 'string' || !value.selectionId.trim()) throw new Error('Skill import selection is required');
+  return {
+    sessionId: nullableSessionId(value.sessionId),
+    selectionId: value.selectionId,
+    scope,
+    name: assertCapabilityName(value.name),
+    description: typeof value.description === 'string' ? value.description : '',
+    collision,
+    expectedTargetId: typeof value.expectedTargetId === 'string' ? value.expectedTargetId : null,
+  };
+}
+
+function assertNonEmptyPath(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) throw new Error('Skill import source is required');
+  return value;
+}
+
+function scanSkillImportSource(sourcePath: string, kind: ClaudeSkillImportSourceKind): SkillImportScan {
+  const sourceStat = fs.lstatSync(sourcePath);
+  if (sourceStat.isSymbolicLink()) throw new Error('Skill import sources cannot be symbolic links');
+  if (kind === 'directory' && !sourceStat.isDirectory()) throw new Error('Choose a Skill directory');
+  if (kind === 'skill-file' && (!sourceStat.isFile() || path.basename(sourcePath).toLowerCase() !== 'skill.md')) {
+    throw new Error('Choose a file named SKILL.md');
+  }
+  const files = kind === 'directory'
+    ? collectSkillImportFiles(sourcePath, sourcePath)
+    : collectStandaloneSkillFile(sourcePath);
+  if (files.length === 0) throw new Error('The Skill package is empty');
+  const skillFile = files.find((file) => file.relativePath.toLowerCase() === 'skill.md');
+  if (!skillFile) throw new Error('The selected directory must contain SKILL.md at its root');
+  if (files.length > MAX_SKILL_IMPORT_FILES) throw new Error(`Skill package exceeds the ${MAX_SKILL_IMPORT_FILES} file limit`);
+  const totalBytes = files.reduce((total, file) => total + file.size, 0);
+  if (totalBytes > MAX_SKILL_IMPORT_BYTES) throw new Error('Skill package exceeds the 20 MiB size limit');
+  const content = fs.readFileSync(skillFile.sourcePath, 'utf8');
+  if (Buffer.byteLength(content, 'utf8') > MAX_SKILL_BYTES) throw new Error('Skill exceeds the 512 KiB editor limit');
+  const metadata = parseSkillImportMetadata(content);
+  const sourceLabel = kind === 'directory' ? path.basename(sourcePath) : path.basename(path.dirname(sourcePath));
+  const fallbackName = kind === 'directory' ? path.basename(sourcePath) : path.basename(path.dirname(sourcePath));
+  const diagnostics = [...metadata.diagnostics];
+  if (metadata.name && !CAPABILITY_NAME.test(metadata.name)) {
+    diagnostics.push({ code: 'invalid-name', message: 'Skill name must use 1–64 letters, numbers, dots, underscores, or hyphens.' });
+  }
+  const suggestedName = importSuggestedName(metadata.name || fallbackName);
+  const serializedManifest = JSON.stringify(files.map((file) => ({ path: file.relativePath, size: file.size, digest: file.digest })));
+  const fingerprint = crypto.createHash('sha256').update(serializedManifest, 'utf8').digest('hex');
+  return {
+    sourcePath,
+    sourceLabel,
+    files,
+    fingerprint,
+    content,
+    suggestedName,
+    description: metadata.description,
+    diagnostics,
+  };
+}
+
+function collectStandaloneSkillFile(sourcePath: string): SkillImportFile[] {
+  const stat = fs.lstatSync(sourcePath);
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Choose a regular SKILL.md file');
+  if (stat.size > MAX_SKILL_IMPORT_BYTES) throw new Error('Skill package exceeds the 20 MiB size limit');
+  return [{
+    relativePath: 'SKILL.md',
+    sourcePath,
+    size: stat.size,
+    digest: digestFile(sourcePath),
+  }];
+}
+
+function collectSkillImportFiles(
+  root: string,
+  current: string,
+  output: SkillImportFile[] = [],
+  totalBytes = { value: 0 },
+): SkillImportFile[] {
+  const stat = fs.lstatSync(current);
+  if (stat.isSymbolicLink()) throw new Error(`Skill package contains a symbolic link: ${path.basename(current)}`);
+  if (!stat.isDirectory()) throw new Error('Choose a Skill directory');
+  for (const entry of fs.readdirSync(current, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+    const filePath = path.join(current, entry.name);
+    if (entry.isSymbolicLink()) throw new Error(`Skill package contains a symbolic link: ${entry.name}`);
+    if (entry.isDirectory()) {
+      collectSkillImportFiles(root, filePath, output, totalBytes);
+      continue;
+    }
+    if (!entry.isFile()) throw new Error(`Skill package contains an unsupported filesystem entry: ${entry.name}`);
+    const stat = fs.lstatSync(filePath);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`Skill package entry is not a regular file: ${entry.name}`);
+    if (stat.size > MAX_SKILL_IMPORT_BYTES || totalBytes.value + stat.size > MAX_SKILL_IMPORT_BYTES) {
+      throw new Error('Skill package exceeds the 20 MiB size limit');
+    }
+    totalBytes.value += stat.size;
+    const relativePath = path.relative(root, filePath).split(path.sep).join('/');
+    if (output.some((item) => item.relativePath.toLowerCase() === relativePath.toLowerCase())) {
+      throw new Error(`Skill package contains duplicate paths: ${relativePath}`);
+    }
+    output.push({
+      relativePath,
+      sourcePath: filePath,
+      size: stat.size,
+      digest: digestFile(filePath),
+    });
+    if (output.length > MAX_SKILL_IMPORT_FILES) throw new Error(`Skill package exceeds the ${MAX_SKILL_IMPORT_FILES} file limit`);
+  }
+  return output;
+}
+
+function digestFile(filePath: string) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function parseSkillImportMetadata(content: string) {
+  const match = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) {
+    if (/^---\s*(?:\r?\n|$)/.test(content)) {
+      return {
+        name: '',
+        description: '',
+        diagnostics: [{ code: 'invalid-frontmatter', message: 'Skill frontmatter is not valid YAML.' }],
+      };
+    }
+    return {
+      name: '',
+      description: '',
+      diagnostics: [
+        { code: 'missing-name', message: 'Add a Skill name before importing.' },
+        { code: 'missing-description', message: 'Add a Skill description before importing.' },
+      ],
+    };
+  }
+  let values: Record<string, unknown>;
+  try {
+    const parsed = YAML.parse(match[1]);
+    if (!isRecord(parsed)) throw new Error('Skill frontmatter must be a YAML object');
+    values = parsed;
+  } catch {
+    return {
+      name: '',
+      description: '',
+      diagnostics: [{ code: 'invalid-frontmatter', message: 'Skill frontmatter is not valid YAML.' }],
+    };
+  }
+  const name = typeof values.name === 'string' ? values.name.trim() : '';
+  const description = typeof values.description === 'string' ? values.description.trim() : '';
+  return {
+    name,
+    description,
+    diagnostics: [
+      ...(name ? [] : [{ code: 'missing-name', message: 'Add a Skill name before importing.' }]),
+      ...(description ? [] : [{ code: 'missing-description', message: 'Add a Skill description before importing.' }]),
+    ],
+  };
+}
+
+function importSuggestedName(value: string) {
+  const normalized = value.trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+  return CAPABILITY_NAME.test(normalized) ? normalized : 'imported-skill';
+}
+
+function normalizeImportedSkillContent(content: string, name: string, description: string) {
+  const match = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+  let values: Record<string, unknown> = {};
+  if (match) {
+    const parsed = YAML.parse(match[1]);
+    if (!isRecord(parsed)) throw new Error('Skill frontmatter must be a YAML object');
+    values = parsed;
+  }
+  values.name = name;
+  values.description = description;
+  const frontmatter = `---\n${YAML.stringify(values).trimEnd()}\n---`;
+  return match ? `${frontmatter}${content.slice(match[0].length)}` : `${frontmatter}\n\n${content}`;
+}
+
+function copySkillImportFiles(files: SkillImportFile[], normalizedContent: string, targetRoot: string) {
+  fs.mkdirSync(targetRoot, { recursive: true });
+  for (const file of files) {
+    const sourceStat = fs.lstatSync(file.sourcePath);
+    if (!sourceStat.isFile() || sourceStat.isSymbolicLink()) {
+      throw new Error(`Skill package entry is not a regular file: ${file.relativePath}`);
+    }
+    const relative = file.relativePath.split('/').join(path.sep);
+    const target = path.join(targetRoot, relative);
+    if (!isSafeRelativePath(relative)) throw new Error(`Unsafe Skill package path: ${file.relativePath}`);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    if (file.relativePath.toLowerCase() === 'skill.md') fs.writeFileSync(target, normalizedContent, 'utf8');
+    else fs.copyFileSync(file.sourcePath, target);
+  }
+}
+
+function isSafeRelativePath(value: string) {
+  const normalized = path.normalize(value);
+  return !path.isAbsolute(normalized) && normalized !== '..' && !normalized.startsWith(`..${path.sep}`);
+}
+
+function assertSourceOutsideSkillRoots(sourcePath: string, roots: string[]) {
+  const source = path.resolve(sourcePath);
+  if (roots.some((root) => isPathWithin(root, source))) {
+    throw new Error('Choose a Skill source outside the managed Skill directories.');
+  }
+}
+
+function isPathWithin(parent: string, candidate: string) {
+  const relative = path.relative(path.resolve(parent), path.resolve(candidate));
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 function normalizeSkillSaveInput(value: ClaudeSkillSaveInput) {
