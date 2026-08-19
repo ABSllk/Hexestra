@@ -38,9 +38,20 @@ describe('ConversationSelector', () => {
   it('selects a persisted conversation', () => {
     render(<ConversationSelector />);
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Select conversation' }), {
-      target: { value: 'conversation-2' },
-    });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Select conversation' }));
+    fireEvent.click(screen.getByRole('option', { name: /Web attack path.*2 messages/ }));
+
+    expect(switchBranch).toHaveBeenCalledWith('conversation-2');
+  });
+
+  it('supports keyboard navigation in the conversation menu', () => {
+    render(<ConversationSelector />);
+
+    const trigger = screen.getByRole('combobox', { name: 'Select conversation' });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    fireEvent.keyDown(screen.getByRole('option', { name: /Initial reconnaissance.*4 messages/ }), { key: 'ArrowDown' });
+    fireEvent.keyDown(screen.getByRole('option', { name: /Web attack path.*2 messages/ }), { key: 'Enter' });
 
     expect(switchBranch).toHaveBeenCalledWith('conversation-2');
   });

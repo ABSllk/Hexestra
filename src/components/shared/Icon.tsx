@@ -4,6 +4,7 @@ import { cn } from '@/lib/cn';
 export type IconName =
   | 'activity'
   | 'alert'
+  | 'bell'
   | 'bot'
   | 'browser'
   | 'check'
@@ -13,6 +14,7 @@ export type IconName =
   | 'close'
   | 'code'
   | 'copy'
+  | 'chevron-down'
   | 'download'
   | 'edit'
   | 'eye'
@@ -96,6 +98,12 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
       <path d="M12 17h.01" />
     </>
   ),
+  bell: (
+    <>
+      <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z" />
+      <path d="M10 21h4" />
+    </>
+  ),
   bot: (
     <>
       <rect height="12" rx="3" width="16" x="4" y="8" />
@@ -110,6 +118,7 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   check: <path d="m5 12 4 4L19 6" />,
+  'chevron-down': <path d="m6 9 6 6 6-6" />,
   'chevron-left': <path d="m15 18-6-6 6-6" />,
   'chevron-right': <path d="m9 18 6-6-6-6" />,
   circle: <circle cx="12" cy="12" r="7" />,

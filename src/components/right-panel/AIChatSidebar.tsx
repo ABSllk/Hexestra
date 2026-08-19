@@ -102,7 +102,7 @@ export function AIChatSidebar() {
         </span>}
         actions={<div className="flex items-center gap-1">
           <div className="relative">
-            <IconButton name="activity" label={t('agent.inbox')} size={14} onClick={() => setInboxOpen((open) => !open)} />
+            <IconButton name="bell" label={t('agent.inbox')} size={14} onClick={() => setInboxOpen((open) => !open)} />
             {attentionItems.some((item) => !item.read) && <span className="pointer-events-none absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-status-warning" />}
             {inboxOpen && (
               <div className="ui-popover absolute right-0 top-full z-40 mt-2 w-72 p-1.5">
