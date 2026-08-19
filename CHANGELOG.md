@@ -2,6 +2,37 @@
 
 ## Unreleased / 未发布
 
+## [0.6.0] - 2026-08-19
+
+### Added / 新增
+
+- 新增持续 Streaming Input Agent runtime，支持会话复用、输入队列、定时唤醒、后台通知、分支运行时状态和子 Agent 轨迹。
+  Added a persistent Streaming Input Agent runtime with conversation reuse, queued inputs, scheduled wakeups, background notifications, branch runtime state, and subagent traces.
+- 新增从本地路径导入外部 Claude Skill 的能力，可在设置中管理导入项并查看能力信息。
+  Added local-path import for external Claude Skills, with Settings management and capability visibility.
+- 将 Tool Catalog 重构为 AI 提示目录，支持设置页结构化增删改、旧格式迁移和任务匹配；目录不再负责探测、安装或执行工具。
+  Refactored Tool Catalog into an AI-facing prompt inventory with structured Settings CRUD, legacy migration, and task matching; it no longer probes, installs, or executes tools.
+- 新增 Agent 任务运行轨迹展示，并补充完整的用户手册、架构说明、领域模型和 Agent 运行机制文档。
+  Added Agent task run-trace views and comprehensive user, architecture, domain-model, and Agent-runtime documentation.
+
+### Changed / 变更
+
+- 对话选择器改为支持键盘操作的可访问菜单，并优化收件箱入口、输入状态和中英文文案。
+  Replaced the conversation selector with an accessible keyboard-navigable menu and refined the inbox entry point, input state, and bilingual copy.
+- Shell `auto` 模式现在会识别本地和 SSH Shell 类型；已识别 Shell 等待验证退出码，无法确认的 raw Shell 返回 `completed_unverified`。
+  Shell `auto` mode now detects local and SSH shell flavors; known shells wait for a verified exit code, while unresolved raw shells return `completed_unverified`.
+- 改进 Claude Code 运行时适配，包括 Windows npm shim、连续输入分段和取消后的运行状态同步。
+  Improved Claude Code runtime adaptation, including Windows npm shims, consecutive-input segmentation, and post-cancellation runtime-state synchronization.
+
+### Fixed / 修复
+
+- 修复排队输入在当前 Agent turn 被取消或中断后丢失、串入错误回复或错误显示为排队状态的问题。
+  Fixed queued inputs being lost, attached to the wrong reply, or displayed as a stale queued state after an Agent turn was cancelled or interrupted.
+- 修复 SSH 文件传输无法取消，以及自动 Shell 探测失败后仍允许 Agent 执行的问题。
+  Fixed non-cancellable SSH file transfers and Agent execution continuing after automatic shell detection failed.
+- 修复 Mihomo 运行时选择错误无法清晰反馈到设置界面的问题。
+  Fixed Mihomo runtime selection errors not being surfaced clearly in Settings.
+
 ## [0.5.0] - 2026-08-17
 
 ### Added / 新增
