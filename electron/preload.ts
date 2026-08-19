@@ -43,7 +43,7 @@ const INVOKE_CHANNELS = new Set([
   'agent:history:page', 'agent:history:activities', 'agent:subagent:detail', 'agent:attention:list', 'agent:attention:read', 'agent:attention:clear',
   'agent:commands:list',
   'agent:settings:get', 'agent:settings:update', 'agent:settings:reset', 'agent:settings:test',
-  'claude:skills:list', 'claude:skills:read', 'claude:skills:save', 'claude:skills:toggle', 'claude:skills:delete',
+  'claude:skills:list', 'claude:skills:read', 'claude:skills:save', 'claude:skills:toggle', 'claude:skills:delete', 'claude:skills:import-pick', 'claude:skills:import-apply',
   'workflows:list', 'workflows:read', 'workflows:save', 'workflows:delete', 'workflows:import', 'workflows:export', 'workflows:prepare-run',
   'refinery:sources:list', 'refinery:sources:read', 'refinery:sources:preview', 'refinery:sources:import', 'refinery:sources:delete',
   'refinery:jobs:list', 'refinery:jobs:read', 'refinery:jobs:create-from-source', 'refinery:jobs:create-from-conversation', 'refinery:jobs:cancel', 'refinery:jobs:retry', 'refinery:jobs:delete',
