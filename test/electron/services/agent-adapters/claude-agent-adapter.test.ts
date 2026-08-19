@@ -225,6 +225,73 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
     await adapter.disposeConversation('project-1', 'main');
   });
 
+  it('consumes a queued input after the interrupted turn settles', async () => {
+    const queuedId = '22222222-2222-4222-8222-222222222222';
+    let releaseInterruptedTurn!: () => void;
+    const interruptedTurn = new Promise<void>((resolve) => { releaseInterruptedTurn = resolve; });
+    let firstPromptReceived!: () => void;
+    const promptReceived = new Promise<void>((resolve) => { firstPromptReceived = resolve; });
+    const interrupt = vi.fn(async () => {
+      releaseInterruptedTurn();
+      return { still_queued: [queuedId] };
+    });
+    sdk.query.mockImplementation((params) => ({
+      supportedCommands: vi.fn(async () => []),
+      setPermissionMode: vi.fn(async () => undefined),
+      interrupt,
+      close: vi.fn(),
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'system', subtype: 'init', session_id: 'claude-session-1', model: 'deepseek-v4-pro' };
+        let turn = 0;
+        for await (const prompt of params.prompt) {
+          turn += 1;
+          if (turn === 1) {
+            firstPromptReceived();
+            await interruptedTurn;
+          } else {
+            yield prompt;
+          }
+          yield { type: 'result', subtype: 'success', result: `reply-${turn}` };
+        }
+      },
+    }));
+
+    const adapter = new ClaudeAgentAdapter();
+    const controller = new AbortController();
+    const firstInput = runInput('context-one');
+    firstInput.signal = controller.signal;
+    const first = collect(adapter.runTurn(firstInput, interactions));
+    await promptReceived;
+
+    const handle = await adapter.openConversation(runInput('context-one'), interactions);
+    const queuedInput = { ...runInput('context-two'), inputId: queuedId };
+    const queuedEvents: AgentRunEvent[] = [];
+    const queuedCompleted = (async () => {
+      for await (const event of handle.events()) {
+        if ('inputId' in event && event.inputId === queuedId) queuedEvents.push(event);
+        if (event.type === 'turn_completed' && event.inputId === queuedId) return;
+      }
+    })();
+    await handle.enqueue({
+      id: queuedId,
+      source: 'operator',
+      prompt: queuedInput.prompt,
+      queuedAt: new Date().toISOString(),
+      input: queuedInput,
+    });
+
+    controller.abort();
+    await expect(first).rejects.toThrow('cancelled');
+    await queuedCompleted;
+
+    expect(interrupt).toHaveBeenCalledTimes(1);
+    expect(queuedEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'input_started', inputId: queuedId }),
+      expect.objectContaining({ type: 'turn_completed', inputId: queuedId, content: 'reply-2' }),
+    ]));
+    await handle.dispose();
+  });
+
   it('stamps stable UUIDs and keeps native queued input order', async () => {
     const prompts: unknown[] = [];
     let firstPromptReceived!: () => void;
@@ -263,6 +330,148 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
     await vi.waitFor(() => expect(prompts).toHaveLength(2));
     expect((prompts[0] as { uuid?: string }).uuid).toBe(firstInput.inputId);
     expect((prompts[1] as { uuid?: string }).uuid).toBe(queuedInput.inputId);
+    await handle.dispose();
+  });
+
+  it('segments assistant output below an input consumed while the provider turn is active', async () => {
+    const queuedId = '44444444-4444-4444-8444-444444444444';
+    let firstPromptReceived!: () => void;
+    const firstPromptReady = new Promise<void>((resolve) => { firstPromptReceived = resolve; });
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let releaseQueuedUser!: () => void;
+    const queuedUserReady = new Promise<void>((resolve) => { releaseQueuedUser = resolve; });
+
+    sdk.query.mockImplementation((params) => ({
+      supportedCommands: vi.fn(async () => []),
+      setPermissionMode: vi.fn(async () => undefined),
+      interrupt: vi.fn(async () => undefined),
+      close: vi.fn(),
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'system', subtype: 'init', session_id: 'claude-session-1', model: 'deepseek-v4-pro' };
+        let count = 0;
+        for await (const prompt of params.prompt) {
+          count += 1;
+          if (count === 1) {
+            firstPromptReceived();
+            yield prompt;
+            yield {
+              type: 'assistant',
+              uuid: 'assistant-before-queued-input',
+              parent_tool_use_id: null,
+              message: { content: [{ type: 'text', text: 'initial reply' }] },
+            };
+            await queuedUserReady;
+            yield { type: 'command_lifecycle', command_uuid: queuedId, state: 'started' };
+            yield {
+              type: 'user',
+              message: { role: 'user', content: 'queued input' },
+            };
+            yield {
+              type: 'assistant',
+              uuid: 'assistant-after-queued-input',
+              parent_tool_use_id: null,
+              message: { content: [{ type: 'text', text: 'steered reply' }] },
+            };
+            await firstGate;
+          }
+          yield { type: 'result', subtype: 'success', result: `reply-${count}` };
+        }
+      },
+    }));
+
+    const adapter = new ClaudeAgentAdapter();
+    const firstInput = { ...runInput('context'), inputId: '55555555-5555-4555-8555-555555555555' };
+    const first = collect(adapter.runTurn(firstInput, interactions));
+    await firstPromptReady;
+    const handle = await adapter.openConversation(runInput('context'), interactions);
+    const queuedInput = { ...runInput('context'), inputId: queuedId };
+    const observed: AgentRunEvent[] = [];
+    const queuedCompleted = (async () => {
+      for await (const event of handle.events()) {
+        observed.push(event);
+        if (event.type === 'turn_completed' && event.inputId === queuedId) return;
+      }
+    })();
+
+    await handle.enqueue({ id: queuedId, source: 'operator', prompt: queuedInput.prompt, queuedAt: new Date().toISOString(), input: queuedInput });
+    releaseQueuedUser();
+    releaseFirst();
+    await queuedCompleted;
+
+    expect(observed).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'turn_completed', inputId: firstInput.inputId, content: 'initial reply' }),
+      expect.objectContaining({ type: 'input_started', inputId: queuedId, source: 'operator' }),
+      expect.objectContaining({ type: 'turn_started', inputId: queuedId, source: 'operator' }),
+      expect.objectContaining({ type: 'turn_snapshot', inputId: queuedId, content: 'steered reply' }),
+      expect.objectContaining({ type: 'turn_completed', inputId: queuedId, content: 'steered reply' }),
+    ]));
+    expect(sdk.query).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        extraArgs: { 'replay-user-messages': null },
+      }),
+    }));
+
+    await first;
+    await handle.dispose();
+  });
+
+  it('coalesces consecutive consumed inputs into the reply segment after the last message', async () => {
+    const firstId = '66666666-6666-4666-8666-666666666666';
+    const secondId = '77777777-7777-4777-8777-777777777777';
+    let firstPromptReceived!: () => void;
+    const firstPromptReady = new Promise<void>((resolve) => { firstPromptReceived = resolve; });
+    let releaseConsumedInputs!: () => void;
+    const consumedInputsReady = new Promise<void>((resolve) => { releaseConsumedInputs = resolve; });
+
+    sdk.query.mockImplementation((params) => ({
+      supportedCommands: vi.fn(async () => []),
+      setPermissionMode: vi.fn(async () => undefined),
+      interrupt: vi.fn(async () => undefined),
+      close: vi.fn(),
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'system', subtype: 'init', session_id: 'claude-session-1', model: 'deepseek-v4-pro' };
+        for await (const prompt of params.prompt) {
+          firstPromptReceived();
+          yield prompt;
+          yield { type: 'assistant', uuid: 'assistant-initial', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'initial' }] } };
+          await consumedInputsReady;
+          yield { type: 'user', uuid: firstId, message: { role: 'user', content: 'first follow-up' } };
+          yield { type: 'user', uuid: secondId, message: { role: 'user', content: 'second follow-up' } };
+          yield { type: 'assistant', uuid: 'assistant-combined', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'combined reply' }] } };
+          yield { type: 'result', subtype: 'success', result: 'combined reply' };
+        }
+      },
+    }));
+
+    const adapter = new ClaudeAgentAdapter();
+    const initial = { ...runInput('context'), inputId: '88888888-8888-4888-8888-888888888888' };
+    const running = collect(adapter.runTurn(initial, interactions));
+    await firstPromptReady;
+    const handle = await adapter.openConversation(runInput('context'), interactions);
+    const events: AgentRunEvent[] = [];
+    const completed = (async () => {
+      for await (const event of handle.events()) {
+        events.push(event);
+        if (event.type === 'turn_completed' && event.inputId === secondId) return;
+      }
+    })();
+    for (const id of [firstId, secondId]) {
+      const input = { ...runInput('context'), inputId: id };
+      await handle.enqueue({ id, source: 'operator', prompt: input.prompt, queuedAt: new Date().toISOString(), input });
+    }
+    releaseConsumedInputs();
+    await completed;
+
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'input_started', inputId: firstId }),
+      expect.objectContaining({ type: 'input_started', inputId: secondId }),
+      expect.objectContaining({ type: 'turn_started', inputId: secondId }),
+      expect.objectContaining({ type: 'turn_completed', inputId: secondId, content: 'combined reply' }),
+    ]));
+    expect(events).not.toContainEqual(expect.objectContaining({ type: 'turn_started', inputId: firstId }));
+
+    await running;
     await handle.dispose();
   });
 

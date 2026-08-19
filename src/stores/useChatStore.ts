@@ -226,7 +226,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       role: 'user',
       content,
       timestamp: new Date().toISOString(),
-      status: get().isProcessing ? 'queued' : 'complete',
+      status: 'complete',
       source: 'operator',
       ...(attachments.length ? { attachments: attachments.map(attachmentMetadata) } : {}),
       ...(contextRefs.length ? { contextRefs } : {}),
@@ -634,7 +634,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   cancelRequest: async () => {
     if (window.hexestra) await window.hexestra.invoke('agent:cancel', get().activeProjectId);
-    set({ isProcessing: false, pendingToolRequest: null });
+    // agent:status is authoritative after the main process has completed the
+    // cancellation barrier. A preserved queued input may already be running,
+    // so forcing this false here can overwrite the newer runtime projection.
+    set({ pendingToolRequest: null });
   },
 
   openSubagent: (runId) => {

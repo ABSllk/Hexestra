@@ -193,6 +193,46 @@ describe('useChatStore project isolation', () => {
     unsubscribe();
   });
 
+  it('renders input sent during processing as an ordinary user message', async () => {
+    await useChatStore.getState().activateProject('project-a');
+    useSessionStore.setState({
+      currentSession: {
+        id: 'project-a', name: 'Project A', createdAt: '', updatedAt: '', status: 'active',
+        opsecLevel: 'balanced', autonomyLevel: 'medium', basePath: '', targetCount: 0,
+        findingCount: 0, vulnerabilityCount: 0,
+      },
+    });
+    useChatStore.setState({ isProcessing: true });
+    await useChatStore.getState().sendMessage('Check the shell again');
+
+    expect(useChatStore.getState().messages.at(-1)).toMatchObject({
+      role: 'user',
+      content: 'Check the shell again',
+      status: 'complete',
+      source: 'operator',
+    });
+  });
+
+  it('keeps the runtime status authoritative when cancellation releases the next input', async () => {
+    const unsubscribe = useChatStore.getState().subscribeToAgent();
+    await useChatStore.getState().activateProject('project-a');
+    useChatStore.setState({ isProcessing: true });
+    invoke.mockImplementationOnce(async (channel: string) => {
+      expect(channel).toBe('agent:cancel');
+      listeners.get('agent:status')?.({
+        sessionId: 'project-a',
+        branchId: 'main',
+        status: { ...readyStatus, state: 'running' },
+      });
+      return undefined;
+    });
+
+    await useChatStore.getState().cancelRequest();
+
+    expect(useChatStore.getState().isProcessing).toBe(true);
+    unsubscribe();
+  });
+
   it('projects only the active branch subagent updates and keeps detail navigation local', async () => {
     const unsubscribe = useChatStore.getState().subscribeToAgent();
     await useChatStore.getState().activateProject('project-a');

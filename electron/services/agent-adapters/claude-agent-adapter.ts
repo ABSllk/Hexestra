@@ -112,6 +112,7 @@ interface ClaudeLiveTurn {
   lastAssistantBackendMessageId?: string;
   sessionReported: boolean;
   completed: boolean;
+  pendingInput?: AgentQueuedInput;
 }
 
 interface ClaudeLiveRuntime {
@@ -668,6 +669,10 @@ export class ClaudeAgentAdapter implements AgentAdapter {
         includePartialMessages: true,
         forwardSubagentText: true,
         enableFileCheckpointing: true,
+        // Claude only replays streamed user messages with their UUIDs when
+        // this CLI flag is enabled. The UUID is our provider-owned boundary
+        // for matching a pending operator input to subsequent output.
+        extraArgs: { 'replay-user-messages': null },
         mcpServers: {
           hexestra: this.sdk.createSdkMcpServer({
             name: 'hexestra',
@@ -753,6 +758,14 @@ export class ClaudeAgentAdapter implements AgentAdapter {
             turn.sessionReported = true;
           }
         }
+        const commandLifecycle = readCommandLifecycle(message);
+        if (commandLifecycle?.state === 'started' && runtime.activeTurn) {
+          const queuedInput = runtime.pendingInputs.get(commandLifecycle.commandUuid);
+          if (queuedInput) {
+            runtime.pendingInputs.delete(commandLifecycle.commandUuid);
+            this.markQueuedInputStarted(runtime, queuedInput);
+          }
+        }
         if (message.type === 'user') {
           let queuedInput: AgentQueuedInput | undefined;
           if (message.uuid) {
@@ -761,6 +774,11 @@ export class ClaudeAgentAdapter implements AgentAdapter {
               runtime.pendingInputs.delete(message.uuid);
             }
           }
+          // Streaming input can be consumed before the provider result closes
+          // the current application turn. Keep the last consumed input as the
+          // next presentation segment; several inputs may be coalesced before
+          // Claude emits more assistant output.
+          if (queuedInput && runtime.activeTurn) this.markQueuedInputStarted(runtime, queuedInput);
           if (!runtime.activeTurn && (queuedInput || message.isSynthetic === true || isScheduledPrompt(runtime))) {
             const base = queuedInput?.input ?? runtime.baseInput;
             const interactions = runtime.interactions;
@@ -796,6 +814,9 @@ export class ClaudeAgentAdapter implements AgentAdapter {
         }
         const turn = runtime.activeTurn;
         if (!turn) continue;
+        if (turn.pendingInput && startsAssistantResponse(message)) {
+          this.activatePendingInput(turn);
+        }
         this.consumeTurnMessage(turn, message);
         if (message.type === 'result') this.finishLiveTurn(runtime, turn, message);
       }
@@ -826,6 +847,23 @@ export class ClaudeAgentAdapter implements AgentAdapter {
     }
   }
 
+  private markQueuedInputStarted(runtime: ClaudeLiveRuntime, queuedInput: AgentQueuedInput) {
+    const turn = runtime.activeTurn;
+    if (!turn) return;
+    turn.pendingInput = queuedInput;
+    turn.output.push({
+      type: 'input_started',
+      projectId: queuedInput.input.projectId,
+      branchId: queuedInput.input.conversationId,
+      inputId: queuedInput.id,
+      source: queuedInput.source,
+      prompt: queuedInput.prompt,
+      queuedAt: queuedInput.queuedAt,
+      startedAt: new Date().toISOString(),
+    });
+    this.broadcastRuntimeState(runtime);
+  }
+
   private flushTurnProjection(turn: ClaudeLiveTurn) {
     if (turn.mainProjectionDirty) {
       turn.mainProjectionDirty = false;
@@ -848,6 +886,43 @@ export class ClaudeAgentAdapter implements AgentAdapter {
   private cancelAndFlushTurnProjection(turn: ClaudeLiveTurn) {
     turn.projectionScheduler.cancel();
     this.flushTurnProjection(turn);
+  }
+
+  private activatePendingInput(turn: ClaudeLiveTurn) {
+    const pending = turn.pendingInput;
+    if (!pending) return;
+
+    this.cancelAndFlushTurnProjection(turn);
+    turn.output.push({
+      type: 'turn_completed',
+      projectId: turn.projectId,
+      branchId: turn.branchId,
+      inputId: turn.inputId,
+      source: turn.source,
+      content: turn.timeline.getText().trim(),
+      activities: turn.timeline.snapshot(),
+      backendMessageId: turn.lastAssistantBackendMessageId,
+    });
+
+    turn.inputId = pending.id;
+    turn.source = pending.source;
+    turn.projectId = pending.input.projectId;
+    turn.branchId = pending.input.conversationId;
+    turn.tools = pending.input.tools;
+    turn.dynamicSystemContext = pending.input.dynamicSystemContext;
+    turn.timeline = new AgentTimelineBuilder(`turn-${pending.id}`);
+    turn.projectionScheduler = new AgentStreamScheduler();
+    turn.mainProjectionDirty = false;
+    turn.lastAssistantBackendMessageId = undefined;
+    turn.pendingInput = undefined;
+    turn.output.push({
+      type: 'turn_started',
+      projectId: turn.projectId,
+      branchId: turn.branchId,
+      inputId: turn.inputId,
+      source: turn.source,
+      startedAt: new Date().toISOString(),
+    });
   }
 
   private finishLiveTurn(
@@ -1511,6 +1586,38 @@ function isScheduledPrompt(runtime: ClaudeLiveRuntime) {
   return runtime.lastPromptSource === 'schedule_wakeup'
     || runtime.lastPromptSource === 'loop_wakeup'
     || (runtime.pendingCrons.length > 0 && runtime.lastPromptSource !== 'user');
+}
+
+function startsAssistantResponse(message: SDKMessage) {
+  if (message.type === 'assistant' || message.type === 'result') return true;
+  if (message.type === 'stream_event') {
+    const type = (message.event as { type?: string }).type;
+    return type === 'message_start'
+      || type === 'content_block_start'
+      || type === 'content_block_delta';
+  }
+  return message.type === 'system'
+    && (message.subtype === 'local_command_output' || message.subtype === 'compact_boundary');
+}
+
+function readCommandLifecycle(message: SDKMessage): {
+  commandUuid: string;
+  state: 'queued' | 'started' | 'completed' | 'cancelled' | 'discarded';
+} | undefined {
+  // Claude Code 2.1.206+ emits this top-level protocol frame, but the
+  // TypeScript SDK 0.3.212 does not yet include it in SDKMessage's union.
+  const candidate = message as unknown as {
+    type?: unknown;
+    command_uuid?: unknown;
+    state?: unknown;
+  };
+  if (candidate.type !== 'command_lifecycle' || typeof candidate.command_uuid !== 'string') return undefined;
+  if (candidate.state !== 'queued'
+    && candidate.state !== 'started'
+    && candidate.state !== 'completed'
+    && candidate.state !== 'cancelled'
+    && candidate.state !== 'discarded') return undefined;
+  return { commandUuid: candidate.command_uuid, state: candidate.state };
 }
 
 function extractSdkPrompt(message: SDKUserMessage) {

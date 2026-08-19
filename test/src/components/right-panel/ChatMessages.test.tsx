@@ -64,6 +64,25 @@ describe('ChatMessages conversation branches', () => {
     expect(bubble.parentElement).toHaveClass('min-w-0', 'max-w-[90%]');
   });
 
+  it('does not expose provider-pending state as a queued chat badge', () => {
+    useChatStore.setState({
+      messages: [{
+        id: 'legacy-queued-user',
+        role: 'user',
+        content: 'Continue after this action',
+        timestamp: '2026-08-19T00:00:00.000Z',
+        status: 'queued',
+        source: 'operator',
+      }],
+    });
+
+    render(<ChatMessages />);
+
+    expect(screen.getByText('Continue after this action')).toBeInTheDocument();
+    expect(screen.queryByText('Queued')).not.toBeInTheDocument();
+    expect(screen.queryByText('排队中')).not.toBeInTheDocument();
+  });
+
   it('keeps following streaming output after restoring a saved bottom position', () => {
     let nextFrameId = 0;
     let scrollHeight = 1_000;

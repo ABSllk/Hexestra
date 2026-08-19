@@ -300,13 +300,10 @@ class AgentService {
 
     ipcMain.handle('agent:cancel', async (_event, sessionId?: string) => {
       if (sessionId && sessionId !== this.activeSessionId) return;
-      const projectId = this.activeSessionId ?? undefined;
-      const branchId = this.activeBranchId;
-      const controller = this.activeRuns.get(this.activeRuntimeKey()) ?? this.abortController;
-      controller?.abort();
-      if (!controller) await this.conversationHandles.get(this.activeRuntimeKey())?.interrupt();
-      this.resolvePermissionsForRuntime(projectId, branchId, false);
-      if (!this.activeRuns.has(this.activeRuntimeKey())) this.setState(this.activeBackendAvailable() ? 'ready' : 'error');
+      await this.stopActiveRequest();
+      this.setState(this.activeRuntimeIsRunning()
+        ? 'running'
+        : this.activeBackendAvailable() ? 'ready' : 'error');
     });
 
     ipcMain.handle('agent:clear', async (_event, sessionId?: string) => {
@@ -395,14 +392,22 @@ class AgentService {
 
   private async stopActiveRequest() {
     const runtimeKey = this.activeRuntimeKey();
-    const controller = this.activeRuns.get(runtimeKey) ?? this.abortController;
+    const controller = this.activeRuns.get(runtimeKey);
+    const projectId = this.activeSessionId ?? undefined;
+    const branchId = this.activeBranchId;
     if (controller) {
       controller.abort();
-      this.resolvePermissionsForRuntime(this.activeSessionId ?? undefined, this.activeBranchId, false);
-      await this.waitForActiveRequest();
-    } else if (this.conversationHandles.has(runtimeKey)) {
-      await this.conversationHandles.get(runtimeKey)?.interrupt();
-      this.resolvePermissionsForRuntime(this.activeSessionId ?? undefined, this.activeBranchId, false);
+      this.resolvePermissionsForRuntime(projectId, branchId, false);
+      // Abort only requests the provider interrupt. Do not report cancellation
+      // as complete until the owning run has processed Claude's response and
+      // removed itself from the runtime registry.
+      await this.waitForActiveRequest(runtimeKey, controller);
+      return;
+    }
+    const handle = this.conversationHandles.get(runtimeKey);
+    if (handle?.snapshot().active) {
+      await handle.interrupt();
+      this.resolvePermissionsForRuntime(projectId, branchId, false);
     }
   }
 
@@ -437,11 +442,11 @@ class AgentService {
     return this.buildActivation(sessionId, status, project.preferences, project.workspace);
   }
 
-  private waitForActiveRequest() {
+  private waitForActiveRequest(runtimeKey: string, controller: AbortController) {
     return new Promise<void>((resolve, reject) => {
       const deadline = Date.now() + 10_000;
       const check = () => {
-        if (!this.abortController) resolve();
+        if (this.activeRuns.get(runtimeKey) !== controller) resolve();
         else if (Date.now() >= deadline) {
           reject(new Error('Timed out while stopping the previous engagement request'));
         } else setTimeout(check, 25);
@@ -715,7 +720,7 @@ class AgentService {
         role: 'user',
         content: request.content,
         timestamp: new Date().toISOString(),
-        status: 'queued',
+        status: 'complete',
         source: 'operator',
         ...(request.attachments?.length ? { attachments: request.attachments.map(attachmentMetadata) } : {}),
         ...(normalizedContextRefs.length ? { contextRefs: normalizedContextRefs } : {}),
@@ -731,7 +736,9 @@ class AgentService {
     this.queuedRequests.set(runtimeKey, pending);
     const handle = this.conversationHandles.get(runtimeKey);
     if (handle) {
-      const input = await this.buildQueuedInput(sender, request, branch, messageId, this.activeRuns.get(runtimeKey)?.signal);
+      // A queued input belongs to the next provider turn. It must never inherit
+      // the AbortSignal of the currently running (or just-cancelled) turn.
+      const input = await this.buildQueuedInput(sender, request, branch, messageId);
       await handle.enqueue({ id: messageId, source: 'operator', prompt: input.prompt, queuedAt: new Date().toISOString(), input });
       const queued = this.queuedRequests.get(runtimeKey) ?? [];
       const queuedIndex = queued.findIndex((item) => item.messageId === messageId);
@@ -746,7 +753,6 @@ class AgentService {
     request: AgentRequest,
     branch: PersistedConversationBranch,
     inputId: string,
-    signal?: AbortSignal,
   ): Promise<AgentRunInput> {
     const projectId = request.session?.id ?? this.activeSessionId ?? undefined;
     const sessionPath = projectId ? sessionService.getSessionPath(projectId) : null;
@@ -773,7 +779,7 @@ class AgentService {
       dynamicSystemContextProvider: !nativeCommand && projectId
         ? () => this.resolveRuntimeDynamicContext(projectId, branch.id, request.selectedTarget?.id)
         : undefined,
-      signal: signal ?? new AbortController().signal,
+      signal: new AbortController().signal,
       attachments: request.attachments ?? [],
       cwd: sessionPath && fs.existsSync(sessionPath) ? sessionPath : process.cwd(),
       additionalDirectories: sessionPath && fs.existsSync(sessionPath) ? [sessionPath] : undefined,
@@ -801,7 +807,7 @@ class AgentService {
     if (!activeBranch) throw new Error('Active conversation branch is missing');
     const originBranchId = activeBranch.id;
     const runtimeKey = this.runtimeKey(originProjectId ?? undefined, originBranchId);
-    if (this.activeRuns.has(runtimeKey) || this.conversationHandles.has(runtimeKey)) {
+    if (this.runtimeHasPendingWork(runtimeKey)) {
       await this.enqueueRequest(sender, request);
       return;
     }
@@ -886,6 +892,7 @@ class AgentService {
     const activityTaskBindings = new Map<string, string>();
     let focusedTaskTransitionChecked = false;
     let completedEvent: Extract<import('../contracts/agent-runtime').AgentRunEvent, { type: 'turn_completed' }> | undefined;
+    let completionPersisted = false;
     const streamScheduler = new AgentStreamScheduler();
     const pendingSubagentRunIds = new Set<string>();
     const runSubagentRuns = new Map<string, SubagentRun>();
@@ -915,14 +922,36 @@ class AgentService {
       }, [...runSubagentRuns.values()]);
       lastLivePersistedAt = now;
     };
-    this.emitMessage(sender, {
-      id: messageId,
-      role: 'assistant',
-      content: '',
-      timestamp: new Date().toISOString(),
-      status: 'streaming',
-      activities: latestActivities,
-    });
+    const persistCompletion = (event: Extract<AgentRunEvent, { type: 'turn_completed' }>) => {
+      if (completionPersisted) return;
+      completionPersisted = true;
+      if (!event.content.trim() && latestActivities.length === 0) return;
+      const finalMessage: PersistedChatMessage = {
+        id: messageId,
+        role: 'assistant',
+        content: event.content,
+        timestamp: new Date().toISOString(),
+        status: 'complete',
+        activities: latestActivities,
+        backendMessageId: event.backendMessageId,
+      };
+      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.chatHistory.push(finalMessage);
+      originHistoryRepository?.appendMessage(originBranchId, finalMessage);
+      originHistoryRepository?.clearLive(originBranchId);
+      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.persistAgentState();
+      this.emitMessage(sender, finalMessage, originProjectId, originBranchId);
+      if (originProjectId && (originProjectId !== this.activeSessionId || originBranchId !== this.activeBranchId)) {
+        this.publishAttention({
+          id: `attention-${messageId}`,
+          projectId: originProjectId,
+          branchId: originBranchId,
+          kind: 'completed',
+          title: 'Agent turn completed',
+          createdAt: new Date().toISOString(),
+          read: false,
+        });
+      }
+    };
 
     const sessionPath = request.session?.id
       ? sessionService.getSessionPath(request.session.id)
@@ -1023,6 +1052,7 @@ class AgentService {
         this.readerOwnedTurnIds.set(runtimeKey, readerOwned);
       }
       for await (const event of adapter.runTurn(runInput, interactions)) {
+        const belongsToInitialInput = !('inputId' in event) || !event.inputId || event.inputId === userMessageId;
         if (event.type === 'session') {
           if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) {
             this.backendSessionId = event.sessionId;
@@ -1033,7 +1063,7 @@ class AgentService {
           } else {
             this.persistBranchRuntime(originProjectId ?? undefined, originBranchId, event.sessionId, originConnectionFingerprint);
           }
-        } else if (event.type === 'turn_snapshot') {
+        } else if (event.type === 'turn_snapshot' && belongsToInitialInput) {
           latestContent = event.content;
           latestActivities = this.bindActivitiesToFocusedTask(focusedTaskId, event.activities, activityTaskBindings);
           if (!focusedTaskTransitionChecked && request.session?.id && focusedTaskId && event.activities.some((activity) => activity.kind === 'tool' && activity.toolName && !/^(task_|restriction_list|tool_catalog_)/.test(activity.toolName))) {
@@ -1058,41 +1088,19 @@ class AgentService {
           persistLiveSnapshotIfDue();
         } else if (event.type === 'commands_changed') {
           this.emitCommandsChanged(sender, request.session?.id ?? this.activeSessionId, event.commands);
-        } else if (event.type === 'turn_completed') {
+        } else if (event.type === 'turn_completed' && belongsToInitialInput) {
           completedEvent = event;
           latestContent = event.content;
           latestActivities = this.bindActivitiesToFocusedTask(focusedTaskId, event.activities, activityTaskBindings);
+          streamScheduler.cancel();
+          publishPendingProjection(runSubagentRuns);
+          persistCompletion(event);
         }
       }
       if (!completedEvent) throw new Error('Agent backend ended without a completion event');
       streamScheduler.cancel();
       publishPendingProjection(runSubagentRuns);
-      const finalContent = completedEvent.content;
-      const finalMessage: PersistedChatMessage = {
-        id: messageId,
-        role: 'assistant',
-        content: finalContent,
-        timestamp: new Date().toISOString(),
-        status: 'complete',
-        activities: latestActivities,
-        backendMessageId: completedEvent.backendMessageId,
-      };
-      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.chatHistory.push(finalMessage);
-      originHistoryRepository?.appendMessage(originBranchId, finalMessage);
-      originHistoryRepository?.clearLive(originBranchId);
-      if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.persistAgentState();
-      this.emitMessage(sender, finalMessage, originProjectId, originBranchId);
-      if (originProjectId && (originProjectId !== this.activeSessionId || originBranchId !== this.activeBranchId)) {
-        this.publishAttention({
-          id: `attention-${messageId}`,
-          projectId: originProjectId,
-          branchId: originBranchId,
-          kind: 'completed',
-          title: 'Agent turn completed',
-          createdAt: new Date().toISOString(),
-          read: false,
-        });
-      }
+      persistCompletion(completedEvent);
       if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.setState('ready');
     } catch (error) {
       streamScheduler.cancel();
@@ -1106,6 +1114,22 @@ class AgentService {
         this.authenticated = false;
       }
       const failureContent = cancelled ? 'Request cancelled.' : formatAgentFailure(message);
+      if (completionPersisted) {
+        if (originProjectId) {
+          this.publishAttention({
+            id: `attention-runtime-${runtimeKey}`,
+            projectId: originProjectId,
+            branchId: originBranchId,
+            kind: 'failed',
+            title: 'Agent continuation failed',
+            detail: failureContent,
+            createdAt: new Date().toISOString(),
+            read: false,
+          });
+        }
+        if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.setState(cancelled ? 'ready' : 'error');
+        return;
+      }
       const failureActivities: AgentActivity[] = [
         ...latestActivities,
         {
@@ -1194,7 +1218,13 @@ class AgentService {
   }
 
   private activeRuntimeIsRunning() {
-    return this.activeRuns.has(this.activeRuntimeKey());
+    return this.runtimeHasPendingWork(this.activeRuntimeKey());
+  }
+
+  private runtimeHasPendingWork(runtimeKey: string) {
+    if (this.activeRuns.has(runtimeKey)) return true;
+    const snapshot = this.conversationHandles.get(runtimeKey)?.snapshot();
+    return Boolean(snapshot && (snapshot.active || snapshot.pendingInputs > 0));
   }
 
   private async resolveRuntimeDynamicContext(projectId: string, branchId: string, selectedTargetId?: string) {
@@ -1243,6 +1273,7 @@ class AgentService {
     if (this.conversationReaders.has(runtimeKey)) return;
     this.conversationReaders.add(runtimeKey);
     const liveTurns = new Map<string, { projectId: string; branchId: string; messageId: string; content: string; activities: AgentActivity[]; source: 'operator' | 'scheduled' | 'runtime'; runs: Map<string, SubagentRun> }>();
+    const startedInputs = new Map<string, Extract<AgentRunEvent, { type: 'input_started' }>>();
     // The owning turn acquires the first lease. The reader only keeps that
     // lease alive while Claude reports queued inputs or session crons.
     let leaseProjectId: string | null = initialLeaseProjectId ?? null;
@@ -1280,22 +1311,33 @@ class AgentService {
               history.appendMessage(branchId, started);
               this.emitMessage(sender, started, projectId, branchId);
             }
-            if (!owned) {
-              const source = event.source;
-              const userMessageId = `${source}-${event.inputId}`;
-              const messageId = source === 'operator' ? `assistant-${event.inputId}` : `${source}-assistant-${event.inputId}`;
-              if (source !== 'operator' && !history.getMessages(branchId).some((message) => message.id === userMessageId)) {
+            if (!owned && event.source !== 'operator') {
+              const userMessageId = `${event.source}-${event.inputId}`;
+              if (!history.getMessages(branchId).some((message) => message.id === userMessageId)) {
                 const userMessage: PersistedChatMessage = {
                   id: userMessageId,
                   role: 'user',
-                  content: event.prompt?.trim() || (source === 'scheduled' ? 'Scheduled Agent wakeup' : 'Runtime Agent input'),
+                  content: event.prompt?.trim() || (event.source === 'scheduled' ? 'Scheduled Agent wakeup' : 'Runtime Agent input'),
                   timestamp: new Date().toISOString(),
                   status: 'complete',
-                  source,
+                  source: event.source,
                 };
                 history.appendMessage(branchId, userMessage);
                 this.emitMessage(sender, userMessage, projectId, branchId);
               }
+            }
+            startedInputs.set(event.inputId, event);
+            continue;
+          }
+          if (event.type === 'turn_started') {
+            const owned = this.readerOwnedTurnIds.get(runtimeKey)?.has(event.inputId) ?? false;
+            const started = startedInputs.get(event.inputId);
+            // Any earlier input_started entries without their own turn_started
+            // were coalesced into this response segment.
+            startedInputs.clear();
+            if (!owned) {
+              const source = started?.source ?? event.source;
+              const messageId = source === 'operator' ? `assistant-${event.inputId}` : `${source}-assistant-${event.inputId}`;
               liveTurns.set(event.inputId, { projectId, branchId, messageId, content: '', activities: [], source, runs: new Map() });
             }
             continue;
@@ -1326,13 +1368,16 @@ class AgentService {
               activities: current.activities,
               backendMessageId: event.backendMessageId,
             };
-            history.appendMessage(current.branchId, finalMessage);
+            if (current.content.trim() || current.activities.length > 0) {
+              history.appendMessage(current.branchId, finalMessage);
+              this.emitMessage(sender, finalMessage, current.projectId, current.branchId);
+            }
             history.clearLive(current.branchId);
-            this.emitMessage(sender, finalMessage, current.projectId, current.branchId);
             if (current.projectId !== this.activeSessionId || current.branchId !== this.activeBranchId) {
-              this.publishAttention({ id: `attention-${current.messageId}`, projectId: current.projectId, branchId: current.branchId, kind: 'completed', title: current.source === 'scheduled' ? 'Scheduled Agent turn completed' : 'Queued Agent turn completed', createdAt: new Date().toISOString(), read: false });
+              this.publishAttention({ id: `attention-${current.messageId}`, projectId: current.projectId, branchId: current.branchId, kind: 'completed', title: current.source === 'scheduled' ? 'Scheduled Agent turn completed' : 'Agent continuation completed', createdAt: new Date().toISOString(), read: false });
             }
             liveTurns.delete(event.inputId!);
+            startedInputs.delete(event.inputId!);
           }
         }
       } catch (error) {

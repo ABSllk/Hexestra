@@ -156,7 +156,6 @@ export function ChatMessages() {
                 : message.role === 'system'
                   ? 'System'
                   : 'Tool'}
-            {message.status === 'queued' && <span className="text-accent-yellow">{t('agent.queued')}</span>}
             {message.source === 'scheduled' && <span className="text-accent-teal">{t('agent.scheduled')}</span>}
             {message.role === 'user' && message.status === 'complete' && (
               <button
