@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { usePentestTreeStore } from '@/stores';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { usePentestTreeStore, useSessionStore } from '@/stores';
 import type { PentestTask } from '@/types';
 import { TaskTreeTab } from '@/components/left-panel/TaskTreeTab';
 
@@ -24,7 +24,17 @@ const task: PentestTask = {
 };
 
 describe('TaskTreeTab', () => {
+  const invoke = vi.fn();
+
   beforeEach(() => {
+    invoke.mockReset().mockResolvedValue(null);
+    Object.defineProperty(window, 'hexestra', {
+      configurable: true,
+      value: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn() },
+    });
+    useSessionStore.setState({
+      currentSession: { id: 'project-1', name: 'Project' } as never,
+    });
     usePentestTreeStore.setState({
       tasks: [task],
       expandedTactics: ['TA0043'],
@@ -71,5 +81,35 @@ describe('TaskTreeTab', () => {
     render(<TaskTreeTab />);
 
     expect(screen.getByText('Probe HTTPS')).toBeInTheDocument();
+  });
+
+  it('expands an Agent Task trace across the task content column', async () => {
+    invoke.mockResolvedValue({
+      taskId: task.id,
+      generatedAt: '2026-08-18T02:18:16.000Z',
+      entries: [{
+        id: 'event-1',
+        source: 'agent',
+        timestamp: '2026-08-18T02:18:16.000Z',
+        status: 'complete',
+        label: 'Agent activity',
+        detail: 'Collected target context',
+      }],
+      criteria: [],
+      stats: { agentActions: 1, subagentRuns: 0, branches: 0 },
+    });
+    render(<TaskTreeTab />);
+
+    const trigger = screen.getByRole('button', {
+      name: 'Show Agent Task run trace',
+    });
+    fireEvent.click(trigger);
+
+    const panel = await screen.findByRole('region', { name: 'Run trace' });
+    expect(panel.parentElement).toHaveClass('grid');
+    expect(panel).toHaveClass('col-span-2', 'col-start-2', 'ml-0');
+    expect(within(panel).getByText('Agent activity')).toBeInTheDocument();
+    expect(within(panel).getByText('Collected target context')).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith('tasks:trace', 'project-1', task.id);
   });
 });

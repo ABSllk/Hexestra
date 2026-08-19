@@ -425,7 +425,7 @@ function ObjectiveRow({
           "border-l-accent-blue bg-accent-blue/8",
       )}
     >
-      <div className="group flex items-start gap-1.5 px-2.5 py-2 hover:bg-raised/25">
+      <div className="group grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-start gap-x-1.5 px-2.5 py-2 hover:bg-raised/25">
         <button
           aria-label={`${expanded ? "Collapse" : "Expand"} Steps for ${objective.title}`}
           onClick={() => onToggle(objective.id)}
@@ -499,29 +499,39 @@ function ObjectiveTraceButton({ nodeId }: { nodeId: string }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [trace, setTrace] = useState<TaskTracePackage | null>(null);
+  const loadTrace = () => {
+    if (!sessionId) return;
+    setLoading(true);
+    void window.hexestra
+      ?.invoke<TaskTracePackage>("tasks:trace", sessionId, nodeId)
+      .then(setTrace)
+      .catch(() => setTrace(null))
+      .finally(() => setLoading(false));
+  };
   const toggle = () => {
-    setOpen((value) => !value);
-    if (!trace && sessionId) {
-      setLoading(true);
-      void window.hexestra
-        ?.invoke<TaskTracePackage>("tasks:trace", sessionId, nodeId)
-        .then(setTrace)
-        .catch(() => setTrace(null))
-        .finally(() => setLoading(false));
-    }
+    const nextOpen = !open;
+    setOpen(nextOpen);
+    if (nextOpen && !trace && !loading) loadTrace();
   };
   return (
-    <div className="shrink-0">
+    <>
       <button
         aria-expanded={open}
         aria-label={`${open ? "Hide" : "Show"} Agent Task run trace`}
         onClick={toggle}
-        className="mt-1 rounded border border-border-subtle px-1.5 py-1 text-[9px] text-text-muted hover:border-accent-blue/50 hover:text-accent-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+        className="mt-1 shrink-0 rounded px-1.5 py-1 text-[9px] text-text-muted transition-colors hover:bg-raised/60 hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus motion-reduce:transition-none"
       >
-        {open ? "Hide trace" : "Trace"}
+        <TraceDisclosureLabel open={open} />
       </button>
-      {open && <TracePanel trace={trace} loading={loading} onRetry={toggle} />}
-    </div>
+      {open && (
+        <TracePanel
+          trace={trace}
+          loading={loading}
+          onRetry={loadTrace}
+          className="col-span-2 col-start-2 ml-0"
+        />
+      )}
+    </>
   );
 }
 
@@ -542,16 +552,19 @@ function StepRow({
   const sessionId = useSessionStore(
     (state) => state.currentSession?.id ?? null,
   );
+  const loadTrace = () => {
+    if (!sessionId) return;
+    setLoading(true);
+    void window.hexestra
+      ?.invoke<TaskTracePackage>("tasks:trace", sessionId, step.id)
+      .then(setTrace)
+      .catch(() => setTrace(null))
+      .finally(() => setLoading(false));
+  };
   const toggleTrace = () => {
-    setTraceOpen((open) => !open);
-    if (!trace && sessionId) {
-      setLoading(true);
-      void window.hexestra
-        ?.invoke<TaskTracePackage>("tasks:trace", sessionId, step.id)
-        .then(setTrace)
-        .catch(() => setTrace(null))
-        .finally(() => setLoading(false));
-    }
+    const nextOpen = !traceOpen;
+    setTraceOpen(nextOpen);
+    if (nextOpen && !trace && !loading) loadTrace();
   };
   return (
     <div
@@ -600,15 +613,31 @@ function StepRow({
           aria-expanded={traceOpen}
           aria-label={`${traceOpen ? "Hide" : "Show"} run trace for ${step.title}`}
           onClick={toggleTrace}
-          className="mt-0.5 shrink-0 rounded border border-border-subtle px-1.5 py-1 text-[9px] text-text-muted hover:border-accent-blue/50 hover:text-accent-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          className="mt-0.5 shrink-0 rounded px-1.5 py-1 text-[9px] text-text-muted transition-colors hover:bg-raised/60 hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus motion-reduce:transition-none"
         >
-          {traceOpen ? "Hide trace" : "Trace"}
+          <TraceDisclosureLabel open={traceOpen} />
         </button>
       </div>
       {traceOpen && (
-        <TracePanel trace={trace} loading={loading} onRetry={toggleTrace} />
+        <TracePanel trace={trace} loading={loading} onRetry={loadTrace} />
       )}
     </div>
+  );
+}
+
+function TraceDisclosureLabel({ open }: { open: boolean }) {
+  return (
+    <span className="flex items-center gap-1">
+      <Icon
+        name="chevron-right"
+        size={9}
+        className={cn(
+          "transition-transform motion-reduce:transition-none",
+          open && "rotate-90",
+        )}
+      />
+      <span>Trace</span>
+    </span>
   );
 }
 
@@ -616,35 +645,51 @@ function TracePanel({
   trace,
   loading,
   onRetry,
+  className,
 }: {
   trace: TaskTracePackage | null;
   loading: boolean;
   onRetry: () => void;
+  className?: string;
 }) {
   if (loading)
     return (
       <div
         role="status"
-        className="ml-5 mt-2 rounded border border-border-subtle bg-canvas/60 px-2.5 py-2 text-[10px] text-text-muted"
+        className={cn(
+          "ml-5 mt-2 border-l border-border-subtle bg-raised/15 px-3 py-2 text-[10px] text-text-muted",
+          className,
+        )}
       >
         Loading run trace…
       </div>
     );
   if (!trace)
     return (
-      <div className="ml-5 mt-2 flex items-center justify-between gap-2 rounded border border-severity-medium/30 bg-severity-medium/8 px-2.5 py-2 text-[10px] text-severity-medium">
+      <div
+        className={cn(
+          "ml-5 mt-2 flex items-center justify-between gap-2 border-l border-status-warning/45 bg-status-warning/8 px-3 py-2 text-[10px] text-status-warning",
+          className,
+        )}
+      >
         <span>Trace unavailable.</span>
         <button
           onClick={onRetry}
-          className="rounded border border-severity-medium/40 px-1.5 py-0.5 hover:bg-severity-medium/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          className="rounded px-1.5 py-0.5 hover:bg-status-warning/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         >
           Retry
         </button>
       </div>
     );
   return (
-    <div className="ml-5 mt-2 rounded border border-border-subtle bg-canvas/60 p-2.5">
-      <div className="mb-2 flex items-center justify-between text-[10px] text-text-muted">
+    <section
+      aria-label="Run trace"
+      className={cn(
+        "ml-5 mt-2 min-w-0 border-l border-border-subtle bg-raised/15 px-3 py-2",
+        className,
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-border-subtle/60 pb-1.5 font-mono text-[9px] text-text-muted">
         <span>{trace.entries.length} events</span>
         <span>
           {trace.stats.agentActions} agent · {trace.stats.subagentRuns}{" "}
@@ -656,26 +701,33 @@ function TracePanel({
           No recorded activity yet.
         </p>
       ) : (
-        <div className="space-y-1.5">
+        <div className="mt-2 max-h-60 space-y-0 overflow-y-auto overscroll-contain pr-1">
           {trace.entries.slice(0, 12).map((entry) => (
-            <div key={entry.id} className="flex gap-2 text-[10px]">
-              <span className="mt-0.5 text-accent-teal">•</span>
+            <div
+              key={entry.id}
+              className="relative grid grid-cols-[0.5rem_minmax(0,1fr)] gap-2.5 pb-2.5 text-[10px] last:pb-0 before:absolute before:bottom-0 before:left-[3px] before:top-2 before:w-px before:bg-border-subtle/70 last:before:hidden"
+            >
+              <span className="relative z-[1] mt-1 h-1.5 w-1.5 rounded-full bg-accent-teal ring-2 ring-canvas" />
               <div className="min-w-0">
-                <div className="text-text-secondary">{entry.label}</div>
+                <div className="flex min-w-0 items-baseline justify-between gap-2">
+                  <span className="min-w-0 break-words text-text-secondary">
+                    {entry.label}
+                  </span>
+                  <time className="shrink-0 font-mono text-[9px] text-text-muted">
+                    {new Date(entry.timestamp).toLocaleTimeString()}
+                  </time>
+                </div>
                 {entry.detail && (
-                  <div className="break-words text-text-muted">
+                  <div className="break-words leading-4 text-text-muted">
                     {entry.detail}
                   </div>
                 )}
-                <div className="font-mono text-[9px] text-text-muted">
-                  {new Date(entry.timestamp).toLocaleTimeString()}
-                </div>
               </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
