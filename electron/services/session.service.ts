@@ -63,7 +63,8 @@ import {
   type RestrictionScope,
   type RestrictionUpsertInput,
 } from './restriction.service';
-import { deleteTool, loadToolCatalog, probeToolCatalog, upsertTool, type ToolDefinition } from './tool-catalog.service';
+import { createTool, deleteTool, listEnabledToolCatalog, readToolCatalog, resolveToolCatalogCandidates, updateTool } from './tool-catalog.service';
+import { TOOL_CATALOG_IPC, type ToolCatalogMutableFields, type ToolCatalogRecord } from '../contracts/tool-catalog';
 import { normalizeScopePolicy, scopeAdvisoryForValues, scopeAnnotationForValues } from './scope-policy';
 import { AgentHistoryRepository } from './agent-history.repository';
 import { isManagedRecordKind, RECORDS_IPC, type RecordExportResult } from '../contracts/records';
@@ -255,10 +256,10 @@ class SessionService {
     ipcMain.handle('restrictions:import-preview', async (_event, sessionId: string, scope: RestrictionScope, yamlText: string) => this.previewRestrictionImport(sessionId, scope, yamlText));
     ipcMain.handle('restrictions:import-apply', async (_event, sessionId: string, scope: RestrictionScope, preview: RestrictionImportPreview) => this.applyRestrictionImport(sessionId, scope, preview));
     ipcMain.handle('restrictions:export', async (event, sessionId: string, scope: RestrictionScope) => this.exportRestrictions(event, sessionId, scope));
-    ipcMain.handle('tools:catalog:list', async () => loadToolCatalog(this.globalUserPath));
-    ipcMain.handle('tools:catalog:probe', async () => probeToolCatalog(this.globalUserPath));
-    ipcMain.handle('tools:catalog:upsert', async (_event, tool: ToolDefinition) => upsertTool(this.globalUserPath, tool));
-    ipcMain.handle('tools:catalog:delete', async (_event, toolId: string) => deleteTool(this.globalUserPath, toolId));
+    ipcMain.handle(TOOL_CATALOG_IPC.LIST, async () => readToolCatalog(this.globalUserPath));
+    ipcMain.handle(TOOL_CATALOG_IPC.CREATE, async (_event, tool: ToolCatalogRecord) => createTool(this.globalUserPath, tool));
+    ipcMain.handle(TOOL_CATALOG_IPC.UPDATE, async (_event, toolId: string, fields: ToolCatalogMutableFields) => updateTool(this.globalUserPath, toolId, fields));
+    ipcMain.handle(TOOL_CATALOG_IPC.DELETE, async (_event, toolId: string) => deleteTool(this.globalUserPath, toolId));
 
     ipcMain.handle('asm:scan-runs', async (_event, sessionId: string) => {
       return this.listScanRuns(sessionId);
@@ -1201,8 +1202,7 @@ class SessionService {
     } catch {
       skills = [];
     }
-    const catalog = loadToolCatalog(this.globalUserPath);
-    const tools = catalog.filter((tool) => !tool.disabled && (objective.preferredToolIds.includes(tool.id) || tool.techniqueIds.some((id) => objective.techniqueIds.includes(id)) || tool.capabilities.some((capability) => objective.requiredCapabilities.includes(capability)))).map((tool) => ({ id: tool.id, name: tool.name, capabilities: tool.capabilities, available: tool.available === true, preferred: objective.preferredToolIds.includes(tool.id) }));
+    const tools = resolveToolCatalogCandidates(listEnabledToolCatalog(this.globalUserPath), objective);
     return {
       objective,
       activeStep,

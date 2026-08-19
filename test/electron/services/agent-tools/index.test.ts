@@ -34,7 +34,7 @@ const expectedToolNames = [
   'vulnerability_list', 'vulnerability_upsert', 'report_list', 'report_upsert',
   'attack_catalog_list', 'attack_catalog_search', 'task_list',
   'task_upsert', 'task_plan_create', 'task_steps_plan', 'task_step_upsert', 'task_step_delete', 'task_step_reorder', 'task_delete', 'task_focus', 'task_context_get', 'task_update_criterion', 'task_update_status',
-  'tool_catalog_list', 'tool_catalog_probe', 'restriction_list', 'restriction_upsert', 'restriction_delete',
+  'tool_catalog_list', 'restriction_list', 'restriction_upsert', 'restriction_delete',
 ] as const;
 
 describe('Hexestra Agent tool factories', () => {

@@ -1,6 +1,7 @@
 export { ATTACK_CATALOG_VERSION, ATTACK_TACTICS, ATTACK_TECHNIQUES } from './attack-catalog-data';
 import { ATTACK_TACTICS } from './attack-catalog-data';
 import type { ScopeAdvisory } from './session';
+import type { ToolCatalogCandidate } from './tool-catalog';
 
 export type AttackTacticId = typeof ATTACK_TACTICS[number]['id'];
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked' | 'skipped' | 'failed';
@@ -138,7 +139,7 @@ export interface TaskContextPackage {
     conflictRuleIds?: string[];
   }>;
   skills: Array<{ id: string; name: string; match: 'preferred' | 'technique' | 'capability' | 'tactic' | 'other' }>;
-  tools: Array<{ id: string; name: string; capabilities: string[]; available: boolean; preferred: boolean }>;
+  tools: ToolCatalogCandidate[];
   dependencies: Array<{ id: string; title: string; status: TaskStatus }>;
   blockers: string[];
   notices: Array<{ code: string; message: string; severity: 'info' | 'warning'; targetId?: string }>;

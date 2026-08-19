@@ -708,7 +708,7 @@ function TaskDetail({
       conflictRuleIds?: string[];
     }>;
     skills?: Array<{ name: string; match: string }>;
-    tools?: Array<{ name: string; available: boolean }>;
+    tools?: Array<{ name: string }>;
   } | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -1002,12 +1002,7 @@ function TaskDetail({
           <div>
             <span className="font-medium text-text-secondary">Tools:</span>{" "}
             {context.tools?.length
-              ? context.tools
-                  .map(
-                    (tool) =>
-                      `${tool.name}${tool.available ? "" : " · unavailable"}`,
-                  )
-                  .join(", ")
+              ? context.tools.map((tool) => tool.name).join(", ")
               : "none matched"}
           </div>
         </div>

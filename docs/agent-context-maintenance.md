@@ -64,9 +64,9 @@ metadata:
 
 ## Tool Catalog
 
-Tool Catalog 位于 `<Hexestra root>/user/tools.yaml`。内置工具只读，用户工具支持 CRUD；项目只保存禁用、路径覆盖和 Objective 首选项，不能定义任意可执行工具。工具记录 Capability、ATT&CK、风险、执行通道、探测方法和安装提示。
+Tool Catalog 位于 `<Hexestra root>/user/tools.yaml`，是全局用户维护的 Agent 提示目录。设置页可以新增、编辑、启用、停用和删除所有目录项；稳定 ID 创建后不可修改。每项记录名称、说明、Capability、ATT&CK 映射、风险、通道以及可选的 `command`、`usage` 提示。
 
-工具缺失不阻止 Objective 聚焦，但会在执行前提示。安装只能发生在配置的本地 Agent Runtime，继续遵守当前权限模式；不得在远程目标或项目 Shell 安装。安装后必须重新探测路径和版本。
+目录项不代表工具已安装、可执行、可访问或已获准使用，应用也不会通过目录探测或运行工具。实际操作仍通过 Shell、MCP、Browser、Traffic 等 Agent 工具，并继续遵守对应权限和限制。停用项保留在设置中，但不会提供给 Agent；历史 Objective 中失效的首选 ID 按无匹配项处理。
 
 ## 维护检查
 

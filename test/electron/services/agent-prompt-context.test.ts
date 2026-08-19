@@ -77,8 +77,8 @@ function taskContext(): TaskContextPackage {
       { id: 'skill-a', name: 'Approved recon', match: 'preferred' },
     ],
     tools: [
-      { id: 'tool-b', name: 'Probe B', capabilities: ['service-fingerprinting'], available: false, preferred: false },
-      { id: 'nmap', name: 'Nmap', capabilities: ['port-scanning'], available: true, preferred: true },
+      { id: 'tool-b', name: 'Probe B', description: 'Service probe', enabled: true, capabilities: ['service-fingerprinting'], tacticIds: ['TA0043'], techniqueIds: ['T1595.001'], risk: 'active', channel: 'agent-runtime', command: 'probe-b', usage: 'Use for service checks.', preferred: false, matchedBy: ['capability:service-fingerprinting'] },
+      { id: 'nmap', name: 'Nmap', description: 'Port scanner', enabled: true, capabilities: ['port-scanning'], tacticIds: ['TA0043'], techniqueIds: ['T1595.001'], risk: 'active', channel: 'agent-runtime', command: 'nmap', usage: 'Use for scoped discovery.', preferred: true, matchedBy: ['preferred', 'capability:port-scanning'] },
     ],
     dependencies: [{ id: 'task-prerequisite', title: 'Confirm scope', status: 'completed' }],
     blockers: ['Tool B is unavailable', 'Confirm the rate threshold'],
@@ -168,6 +168,10 @@ describe('Agent prompt context', () => {
     const context = buildAgentDynamicSystemContext({
       project,
       taskContext: taskContext(),
+      toolCatalog: [
+        { id: 'nmap', name: 'Nmap', description: 'Port scanner', channel: 'agent-runtime' },
+        { id: 'whois', name: 'whois', description: 'Registration lookup', channel: 'agent-runtime' },
+      ],
       selectedTargetId: 'asset-a',
     });
     expect(context).toContain('<hexestra_dynamic_context version="1" revision="');
@@ -175,11 +179,27 @@ describe('Agent prompt context', () => {
     expect(context).toContain('Do not cause availability impact.');
     expect(context).toContain('Approved recon');
     expect(context).toContain('"id": "nmap"');
+    expect(context).toContain('"usage": "Use for scoped discovery."');
+    expect(context).toContain('"matchedBy"');
+    expect(context).not.toContain('"available"');
     expect(context).toContain('"findings": [\n        "finding-1",\n        "finding-2"');
     expect(context).not.toContain('2026-08-14');
     expect(context).not.toContain('sensitive target label');
     expect(context).not.toContain('must not enter System');
     expect(context).not.toContain('secret raw evidence');
+  });
+
+  it('injects the compact enabled catalog even without a project or focused task', () => {
+    const context = buildAgentDynamicSystemContext({
+      toolCatalog: [
+        { id: 'whois', name: 'whois', description: 'Registration lookup', channel: 'agent-runtime' },
+        { id: 'nmap', name: 'Nmap', description: 'Port scanner', channel: 'agent-runtime' },
+      ],
+    });
+    expect(context).toContain('"toolCatalog"');
+    expect(context.indexOf('"id": "nmap"')).toBeLessThan(context.indexOf('"id": "whois"'));
+    expect(context).not.toContain('candidateTools');
+    expect(context).not.toContain('command');
   });
 
   it('is byte-identical for semantically equivalent unordered values', () => {

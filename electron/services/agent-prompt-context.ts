@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import type { AgentAttachment } from '../agent-attachment-contract';
 import type { AgentContextRef } from '../agent-context-contract';
 import type { TaskContextPackage } from '../contracts/tasks';
+import type { ToolCatalogIndexEntry } from '../contracts/tool-catalog';
 import type { ScopeAdvisory } from '../contracts/session';
 import { attachmentPromptContext } from './agent-attachment';
 
@@ -35,6 +36,7 @@ interface AgentUserPromptInput {
 interface AgentDynamicSystemContextInput {
   project?: AgentProjectSystemContext;
   taskContext?: TaskContextPackage;
+  toolCatalog?: ToolCatalogIndexEntry[];
   selectedTargetId?: string;
   selectedTargetAdvisory?: ScopeAdvisory;
 }
@@ -70,7 +72,7 @@ export function buildAgentUserPrompt(input: AgentUserPromptInput) {
 }
 
 export function buildAgentDynamicSystemContext(input: AgentDynamicSystemContextInput) {
-  if (!input.project && !input.taskContext && !input.selectedTargetId) return '';
+  if (!input.project && !input.taskContext && !input.selectedTargetId && !input.toolCatalog?.length) return '';
 
   const objective = input.taskContext?.objective;
   const selectedTargetId = input.selectedTargetId;
@@ -94,6 +96,7 @@ export function buildAgentDynamicSystemContext(input: AgentDynamicSystemContextI
       mode: scopeMode ?? 'blacklist',
       instruction: scopeInstruction,
     },
+    toolCatalog: sortById((input.toolCatalog ?? []).map((tool) => ({ ...tool }))),
     project: input.project ? {
       id: input.project.id,
       name: input.project.name,
@@ -169,6 +172,9 @@ export function buildAgentDynamicSystemContext(input: AgentDynamicSystemContextI
       candidateTools: sortById((input.taskContext?.tools ?? []).map((tool) => ({
         ...tool,
         capabilities: sortedStrings(tool.capabilities),
+        tacticIds: sortedStrings(tool.tacticIds),
+        techniqueIds: sortedStrings(tool.techniqueIds),
+        matchedBy: sortedStrings(tool.matchedBy),
       }))),
       dependencies: sortById(input.taskContext?.dependencies ?? []),
       blockers: sortedStrings(input.taskContext?.blockers ?? []),

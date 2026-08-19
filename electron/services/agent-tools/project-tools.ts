@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { listAttackTactics, searchAttackTechniques } from '../attack-catalog';
 import { sessionService } from '../session.service';
 import { syncTargetsService } from '../sync-targets.service';
-import { loadToolCatalog, probeToolCatalog } from '../tool-catalog.service';
+import { listEnabledToolCatalog } from '../tool-catalog.service';
 import type { RestrictionSelector } from '../restriction.service';
 import type { AgentToolContext } from './context';
 import { createAgentTool } from './contract';
@@ -554,15 +554,9 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
     ),
     createAgentTool(
       'tool_catalog_list',
-      'List built-in and user-configured local tools without executing them.',
+      'Read full prompt metadata for enabled tools. Entries describe possible tools; they do not confirm installation, permission, or executability.',
       {},
-      async () => ({ content: [{ type: 'text', text: JSON.stringify(loadToolCatalog(sessionService.getGlobalUserPath()), null, 2) }] }),
-    ),
-    createAgentTool(
-      'tool_catalog_probe',
-      'Probe configured local executables for availability and version. Probing never installs software and never contacts a remote target.',
-      {},
-      async () => ({ content: [{ type: 'text', text: JSON.stringify(await probeToolCatalog(sessionService.getGlobalUserPath()), null, 2) }] }),
+      async () => ({ content: [{ type: 'text', text: JSON.stringify(listEnabledToolCatalog(sessionService.getGlobalUserPath()), null, 2) }] }),
     ),
     createAgentTool(
       'restriction_list',

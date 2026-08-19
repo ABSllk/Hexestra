@@ -1,0 +1,67 @@
+version: 1
+tools:
+  - id: nmap
+    name: nmap
+    description: Port and service discovery
+    enabled: true
+    capabilities: [port-scanning, service-fingerprinting]
+    tacticIds: [TA0043, TA0007]
+    techniqueIds: [T1595.001, T1595.002, T1046]
+    risk: active
+    channel: agent-runtime
+    command: nmap
+    usage: Use for scoped port and service discovery.
+  - id: whois
+    name: whois
+    description: Domain registration lookup
+    enabled: true
+    capabilities: [domain-enumeration]
+    tacticIds: [TA0043]
+    techniqueIds: [T1590.001]
+    risk: passive
+    channel: agent-runtime
+    command: whois
+    usage: Use for domain registration and ownership lookup.
+  - id: dig
+    name: dig
+    description: DNS record lookup
+    enabled: true
+    capabilities: [dns-enumeration]
+    tacticIds: [TA0043]
+    techniqueIds: [T1590.002]
+    risk: passive
+    channel: agent-runtime
+    command: dig
+    usage: Use for scoped DNS record queries.
+  - id: httpx
+    name: httpx
+    description: HTTP service probing
+    enabled: true
+    capabilities: [http-probing, service-fingerprinting]
+    tacticIds: [TA0043]
+    techniqueIds: [T1595.001]
+    risk: active
+    channel: agent-runtime
+    command: httpx
+    usage: Use for scoped HTTP service discovery and metadata collection.
+  - id: nuclei
+    name: nuclei
+    description: Template-based vulnerability scanning
+    enabled: true
+    capabilities: [vulnerability-scanning]
+    tacticIds: [TA0043]
+    techniqueIds: [T1595.002]
+    risk: active
+    channel: agent-runtime
+    command: nuclei
+    usage: Use approved templates and scope controls for vulnerability scanning.
+  - id: redteam-mcp
+    name: redteam MCP
+    description: Configured red-team MCP service
+    enabled: true
+    capabilities: [web-scanning, host-scanning]
+    tacticIds: [TA0043, TA0001]
+    techniqueIds: [T1595, T1190]
+    risk: active
+    channel: mcp
+    usage: Use through the configured red-team MCP service.

@@ -17,7 +17,7 @@ const INVOKE_CHANNELS = new Set([
   'targets:list', 'targets:get', 'targets:add', 'targets:update',
   'tasks:list', 'tasks:update', 'tasks:upsert', 'tasks:plan', 'tasks:delete', 'tasks:focus', 'tasks:context', 'tasks:criterion',
   'tasks:document-status', 'tasks:rebuild', 'tasks:steps-plan', 'tasks:step-upsert', 'tasks:step-delete', 'tasks:step-reorder', 'tasks:trace',
-  'restrictions:list', 'restrictions:upsert', 'restrictions:delete', 'restrictions:classify', 'restrictions:import-preview', 'restrictions:import-apply', 'restrictions:export', 'tools:catalog:list', 'tools:catalog:probe', 'tools:catalog:upsert', 'tools:catalog:delete',
+  'restrictions:list', 'restrictions:upsert', 'restrictions:delete', 'restrictions:classify', 'restrictions:import-preview', 'restrictions:import-apply', 'restrictions:export', 'tools:catalog:list', 'tools:catalog:create', 'tools:catalog:update', 'tools:catalog:delete',
   'asm:scan-runs', 'asm:changes', 'findings:list', 'findings:upsert',
   'vulnerabilities:list', 'vulnerabilities:upsert',
   'evidence:list', 'evidence:upsert', 'reports:list', 'reports:upsert', 'scope:update',
@@ -36,7 +36,6 @@ const INVOKE_CHANNELS = new Set([
   'shell:file:mkdir', 'shell:file:rename', 'shell:file:delete-preview', 'shell:file:delete',
   'shell:file:upload-pick', 'shell:file:upload-start', 'shell:file:download', 'shell:file:transfer-cancel',
   'netmap:get', 'netmap:layout:get', 'netmap:layout:update',
-  'tools:inventory', 'tools:run', 'tools:kill', 'tools:status', 'tools:runs',
   'agent:activate', 'agent:send', 'agent:branch', 'agent:branch:activate', 'agent:conversation:new',
   'agent:attachments:pick',
   'agent:approve-tool', 'agent:reject-tool', 'agent:answer-question', 'agent:cancel', 'agent:clear', 'agent:status',
@@ -67,7 +66,6 @@ const INVOKE_CHANNELS = new Set([
 
 const EVENT_CHANNELS = new Set([
   'app:windowId', 'app:window:maximized', 'terminal:output', 'terminal:exit',
-  'tools:output', 'tools:complete',
   'agent:message', 'agent:tool-request', 'agent:status', 'agent:subagent-update', 'agent:attention', 'agent:attention:resolved',
   'session:data-changed',
   'browser:state-changed',

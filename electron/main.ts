@@ -5,7 +5,6 @@ import { createApplicationMenuTemplate, PROJECT_MENU_EVENTS } from './app-menu';
 // Services — imported for side effects (IPC handler registration)
 import { terminalService } from './services/terminal.service';
 import { sessionService } from './services/session.service';
-import { toolExecutor } from './services/tool-executor.service';
 import { agentService } from './services/agent.service';
 import { browserService } from './services/browser.service';
 import { claudeCapabilitiesService } from './services/claude-capabilities.service';

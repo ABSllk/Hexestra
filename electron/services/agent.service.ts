@@ -12,6 +12,7 @@ import { formatAgentFailure } from './agent-error';
 import type { AgentActivity } from '../contracts/agent-runtime';
 import type { WorkflowInvocation } from '../contracts/workflows';
 import type { TaskContextPackage } from '../contracts/tasks';
+import type { ToolCatalogIndexEntry } from '../contracts/tool-catalog';
 import { agentSettingsService } from './agent-settings.service';
 import {
   createConversationBranch,
@@ -63,6 +64,7 @@ import { buildAgentDistillPrompt, resolveAgentInputCommand } from './agent-disti
 import { AgentAdapterRegistry } from './agent-adapters/registry';
 import { AgentStreamScheduler } from './agent-stream-scheduler';
 import { acquireProjectRuntimeLease, releaseProjectRuntimeLease } from './project-runtime-lease';
+import { listEnabledToolCatalog } from './tool-catalog.service';
 import {
   CLAUDE_BACKEND_ID,
   type AgentInteractionHandler,
@@ -729,7 +731,7 @@ class AgentService {
     this.queuedRequests.set(runtimeKey, pending);
     const handle = this.conversationHandles.get(runtimeKey);
     if (handle) {
-      const input = this.buildQueuedInput(sender, request, branch, messageId, this.activeRuns.get(runtimeKey)?.signal);
+      const input = await this.buildQueuedInput(sender, request, branch, messageId, this.activeRuns.get(runtimeKey)?.signal);
       await handle.enqueue({ id: messageId, source: 'operator', prompt: input.prompt, queuedAt: new Date().toISOString(), input });
       const queued = this.queuedRequests.get(runtimeKey) ?? [];
       const queuedIndex = queued.findIndex((item) => item.messageId === messageId);
@@ -739,13 +741,13 @@ class AgentService {
     this.emitStatus();
   }
 
-  private buildQueuedInput(
+  private async buildQueuedInput(
     sender: WebContents,
     request: AgentRequest,
     branch: PersistedConversationBranch,
     inputId: string,
     signal?: AbortSignal,
-  ): AgentRunInput {
+  ): Promise<AgentRunInput> {
     const projectId = request.session?.id ?? this.activeSessionId ?? undefined;
     const sessionPath = projectId ? sessionService.getSessionPath(projectId) : null;
     const settings = agentSettingsService.getClaudeSettings();
@@ -753,6 +755,11 @@ class AgentService {
     const contextRefs = normalizeAgentContextRefs(request.contextRefs, projectId);
     const adapter = this.adapterRegistry.get(branch.backendId);
     const { nativeCommand } = resolveAgentInputCommand(request.content, adapter?.capabilities.slashCommands ?? false);
+    const dynamicSystemContext = nativeCommand
+      ? undefined
+      : projectId
+        ? await this.resolveRuntimeDynamicContext(projectId, branch.id, request.selectedTarget?.id)
+        : buildAgentDynamicSystemContext({ toolCatalog: this.toolCatalogIndex() });
     return {
       conversationId: branch.id,
       inputId,
@@ -762,6 +769,10 @@ class AgentService {
         ?? buildAgentUserPrompt({ content: request.content, attachments: request.attachments, explicitContext: contextRefs }),
       command: nativeCommand ?? undefined,
       systemInstructions: buildSystemInstructions(),
+      dynamicSystemContext,
+      dynamicSystemContextProvider: !nativeCommand && projectId
+        ? () => this.resolveRuntimeDynamicContext(projectId, branch.id, request.selectedTarget?.id)
+        : undefined,
       signal: signal ?? new AbortController().signal,
       attachments: request.attachments ?? [],
       cwd: sessionPath && fs.existsSync(sessionPath) ? sessionPath : process.cwd(),
@@ -926,6 +937,7 @@ class AgentService {
     );
     let projectContext: AgentProjectSystemContext | undefined;
     let focusedTaskContext: TaskContextPackage | undefined;
+    const toolCatalog = command ? undefined : this.toolCatalogIndex();
     if (!command && request.session?.id) {
       const [project, taskContext] = await Promise.all([
         sessionService.loadSession(request.session.id),
@@ -950,6 +962,7 @@ class AgentService {
     const dynamicSystemContext = command ? undefined : buildAgentDynamicSystemContext({
       project: projectContext,
       taskContext: focusedTaskContext,
+      toolCatalog,
       selectedTargetId: request.selectedTarget?.id,
       selectedTargetAdvisory: request.selectedTarget?.id
         ? focusedTaskContext?.targets.find((target) => target.id === request.selectedTarget?.id)?.scopeAdvisory
@@ -1185,6 +1198,7 @@ class AgentService {
   }
 
   private async resolveRuntimeDynamicContext(projectId: string, branchId: string, selectedTargetId?: string) {
+    const toolCatalog = this.toolCatalogIndex();
     try {
       const project = await sessionService.loadSession(projectId);
       const state = sessionService.getProjectState(projectId);
@@ -1200,14 +1214,24 @@ class AgentService {
           scope: project.scope,
         },
         taskContext,
+        toolCatalog,
         selectedTargetId,
         selectedTargetAdvisory: selectedTargetId
           ? taskContext.targets.find((target) => target.id === selectedTargetId)?.scopeAdvisory
           : undefined,
       });
     } catch {
-      return undefined;
+      return buildAgentDynamicSystemContext({ toolCatalog });
     }
+  }
+
+  private toolCatalogIndex(): ToolCatalogIndexEntry[] {
+    return listEnabledToolCatalog(sessionService.getGlobalUserPath()).map(({ id, name, description, channel }) => ({
+      id,
+      name,
+      description,
+      channel,
+    }));
   }
 
   private startConversationReader(
