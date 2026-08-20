@@ -29,7 +29,7 @@ const expectedToolNames = [
   'proxy_node_delete', 'proxy_nodes_test', 'proxy_chains_list', 'proxy_chain_test',
   'proxy_chain_save', 'proxy_chain_delete', 'proxy_chain_activate', 'proxy_enforcement_set',
   'proxy_runtime_start', 'proxy_runtime_stop',
-  'target_list', 'asset_get', 'scope_update', 'asset_register', 'asset_relation_upsert', 'target_update_summary',
+  'target_list', 'asset_get', 'scope_update', 'asset_register', 'asset_import', 'asset_relation_upsert', 'target_update_summary',
   'asset_update_summary', 'evidence_list', 'evidence_upsert', 'finding_list', 'finding_upsert',
   'vulnerability_list', 'vulnerability_upsert', 'report_list', 'report_upsert',
   'attack_catalog_list', 'attack_catalog_search', 'task_list',

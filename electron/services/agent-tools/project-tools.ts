@@ -4,6 +4,7 @@ import { sessionService } from '../session.service';
 import { syncTargetsService } from '../sync-targets.service';
 import { listEnabledToolCatalog } from '../tool-catalog.service';
 import type { RestrictionSelector } from '../restriction.service';
+import { SCAN_PARSER_FORMATS, describeScanParsers, getScanParser } from '../scan-parsers';
 import type { AgentToolContext } from './context';
 import { createAgentTool } from './contract';
 
@@ -184,6 +185,51 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
         return { content: [{
           type: 'text',
           text: JSON.stringify({
+            registeredHosts: registered.hosts,
+            registeredAssets: registered.assets,
+            relationsUpdated: registered.edgesUpdated,
+            changesRecorded: registered.changesRecorded,
+            scanRunId: registered.scanRunId,
+          }, null, 2),
+        }] };
+      },
+    ),
+    createAgentTool(
+      'asset_import',
+      'Import assets in bulk from a security tool\'s machine-readable output, parsed deterministically instead of hand-registered. '
+        + `Supported formats: ${describeScanParsers()}. Run the tool with its structured-output flag, then pass its raw output here. `
+        + 'Parsed assets follow the same graph rules as asset_register; after importing, reconcile the result against Scope and verify with asset_get.',
+      {
+        format: z.enum(SCAN_PARSER_FORMATS),
+        raw: z.string().min(1).max(20_000_000),
+      },
+      async ({ format, raw }) => {
+        if (!sessionId) throw new Error('No active engagement');
+        const parser = getScanParser(format);
+        if (!parser) throw new Error(`Unsupported import format "${format}". Supported: ${describeScanParsers()}`);
+        const { registrations, skipped, notes } = parser.parse(raw);
+        if (registrations.length === 0) {
+          return { content: [{
+            type: 'text',
+            text: JSON.stringify({ format, imported: 0, skipped, notes: notes ?? [], registeredHosts: 0, registeredAssets: 0 }, null, 2),
+          }] };
+        }
+        const registered = await syncTargetsService.registerAssets(sessionId, registrations, selectedTargetId);
+        if (!sender.isDestroyed()) {
+          sender.send('session:data-changed', {
+            sessionId,
+            targets: true,
+            netmap: true,
+            changes: true,
+          });
+        }
+        return { content: [{
+          type: 'text',
+          text: JSON.stringify({
+            format,
+            imported: registrations.length,
+            skipped,
+            notes: notes ?? [],
             registeredHosts: registered.hosts,
             registeredAssets: registered.assets,
             relationsUpdated: registered.edgesUpdated,
