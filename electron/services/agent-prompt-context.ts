@@ -78,8 +78,8 @@ export function buildAgentDynamicSystemContext(input: AgentDynamicSystemContextI
   const selectedTargetId = input.selectedTargetId;
   const scopeMode = input.project?.scope?.mode;
   const scopeInstruction = scopeMode === 'whitelist'
-    ? '白名单仅用于提示优先级：优先使用匹配 allowRules 的资产；未匹配资产标记为 unlisted 并给出软警告，但不要阻止操作或再次询问授权。'
-    : '黑名单仅用于提示：命中 excludeRules 的资产标记为 excluded 并给出软警告；其他资产默认 neutral，可继续处理，不要再次询问授权。';
+    ? 'Whitelist is a priority hint only: prefer assets matching allowRules; flag unmatched assets as unlisted with a soft warning, but do not block actions or re-ask for authorization.'
+    : 'Blacklist is a hint only: flag assets matching excludeRules as excluded with a soft warning; treat other assets as neutral and proceed, and do not re-ask for authorization.';
   const payload = canonicalize({
     semantics: {
       authority: 'application-managed-current-context',
@@ -166,7 +166,6 @@ export function buildAgentDynamicSystemContext(input: AgentDynamicSystemContextI
         text: restriction.text,
         sources: sortedStrings(restriction.sources),
         matchedBy: sortedStrings(restriction.matchedBy),
-        conflictRuleIds: sortedStrings(restriction.conflictRuleIds ?? []),
       }))),
       matchedSkills: sortById(input.taskContext?.skills ?? []),
       candidateTools: sortById((input.taskContext?.tools ?? []).map((tool) => ({

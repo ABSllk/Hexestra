@@ -257,11 +257,11 @@ export class WorkflowService {
       fingerprint: workflow.fingerprint,
       ...(trimmedNote ? { note: trimmedNote } : {}),
     };
-    const noteBlock = trimmedNote ? `\n\n本次补充说明：\n${trimmedNote}` : '';
+    const noteBlock = trimmedNote ? `\n\nAdditional note:\n${trimmedNote}` : '';
     const content = [
-      `请运行用户工作流「${workflow.name}」（${workflow.id}，版本 ${workflow.version}）。`,
+      `Run the user workflow "${workflow.name}" (${workflow.id}, version ${workflow.version}).`,
       '',
-      '这是操作员明确发起的授权安全测试请求。请先检查当前 PTT 和已有发现，再按工作流正文复用、调整或创建任务；维护任务树后继续执行第一个可运行任务。不要仅因为 Scope 或目标标签再次询问授权。',
+      'This is an operator-initiated, authorized security-testing request. First review the current PTT and existing findings, then reuse, adjust, or create tasks per the workflow body; once the task tree is consistent, continue with the first runnable task. Do not re-ask for authorization solely because of Scope or target labels.',
       '',
       '<hexestra_workflow>',
       workflow.body,
