@@ -6,6 +6,7 @@ import type {
   TrafficFlow,
   TrafficHeader,
 } from '../contracts/traffic';
+import { resolveAppVersion } from './app-version';
 
 const MAX_TOOL_RESULT = 1_000_000;
 
@@ -21,7 +22,7 @@ export class BurpProvider {
   async connect(url: string): Promise<BurpConnectionStatus> {
     await this.close();
     const endpoint = await resolveBurpSseEndpoint(url);
-    const client = new Client({ name: 'hexestra', version: '0.2.1' });
+    const client = new Client({ name: 'hexestra', version: await resolveAppVersion() });
     const transport = new SSEClientTransport(endpoint);
     try {
       await withTimeout(client.connect(transport), 5_000, 'Timed out while connecting to Burp MCP');

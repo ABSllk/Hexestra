@@ -40,6 +40,7 @@ import {
 } from '../../agent-interaction-contract';
 import { installHexestraSkills } from '../pentest-skill';
 import { resolveGlobalUserPath } from '../hexestra-home';
+import { resolveAppVersion } from '../app-version';
 import { isAgentAuthenticationError } from '../agent-error';
 import {
   agentSettingsService,
@@ -83,6 +84,9 @@ const COMMAND_DISCOVERY_TIMEOUT_MS = 15_000;
 const CLAUDE_READ_ONLY_BUILTINS = new Set([
   'Read', 'Glob', 'Grep', 'LS', 'WebSearch', 'WebFetch', 'NotebookRead',
 ]);
+// Built-in file-mutation tools overlap with Hexestra managed-record tools and
+// shell_file_*; disable them so tool selection is unambiguous. Bash is kept.
+const DISALLOWED_BUILTIN_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
 
 const capabilities: AgentBackendCapabilities = {
   branching: 'message',
@@ -631,6 +635,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
       : input.cwd;
     const inputQueue = new AsyncPushQueue<SDKUserMessage>();
     const abortController = new AbortController();
+    const mcpServerVersion = await resolveAppVersion();
     let live!: ClaudeLiveRuntime;
     const query = this.sdk.query({
       prompt: inputQueue,
@@ -676,7 +681,7 @@ export class ClaudeAgentAdapter implements AgentAdapter {
         mcpServers: {
           hexestra: this.sdk.createSdkMcpServer({
             name: 'hexestra',
-            version: '0.2.1',
+            version: mcpServerVersion,
             tools: createClaudeSdkTools(
               this.sdk,
               input.tools,
@@ -700,6 +705,10 @@ export class ClaudeAgentAdapter implements AgentAdapter {
           append: input.systemInstructions,
         },
         tools: { type: 'preset', preset: 'claude_code' },
+        // Hexestra owns Evidence/Finding/Vulnerability/Report as managed records and
+        // provides shell_file_* for remote files, so the built-in file-mutation tools
+        // only overlap and confuse tool selection. Bash stays available for local work.
+        disallowedTools: DISALLOWED_BUILTIN_TOOLS,
         env: runtimeResolution.environment,
         stderr: (data) => {
           const line = data.trim();
@@ -1643,6 +1652,11 @@ function requiredSettingSources(sources: readonly ('user' | 'project' | 'local')
   return [...new Set([...sources, 'project' as const, 'local' as const])];
 }
 
+// Defense-in-depth backstop for managed-record integrity. Write/Edit/MultiEdit/
+// NotebookEdit are already blocked via DISALLOWED_BUILTIN_TOOLS, so this guard is
+// normally inert; it stays as a second layer in case a file-mutation tool is ever
+// re-enabled. The Bash path into managed directories is governed by the system
+// instructions, not this hook.
 function createManagedRecordGuard(): HookCallback {
   return async (input) => {
     const typed = input as PreToolUseHookInput;

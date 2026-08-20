@@ -66,6 +66,7 @@ import {
 import { createTool, deleteTool, listEnabledToolCatalog, readToolCatalog, resolveToolCatalogCandidates, updateTool } from './tool-catalog.service';
 import { TOOL_CATALOG_IPC, type ToolCatalogMutableFields, type ToolCatalogRecord } from '../contracts/tool-catalog';
 import { normalizeScopePolicy, scopeAdvisoryForValues, scopeAnnotationForValues } from './scope-policy';
+import { isReadOnlyHexestraTool } from './agent-tool-policy';
 import { AgentHistoryRepository } from './agent-history.repository';
 import { isManagedRecordKind, RECORDS_IPC, type RecordExportResult } from '../contracts/records';
 import { managedRecordFilename, managedRecordMarkdown } from './record-export';
@@ -1225,6 +1226,8 @@ class SessionService {
   }
 
   async assertTaskExecutionReady(sessionId: string, toolName: string) {
+    // Read-only tools do not mutate state and must not require a focused Task.
+    if (isReadOnlyHexestraTool(toolName)) return;
     if (/^(task_|restriction_|tool_catalog_)/.test(toolName)) return;
     const state = this.getProjectState(sessionId);
     const branch = state.agent.branches.find((candidate) => candidate.id === state.agent.activeBranchId);

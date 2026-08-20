@@ -131,7 +131,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
     ),
     createAgentTool(
       'asset_get',
-      'Immediately read back one persisted asset and its relationships after asset_register. Use the exact returned asset ID before any further discovery action.',
+      'Read back a persisted asset and its relationships by ID to verify registration before continuing discovery. Use the exact IDs returned by asset_register.',
       { assetId: z.string().min(1).max(200) },
       async ({ assetId }) => {
         if (!sessionId) throw new Error('No active engagement');
@@ -165,10 +165,10 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
     ),
     createAgentTool(
       'asset_register',
-      'Immediately register confirmed Host, Domain, Subnet, Port, Service, Web App, API, Endpoint, Parameter, Certificate, or Identity assets. '
-        + 'For Agent discovery work, submit exactly one confirmed asset in the assets array, then immediately call asset_get with its returned ID before any further scan/browser/tool action. '
-        + 'If one result contains several discoveries, repeat asset_register(one asset) -> asset_get in evidence order; never defer them to a final batch. '
-        + 'The array remains batch-capable only for compatibility/import workflows. Never invent IDs or use summary-update tools to create assets.',
+      'Register confirmed Host, Domain, Subnet, Port, Service, Web App, API, Endpoint, Parameter, Certificate, or Identity assets from reconciled evidence. '
+        + 'Submit one or more confirmed assets in the assets array; when a single result yields several, register them together rather than deferring or fragmenting them. '
+        + 'After registering, verify with asset_get on the returned IDs (sample representative assets and any that gained relationships) before continuing discovery. '
+        + 'Never invent IDs or use summary-update tools to create assets.',
       { assets: z.array(assetRegistrationSchema).min(1).max(100) },
       async ({ assets }) => {
         if (!sessionId) throw new Error('No active engagement');

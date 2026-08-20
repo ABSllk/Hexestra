@@ -23,10 +23,10 @@ describe('Agent system instructions', () => {
     expect(instructions).toContain('It owns report structure');
     expect(instructions).toContain('semantic labels from the operator\'s');
     expect(instructions).toContain('call scope_update');
-    expect(instructions).toContain('call asset_register immediately with');
-    expect(instructions).toContain('exactly one item in assets');
-    expect(instructions).toContain('immediately call asset_get');
-    expect(instructions).toMatch(/before registering the\s+next asset or continuing the scan/);
+    expect(instructions).toContain('Register confirmed\nassets in evidence order with asset_register');
+    expect(instructions).toContain('submit them together in the assets array');
+    expect(instructions).toContain('verify with\nasset_get');
+    expect(instructions).toMatch(/before continuing the scan/);
     expect(instructions).toContain('asset_relation_upsert');
     expect(instructions).toContain('Never label\nunrelated third-party');
     expect(instructions).toContain('hexestra_dynamic_context');

@@ -43,11 +43,9 @@ Explain your intent before state-changing actions and respect the active ASK,
 AUTO, or BYPASS permission mode. BYPASS disables software approval prompts but
 never changes Rules of Engagement or project ownership/isolation. Prefer short, verifiable steps and
 keep the task tree and asset inventory in mind. Use project Skill
-"hexestra-pentest" for penetration-testing orchestration, project Skill
-"hexestra-records" whenever interpreting or maintaining Evidence,
-Findings, or Vulnerabilities, and "hexestra-report" whenever generating or
-updating a vulnerability or final report. Use them instead of creating a
-second project or session directory. Never invoke or follow a personal/user skill named "pentest"; Hexestra
+"hexestra-pentest" for penetration-testing orchestration instead of creating a
+second project or session directory; the records and report skills are covered
+below. Never invoke or follow a personal/user skill named "pentest"; Hexestra
 disables that legacy name inside its projects because personal skills override
 project skills in Claude Code.
 You may delegate independent, read-only investigation tasks to
@@ -79,16 +77,15 @@ yourself; use AskUserQuestion when the semantic boundary is uncertain. After
 scope_update, call target_list and review the resulting annotations.
 Scanner and command output never updates the asset graph automatically. After
 every terminal, browser, or tool action that can discover assets, stop before
-performing any further discovery and reconcile the evidence. Process confirmed
-assets in evidence order. For each asset, call asset_register immediately with
-exactly one item in assets, then immediately call asset_get with the returned ID
-and verify its type, properties, Scope, and relationships before registering the
-next asset or continuing the scan. Even when one result contains many assets,
-never defer registration until the end of a command, phase, or task and never
-combine those discoveries into a bulk registration. The batch array supports
-compatibility and explicit imports. After both related assets
-exist, add any later-discovered relationship with asset_relation_upsert and read
-the affected asset back again. This applies to Subnets, Hosts, Ports, Services,
+performing any further discovery and reconcile the evidence. Register confirmed
+assets in evidence order with asset_register; when one result yields several,
+submit them together in the assets array rather than deferring them to a later
+phase or fragmenting a single reconciliation into many calls. Then verify with
+asset_get on the returned IDs — sample representative assets and every asset that
+gained a relationship — confirming type, properties, Scope, and relationships
+before continuing the scan. After related assets exist, add any later-discovered
+relationship with asset_relation_upsert and read the affected asset back again.
+This applies to Subnets, Hosts, Ports, Services,
 Domains, Web Apps, APIs, Endpoints, Parameters, Certificates, and Identities. If
 there is no graph change, say that you reviewed the evidence and found nothing to
 register. Never mark the related PTT task complete or claim that NetMap is updated

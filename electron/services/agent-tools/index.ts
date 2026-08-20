@@ -1,4 +1,5 @@
 import type { AgentToolContext } from './context';
+import { isReadOnlyHexestraTool } from '../agent-tool-policy';
 import { createBrowserAgentTools } from './browser-tools';
 import { createProjectAgentTools } from './project-tools';
 import { createShellAgentTools } from './shell-tools';
@@ -28,6 +29,9 @@ export function createHexestraAgentTools(context: AgentToolContext) {
 }
 
 function isTaskGuardedTool(name: string, riskLevel?: string) {
+  // Read-only tools (recon, reading pages/scrollback/traffic) never mutate state,
+  // so they must not require a focused Task; only state-changing work is gated.
+  if (isReadOnlyHexestraTool(name)) return false;
   if (/^(task_|restriction_|tool_catalog_|attack_catalog_)/.test(name)) return false;
   if (/^(target_|asset_|finding_|vulnerability_|evidence_|report_|scope_)/.test(name)) return false;
   if (/^(browser|shell|traffic|egress-proxy|mcp|subagent|Task$|Agent)/.test(name)) return true;

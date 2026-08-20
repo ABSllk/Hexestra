@@ -115,6 +115,7 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
     expect(sdk.query).toHaveBeenCalledTimes(1);
     expect(sdk.query.mock.calls[0]?.[0].options.permissionMode).toBe('default');
     expect(sdk.query.mock.calls[0]?.[0].options.allowDangerouslySkipPermissions).toBe(true);
+    expect(sdk.query.mock.calls[0]?.[0].options.disallowedTools).toEqual(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
     expect(setPermissionMode).toHaveBeenNthCalledWith(1, 'bypassPermissions');
     expect(setPermissionMode).toHaveBeenNthCalledWith(2, 'bypassPermissions');
     expect(prompts).toHaveLength(2);

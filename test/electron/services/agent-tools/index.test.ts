@@ -48,6 +48,25 @@ describe('Hexestra Agent tool factories', () => {
     expect(new Set(tools.map(({ name }) => name)).size).toBe(tools.length);
   });
 
+  it('gates state-changing tools behind the task guard while exempting read-only tools', async () => {
+    const guarded: string[] = [];
+    const tools = createHexestraAgentTools({
+      sender: {} as never,
+      permissionMode: 'default',
+      taskGuard: (name: string) => { guarded.push(name); },
+    } as never) as unknown as Array<{ name: string; execute: (input: unknown) => Promise<unknown> }>;
+
+    const readOnly = tools.find((tool) => tool.name === 'browser_read')!;
+    const writeTool = tools.find((tool) => tool.name === 'shell_file_write')!;
+    // The underlying handlers hit mocked services and may throw; we only care
+    // whether the task guard was consulted before execution.
+    await readOnly.execute({}).catch(() => undefined);
+    await writeTool.execute({}).catch(() => undefined);
+
+    expect(guarded).not.toContain('browser_read');
+    expect(guarded).toContain('shell_file_write');
+  });
+
   it('publishes independent fine-grained asset schemas and the immediate read-back contract', () => {
     const tools = createHexestraAgentTools({ sender: {} as never, permissionMode: 'default' });
     const register = tools.find((tool) => tool.name === 'asset_register')!;
@@ -68,8 +87,8 @@ describe('Hexestra Agent tool factories', () => {
     for (const asset of assets) expect(() => schema.parse({ assets: [asset] })).not.toThrow();
     expect(() => schema.parse({ assets: [{ type: 'port', port: 443 }] })).toThrow();
     expect(() => schema.parse({ assets: [{ type: 'endpoint', method: 'GET', path: '/' }] })).toThrow();
-    expect(register.description).toContain('exactly one confirmed asset');
-    expect(register.description).toContain('immediately call asset_get');
+    expect(register.description).toContain('one or more confirmed assets');
+    expect(register.description).toContain('verify with asset_get');
     expect(tools.find((tool) => tool.name === 'asset_get')).toMatchObject({ riskLevel: 'read' });
     expect(tools.find((tool) => tool.name === 'asset_relation_upsert')?.description).toContain('child to parent');
   });

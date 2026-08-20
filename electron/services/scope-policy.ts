@@ -1,5 +1,5 @@
 import net from 'net';
-import type { ScopeAdvisory, ScopeAnnotation, ScopeMode, SessionScopePayload } from '../contracts/session';
+import type { ScopeAdvisory, ScopeAnnotation, ScopeMode } from '../contracts/session';
 import { cidrContains, normalizeCidr, normalizeIpAddress } from './ip-address';
 
 export interface ScopePolicy {
@@ -48,19 +48,6 @@ export function isValueInScope(scope: ScopePolicy | undefined, value: string) {
 export function isValueExcluded(scope: ScopePolicy | undefined, value: string) {
   const policy = normalizeScopePolicy(scope);
   return policy.mode === 'blacklist' && scopeAnnotationForValues(policy, [value]) === 'excluded';
-}
-
-export function normalizeLegacyScope(value: {
-  inScope?: string[];
-  outOfScope?: string[];
-  targets?: string[];
-}): SessionScopePayload {
-  const allowRules = uniqueRules([...(value.inScope ?? []), ...(value.targets ?? [])]);
-  return {
-    mode: allowRules.length ? 'whitelist' : 'blacklist',
-    allowRules,
-    excludeRules: uniqueRules(value.outOfScope),
-  };
 }
 
 function uniqueRules(values: unknown) {
