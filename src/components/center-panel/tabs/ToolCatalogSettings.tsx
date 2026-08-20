@@ -7,7 +7,7 @@ import {
   type ToolCatalogDocumentResult,
   type ToolCatalogRecord,
 } from '@electron/contracts/tool-catalog';
-import { Button, DismissibleNotice, Icon, useConfirmDialog } from '@/components/shared';
+import { Button, DismissibleNotice, Icon, IconButton, SettingsListRow, useConfirmDialog } from '@/components/shared';
 import { useI18n } from '@/i18n';
 import { cn } from '@/lib/cn';
 
@@ -129,12 +129,12 @@ export function ToolCatalogSettings() {
     }
   };
 
-  const remove = async () => {
-    if (!draft || creating) return;
+  const remove = async (tool = draft) => {
+    if (!tool || creating) return;
     const approved = await confirm({
       title: t('tools.deleteTitle'),
       description: t('tools.deleteDescription'),
-      details: `${draft.name} (${draft.id})`,
+      details: `${tool.name} (${tool.id})`,
       confirmLabel: t('tools.deleteConfirm'),
       tone: 'danger',
     });
@@ -142,10 +142,12 @@ export function ToolCatalogSettings() {
     setBusy(true);
     setError(null);
     try {
-      const loaded = await window.hexestra.invoke<ToolCatalogDocumentResult>(TOOL_CATALOG_IPC.DELETE, draft.id);
+      const loaded = await window.hexestra.invoke<ToolCatalogDocumentResult>(TOOL_CATALOG_IPC.DELETE, tool.id);
       setResult(loaded);
-      setSelectedId(null);
-      setDraft(null);
+      if (selectedId === tool.id) {
+        setSelectedId(null);
+        setDraft(null);
+      }
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -179,7 +181,7 @@ export function ToolCatalogSettings() {
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(16rem,30%)_minmax(0,1fr)]">
         <aside className="flex min-h-0 flex-col border-r border-border-subtle bg-panel/25">
-          <div className="shrink-0 space-y-2 border-b border-border-subtle p-3">
+          <div className="flex shrink-0 flex-col gap-2 border-b border-border-subtle p-3">
             <label className="relative block">
               <span className="sr-only">{t('tools.search')}</span>
               <Icon name="search" size={13} className="pointer-events-none absolute left-2.5 top-2.5 text-text-muted" />
@@ -194,25 +196,29 @@ export function ToolCatalogSettings() {
               </select>
             </label>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
             {visibleTools.map((tool) => (
-              <button
+              <SettingsListRow
                 key={tool.id}
-                type="button"
-                aria-pressed={!creating && selectedId === tool.id}
-                onClick={() => selectTool(tool)}
-                className={cn('ui-hover-row flex w-full items-start gap-2 border-b border-border-subtle px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus', !creating && selectedId === tool.id && 'bg-raised')}
-              >
-                <span aria-hidden="true" className={cn('mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full', tool.enabled ? 'bg-status-success' : 'bg-text-muted')} />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className="truncate text-xs font-medium text-text-primary">{tool.name}</span>
-                    <span className="shrink-0 font-mono text-[10px] text-text-muted">{tool.id}</span>
-                    <span className="ml-auto shrink-0 text-[10px] text-text-muted">{tool.enabled ? t('tools.enabled') : t('tools.disabled')}</span>
-                  </span>
-                  <span className="mt-0.5 line-clamp-2 block text-[11px] leading-4 text-text-muted">{tool.description}</span>
-                </span>
-              </button>
+                selected={!creating && selectedId === tool.id}
+                onSelect={() => selectTool(tool)}
+                ariaLabel={tool.name}
+                title={tool.name}
+                badge={tool.enabled ? t('tools.enabled') : t('tools.disabled')}
+                description={tool.description}
+                status={tool.enabled ? 'success' : 'muted'}
+                statusLabel={tool.enabled ? t('tools.enabled') : t('tools.disabled')}
+                actions={(
+                  <IconButton
+                    name="trash"
+                    label={`${t('common.delete')} ${tool.name}`}
+                    size={13}
+                    disabled={busy || creating}
+                    className="mt-1 opacity-70 group-hover:opacity-100"
+                    onClick={() => void remove(tool)}
+                  />
+                )}
+              />
             ))}
             {!visibleTools.length && <p className="p-4 text-center text-xs text-text-muted">{t('tools.noMatch')}</p>}
           </div>
@@ -237,10 +243,10 @@ export function ToolCatalogSettings() {
 
               <div className="grid grid-cols-2 gap-4">
                 <Field label={t('tools.id')} hint={t('tools.idHint')}>
-                  <input aria-label={t('tools.id')} value={draft.id} disabled={!creating} onChange={(event) => updateDraft('id', event.target.value.toLowerCase())} className="ui-control min-h-8 w-full font-mono text-xs disabled:opacity-60" />
+                  <input aria-label={t('tools.id')} value={draft.id} disabled={!creating} onChange={(event) => updateDraft('id', event.target.value.toLowerCase())} className="ui-control min-h-8 w-full font-mono text-xs disabled:opacity-60 px-2.5 py-2" />
                 </Field>
                 <Field label={t('tools.name')}>
-                  <input aria-label={t('tools.name')} value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} className="ui-control min-h-8 w-full text-xs" />
+                  <input aria-label={t('tools.name')} value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} className="ui-control min-h-8 w-full text-xs px-2.5 py-2" />
                 </Field>
                 <Field label={t('tools.descriptionField')} className="col-span-2">
                   <textarea aria-label={t('tools.descriptionField')} value={draft.description} onChange={(event) => updateDraft('description', event.target.value)} rows={3} className="ui-control w-full resize-y px-2.5 py-2 text-xs" />
@@ -265,7 +271,7 @@ export function ToolCatalogSettings() {
                   <MultiSelect label={t('tools.techniques')} values={draft.techniqueIds} onChange={(values) => updateDraft('techniqueIds', values)} options={ATTACK_TECHNIQUES.map((entry) => ({ value: entry.id, label: `${entry.id} · ${entry.name}` }))} />
                 </Field>
                 <Field label={t('tools.command')}>
-                  <input aria-label={t('tools.command')} value={draft.command ?? ''} onChange={(event) => updateDraft('command', event.target.value || undefined)} className="ui-control min-h-8 w-full font-mono text-xs" placeholder={t('tools.commandPlaceholder')} />
+                  <input aria-label={t('tools.command')} value={draft.command ?? ''} onChange={(event) => updateDraft('command', event.target.value || undefined)} className="ui-control min-h-8 w-full font-mono text-xs px-2.5 py-2" placeholder={t('tools.commandPlaceholder')} />
                 </Field>
                 <Field label={t('tools.usage')}>
                   <textarea aria-label={t('tools.usage')} value={draft.usage ?? ''} onChange={(event) => updateDraft('usage', event.target.value || undefined)} rows={3} className="ui-control w-full resize-y px-2.5 py-2 text-xs" placeholder={t('tools.usagePlaceholder')} />

@@ -262,13 +262,11 @@ export function KnowledgeRefineryTab({ tabId }: { tabId: string }) {
 function CandidateRow({ candidate, active, checked, onSelect, onToggle }: { candidate: RefineryCandidateSummary; active: boolean; checked: boolean; onSelect: () => void; onToggle: () => void }) {
   const { t } = useI18n();
   const selectable = candidate.decision !== 'rejected' && candidate.decision !== 'applied' && !candidate.diagnostic && candidate.dedupe.action !== 'skip' && candidate.dedupe.action !== 'merge';
-  return <div className={cn('mb-1 rounded border p-2.5 transition-colors', active ? 'border-accent-blue/45 bg-accent-blue/8' : 'border-transparent hover:border-border-subtle hover:bg-raised/50')}>
-    <div className="flex items-start gap-2">
-      <input type="checkbox" checked={checked} onChange={onToggle} disabled={!selectable} aria-label={t('refinery.selectForApply', { title: candidate.title })} className="mt-0.5 accent-blue disabled:opacity-35" />
-      <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
+  return <div className={cn('group mb-1 flex items-start gap-1 rounded-md border p-1 transition-colors duration-150', active ? 'border-accent-blue/35 bg-accent-blue/8' : 'border-transparent hover:border-border-subtle hover:bg-raised/35')}>
+    <input type="checkbox" checked={checked} onChange={onToggle} disabled={!selectable} aria-label={t('refinery.selectForApply', { title: candidate.title })} className="ml-1 mt-2 accent-blue disabled:opacity-35" />
+      <button type="button" onClick={onSelect} className="min-w-0 flex-1 rounded px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-focus">
         <div className="flex items-start gap-2"><Icon name={candidateIcon(candidate.kind)} size={13} className={candidate.diagnostic ? 'mt-0.5 text-severity-medium' : 'mt-0.5 text-accent-blue'} /><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-1"><span className="truncate text-[11px] font-medium text-text-primary">{candidate.title}</span><span className="font-mono text-[9px] text-text-muted">{Math.round(candidate.confidence * 100)}%</span></div><p className="mt-1 text-[10px] text-text-muted">{t(candidateKindKey(candidate.kind))} · {t(candidateDecisionKey(candidate.decision))} · {t(dedupeActionKey(candidate.dedupe.action))}</p>{candidate.diagnostic && <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-severity-medium">{candidate.diagnostic}</p>}</div></div>
       </button>
-    </div>
   </div>;
 }
 

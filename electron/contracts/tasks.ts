@@ -136,7 +136,6 @@ export interface TaskContextPackage {
     text: string;
     sources: Array<'global' | 'project'>;
     matchedBy: string[];
-    conflictRuleIds?: string[];
   }>;
   skills: Array<{ id: string; name: string; match: 'preferred' | 'technique' | 'capability' | 'tactic' | 'other' }>;
   tools: ToolCatalogCandidate[];

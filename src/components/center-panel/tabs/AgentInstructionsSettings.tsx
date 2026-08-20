@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ATTACK_TACTICS, ATTACK_TECHNIQUES } from '@electron/contracts/tasks';
 import type { RestrictionDocumentResult, RestrictionRule, RestrictionSelector } from '@electron/services/restriction.service';
 import type { RestrictionClassificationSuggestion } from '@electron/contracts/restriction-classification';
-import { Button, DismissibleNotice, Icon, IconButton, useConfirmDialog } from '@/components/shared';
+import { Button, DismissibleNotice, Icon, IconButton, SettingsListRow, useConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useSessionStore } from '@/stores';
 import { useI18n } from '@/i18n';
@@ -497,7 +497,6 @@ export function AgentInstructionsSettings() {
         updated: RestrictionRule[];
         unchanged: RestrictionRule[];
         diagnostics: string[];
-        conflicts: Array<{ ruleIds: string[]; text: string }>;
         document: { version: 1; rules: RestrictionRule[] };
         baseFingerprint: string;
         scope: Scope;
@@ -506,7 +505,7 @@ export function AgentInstructionsSettings() {
       const accepted = await confirm({
         title: t('restrictions.importTitle'),
         description: t('restrictions.importDescription', { added: preview.added.length, updated: preview.updated.length, scope: scope === 'global' ? t('restrictions.global') : t('restrictions.project') }),
-        details: preview.conflicts.length ? t('restrictions.importConflicts', { count: preview.conflicts.length }) : t('restrictions.importReplace'),
+        details: t('restrictions.importReplace'),
         confirmLabel: t('restrictions.importConfirm'),
         tone: 'trust',
       });
@@ -564,17 +563,20 @@ export function AgentInstructionsSettings() {
 
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
             {rules.map((rule) => (
-              <div key={rule.id} className={cn('group flex items-start gap-1 rounded-md border p-1', selectedId === rule.id ? 'border-accent-blue/35 bg-accent-blue/8' : 'border-transparent hover:border-border-subtle hover:bg-raised/35')}>
-                <button type="button" onClick={(event) => openEditor(rule, event.currentTarget)} className="min-w-0 flex-1 rounded px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-focus">
-                  <div className="flex items-center gap-2">
-                    <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', rule.enabled ? 'bg-status-success' : 'bg-text-muted')} aria-label={rule.enabled ? t('restrictions.enabled') : t('restrictions.disabled')} />
-                    <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary">{rule.id || 'new restriction'}</span>
-                    <span className="shrink-0 rounded border border-border-subtle px-1.5 py-0.5 text-[11px] text-accent-blue">{rule.selector.kind === 'general' ? t('restrictions.general') : t('restrictions.attackBindingCount', { count: rule.selector.tacticIds.length + rule.selector.techniqueIds.length })}</span>
-                  </div>
-                  <p className="mt-1.5 line-clamp-2 break-words text-xs leading-5 text-text-muted">{rule.text}</p>
-                </button>
-                <IconButton name="trash" label={`${t('common.delete')} ${rule.id}`} size={13} className="mt-1 opacity-70 group-hover:opacity-100" onClick={() => void remove(rule)} />
-              </div>
+              <SettingsListRow
+                key={rule.id}
+                selected={selectedId === rule.id}
+                onSelect={(event) => openEditor(rule, event.currentTarget)}
+                ariaLabel={rule.id || t('restrictions.new')}
+                title={<span className="font-mono text-[11px] text-text-secondary">{rule.id || t('restrictions.new')}</span>}
+                badge={rule.selector.kind === 'general'
+                  ? t('restrictions.general')
+                  : t('restrictions.attackBindingCount', { count: rule.selector.tacticIds.length + rule.selector.techniqueIds.length })}
+                description={<span className="text-xs leading-5">{rule.text}</span>}
+                status={rule.enabled ? 'success' : 'muted'}
+                statusLabel={rule.enabled ? t('restrictions.enabled') : t('restrictions.disabled')}
+                actions={<IconButton name="trash" label={`${t('common.delete')} ${rule.id}`} size={13} className="mt-1 opacity-70 group-hover:opacity-100" onClick={() => void remove(rule)} />}
+              />
             ))}
             {!rules.length && (
               <div className="flex h-full min-h-48 items-center justify-center p-4 text-center">

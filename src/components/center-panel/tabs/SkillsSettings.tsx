@@ -9,7 +9,7 @@ import type {
   ClaudeSkillListResult,
   ClaudeSkillScope,
 } from '@electron/contracts/claude-capabilities';
-import { Button, DismissibleNotice, Icon, useConfirmDialog } from '@/components/shared';
+import { Button, DismissibleNotice, Icon, SettingsListRow, useConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useSessionStore } from '@/stores';
 import { useI18n, type TranslationKey } from '@/i18n';
@@ -352,26 +352,22 @@ export function SkillsSettings() {
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-[250px_1fr]">
-        <aside className="min-h-0 overflow-y-auto border-r border-border-subtle bg-panel/35 p-3">
+        <aside className="min-h-0 overflow-y-auto border-r border-border-subtle bg-panel/25 p-2">
           {!result && <p className="p-3 text-xs text-text-muted">{t('skills.loading')}</p>}
           {result?.items.length === 0 && <EmptyList text="No global or project user Skills found." />}
           <div className="space-y-1">
             {result?.items.map((item) => (
-              <button
+              <SettingsListRow
                 key={item.id}
-                onClick={() => void select(item)}
-                className={cn(
-                  'w-full rounded border px-3 py-2 text-left transition-colors',
-                  document?.id === item.id ? 'border-accent-blue/35 bg-accent-blue/10' : 'border-transparent hover:border-border-subtle hover:bg-panel/60',
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <span className={cn('h-1.5 w-1.5 rounded-full', item.enabled ? 'bg-accent-green' : 'bg-text-muted')} />
-                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary">{item.name}</span>
-                  <ScopeBadge scope={item.scope} />
-                </div>
-                <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-text-muted">{item.description}</p>
-              </button>
+                selected={document?.id === item.id}
+                onSelect={() => void select(item)}
+                ariaLabel={item.name}
+                title={item.name}
+                badge={item.scope}
+                description={item.description}
+                status={item.enabled ? 'success' : 'muted'}
+                statusLabel={item.enabled ? t('skills.enabled') : t('skills.disabled')}
+              />
             ))}
           </div>
           {result?.errors.map((item) => <SourceError key={`${item.source}:${item.detail}`} source={item.source} detail={item.detail} />)}
@@ -466,10 +462,6 @@ export function SkillsSettings() {
       </div>
     </div>
   );
-}
-
-function ScopeBadge({ scope }: { scope: ClaudeSkillScope }) {
-  return <span className="rounded border border-border-subtle px-1 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">{scope}</span>;
 }
 
 function SkillImportReview({

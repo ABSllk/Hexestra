@@ -757,7 +757,6 @@ function TaskDetail({
       sources?: string[];
       text: string;
       matchedBy?: string[];
-      conflictRuleIds?: string[];
     }>;
     skills?: Array<{ name: string; match: string }>;
     tools?: Array<{ name: string }>;
@@ -1037,7 +1036,7 @@ function TaskDetail({
               ? context.restrictions
                   .map(
                     (restriction) =>
-                      `${(restriction.sources ?? [restriction.scope ?? "unknown"]).join("/")}: ${restriction.text}${restriction.conflictRuleIds?.length ? " · possible conflict" : ""}`,
+                      `${(restriction.sources ?? [restriction.scope ?? "unknown"]).join("/")}: ${restriction.text}`,
                   )
                   .join(" · ")
               : "none"}

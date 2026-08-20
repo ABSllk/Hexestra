@@ -41,7 +41,6 @@ export interface ResolvedRestriction {
   text: string;
   sources: RestrictionScope[];
   matchedBy: string[];
-  conflictRuleIds?: string[];
 }
 
 export interface RestrictionUpsertInput {
@@ -61,15 +60,11 @@ export interface RestrictionImportPreview {
   updated: RestrictionRule[];
   unchanged: RestrictionRule[];
   diagnostics: string[];
-  conflicts: Array<{ ruleIds: string[]; text: string }>;
 }
 
 const EMPTY_DOCUMENT: RestrictionDocument = { version: 1, rules: [] };
 const ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 const ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
-const PROHIBITIVE = /(禁止|不得|不能|不可|严禁|禁止|must\s+not|never|do\s+not|don't)/i;
-const PERMISSIVE = /(允许|可以|可用|应当|必须|应该|允许|may|should|must|can)/i;
-const MODAL_WORDS = /(禁止|不得|不能|不可|严禁|允许|可以|可用|应当|必须|应该|must|not|never|do|don't|may|should|can)/gi;
 
 function cloneEmpty(): RestrictionDocument {
   return { version: 1, rules: [] };
@@ -260,21 +255,6 @@ export function listRestrictionDocuments(globalPath: string, projectPath: string
   };
 }
 
-function selectorsOverlap(left: RestrictionSelector, right: RestrictionSelector): boolean {
-  if (left.kind === 'general' || right.kind === 'general') return true;
-  return left.tacticIds.some((id) => right.tacticIds.includes(id)) || left.techniqueIds.some((id) => right.techniqueIds.includes(id));
-}
-
-function possibleConflict(left: RestrictionRule, right: RestrictionRule): boolean {
-  if (!selectorsOverlap(left.selector, right.selector)) return false;
-  const leftWords = new Set(normalizedFingerprintText(left.text).replace(MODAL_WORDS, '').split(/\W+/).filter((word) => word.length > 2));
-  const rightWords = new Set(normalizedFingerprintText(right.text).replace(MODAL_WORDS, '').split(/\W+/).filter((word) => word.length > 2));
-  if (leftWords.size === 0 || rightWords.size === 0) return false;
-  const intersection = [...leftWords].filter((word) => rightWords.has(word)).length;
-  const union = new Set([...leftWords, ...rightWords]).size;
-  return intersection / union >= 0.65 && PROHIBITIVE.test(left.text) !== PROHIBITIVE.test(right.text) && (PERMISSIVE.test(left.text) || PERMISSIVE.test(right.text));
-}
-
 export function resolveRestrictions(globalPath: string, projectPath: string, tacticId: string, techniqueIds: string[]) {
   const documents = listRestrictionDocuments(globalPath, projectPath);
   const diagnostics = [
@@ -288,7 +268,6 @@ export function resolveRestrictions(globalPath: string, projectPath: string, tac
     ...documents.project.document.rules.filter((rule) => rule.enabled).map((rule) => ({ scope: 'project' as const, rule })),
   ].filter(({ rule }) => rule.selector.kind === 'general' || rule.selector.tacticIds.includes(selectedTactic) || rule.selector.techniqueIds.some((id) => selectedTechniques.has(id)));
   const merged = new Map<string, ResolvedRestriction>();
-  const sourceRules = new Map<string, RestrictionRule[]>();
   for (const item of selected) {
     const fingerprint = ruleFingerprint(item.rule);
     const current = merged.get(fingerprint);
@@ -301,21 +280,8 @@ export function resolveRestrictions(globalPath: string, projectPath: string, tac
       ? ['general']
       : [...(item.rule.selector.tacticIds.includes(selectedTactic) ? [`tactic:${selectedTactic}`] : []), ...item.rule.selector.techniqueIds.filter((id) => selectedTechniques.has(id)).map((id) => `technique:${id}`)];
     merged.set(fingerprint, { id: item.rule.id, ruleIds: [item.rule.id], text: item.rule.text, sources: [item.scope], matchedBy });
-    sourceRules.set(fingerprint, [item.rule]);
   }
-  const values = [...merged.values()];
-  for (let index = 0; index < values.length; index += 1) {
-    for (let otherIndex = index + 1; otherIndex < values.length; otherIndex += 1) {
-      const first = sourceRules.get([...merged.keys()][index])?.[0];
-      const second = sourceRules.get([...merged.keys()][otherIndex])?.[0];
-      if (first && second && possibleConflict(first, second)) {
-        const conflictRuleIds = [...new Set([first.id, second.id])];
-        values[index].conflictRuleIds = conflictRuleIds;
-        values[otherIndex].conflictRuleIds = conflictRuleIds;
-      }
-    }
-  }
-  return { rules: values, diagnostics };
+  return { rules: [...merged.values()], diagnostics };
 }
 
 export function upsertRestriction(filePath: string, scope: RestrictionScope, input: RestrictionUpsertInput): RestrictionRule {
@@ -356,7 +322,7 @@ function normalizeImportedDocument(raw: unknown): { document: RestrictionDocumen
 export function previewRestrictionImport(filePath: string, scope: RestrictionScope, yamlText: string): RestrictionImportPreview {
   const current = readDocument(filePath, scope);
   let parsed: unknown;
-  try { parsed = YAML.parse(yamlText); } catch (error) { return { scope, baseFingerprint: current.fingerprint, document: cloneEmpty(), added: [], updated: [], unchanged: [], diagnostics: [`Invalid restrictions YAML: ${error instanceof Error ? error.message : String(error)}`], conflicts: [] }; }
+  try { parsed = YAML.parse(yamlText); } catch (error) { return { scope, baseFingerprint: current.fingerprint, document: cloneEmpty(), added: [], updated: [], unchanged: [], diagnostics: [`Invalid restrictions YAML: ${error instanceof Error ? error.message : String(error)}`] }; }
   const imported = normalizeImportedDocument(parsed);
   const currentById = new Map(current.document.rules.map((rule) => [rule.id, rule]));
   const added = imported.document.rules.filter((rule) => !currentById.has(rule.id));
@@ -368,13 +334,7 @@ export function previewRestrictionImport(filePath: string, scope: RestrictionSco
     const previous = currentById.get(rule.id);
     return Boolean(previous && JSON.stringify(previous) === JSON.stringify(rule));
   });
-  const conflicts: Array<{ ruleIds: string[]; text: string }> = [];
-  for (let index = 0; index < imported.document.rules.length; index += 1) for (let otherIndex = index + 1; otherIndex < imported.document.rules.length; otherIndex += 1) {
-    const left = imported.document.rules[index];
-    const right = imported.document.rules[otherIndex];
-    if (possibleConflict(left, right)) conflicts.push({ ruleIds: [left.id, right.id], text: 'Rules may conflict and both remain effective' });
-  }
-  return { scope, baseFingerprint: current.fingerprint, document: imported.document, added, updated, unchanged, diagnostics: imported.diagnostics, conflicts };
+  return { scope, baseFingerprint: current.fingerprint, document: imported.document, added, updated, unchanged, diagnostics: imported.diagnostics };
 }
 
 export function applyRestrictionImport(filePath: string, preview: RestrictionImportPreview): RestrictionDocument {

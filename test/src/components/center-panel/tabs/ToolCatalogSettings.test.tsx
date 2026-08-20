@@ -50,7 +50,7 @@ describe('ToolCatalogSettings', () => {
     expect(screen.queryByText(/probe local tools/i)).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText('Search name, ID, or capability'), { target: { value: 'port-scanning' } });
-    fireEvent.click(screen.getByRole('button', { name: /nmap/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'nmap' }));
     expect(screen.getByLabelText('ID')).toBeDisabled();
 
     fireEvent.click(screen.getByRole('checkbox'));
@@ -80,7 +80,7 @@ describe('ToolCatalogSettings', () => {
 
   it('confirms deletion and explains unresolved historical task references', async () => {
     render(<ConfirmDialogProvider><ToolCatalogSettings /></ConfirmDialogProvider>);
-    fireEvent.click(await screen.findByRole('button', { name: /nmap/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'nmap' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete tool' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('dialog:confirm', expect.objectContaining({
       description: expect.stringContaining('Historical tasks'),

@@ -7,7 +7,7 @@ import type {
   ClaudeMcpScope,
 } from '@electron/contracts/claude-capabilities';
 import { normalizeClaudeMcpRuntimeStatusResult } from '@electron/contracts/claude-capabilities';
-import { Button, DismissibleNotice, Icon, useConfirmDialog } from '@/components/shared';
+import { Button, DismissibleNotice, Icon, SettingsListRow, useConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useSessionStore } from '@/stores';
 import { useI18n } from '@/i18n';
@@ -217,33 +217,36 @@ export function McpSettings() {
       )}
 
       <div className="grid min-h-0 flex-1 grid-cols-[270px_1fr]">
-        <aside aria-live="polite" className="min-h-0 overflow-y-auto border-r border-border-subtle bg-panel/35 p-3">
+        <aside aria-live="polite" className="min-h-0 overflow-y-auto border-r border-border-subtle bg-panel/25 p-2">
           {!result && <p className="p-3 text-xs text-text-muted">{t('mcp.loading')}</p>}
           {result?.items.length === 0 && <p className="rounded border border-dashed border-border-subtle p-3 text-center text-[11px] leading-4 text-text-muted">{t('mcp.empty')}</p>}
           <div className="space-y-1">
             {result?.items.map((item) => (
-              <button
+              <SettingsListRow
                 key={item.id}
-                onClick={() => select(item)}
-                className={cn(
-                  'w-full rounded border px-3 py-2 text-left transition-colors',
-                  selected?.id === item.id ? 'border-accent-blue/35 bg-accent-blue/10' : 'border-transparent hover:border-border-subtle hover:bg-panel/60',
+                selected={selected?.id === item.id}
+                onSelect={() => select(item)}
+                ariaLabel={item.name}
+                title={<span className="font-mono text-[11px] text-text-secondary">{item.name}</span>}
+                badge={<span className="uppercase tracking-wide text-text-muted">{item.scope}</span>}
+                status={item.effective
+                  ? mcpListStatus(runtimeStatusByName.get(item.name) ?? null, healthBusy, Boolean(healthError))
+                  : 'warning'}
+                description={(
+                  <>
+                    <span className="block truncate font-mono">{mcpSummary(item.definition)}</span>
+                    {!item.effective && <span className="mt-1 block text-severity-medium">Overridden by {item.shadowedBy}</span>}
+                    {item.effective && (
+                      <McpConnectionStatus
+                        status={runtimeStatusByName.get(item.name) ?? null}
+                        checking={healthBusy}
+                        probeFailed={Boolean(healthError)}
+                        showDot={false}
+                      />
+                    )}
+                  </>
                 )}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-secondary">{item.name}</span>
-                  <span className="rounded border border-border-subtle px-1 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">{item.scope}</span>
-                </div>
-                <p className="mt-1 truncate font-mono text-[11px] text-text-muted">{mcpSummary(item.definition)}</p>
-                {!item.effective && <p className="mt-1 text-[11px] text-severity-medium">Overridden by {item.shadowedBy}</p>}
-                {item.effective && (
-                  <McpConnectionStatus
-                    status={runtimeStatusByName.get(item.name) ?? null}
-                    checking={healthBusy}
-                    probeFailed={Boolean(healthError)}
-                  />
-                )}
-              </button>
+              />
             ))}
           </div>
           {result?.errors.map((item) => (
@@ -321,10 +324,12 @@ function McpConnectionStatus({
   status,
   checking,
   probeFailed,
+  showDot = true,
 }: {
   status: ClaudeMcpRuntimeStatus | null;
   checking: boolean;
   probeFailed: boolean;
+  showDot?: boolean;
 }) {
   const { t } = useI18n();
   const state = checking ? 'pending' : status?.status ?? (probeFailed ? 'unavailable' : 'not-loaded');
@@ -362,11 +367,19 @@ function McpConnectionStatus({
   return (
     <div className={cn('mt-1.5 min-w-0 text-[11px] leading-4', tone)} title={detail ?? label}>
       <div className="flex items-center gap-1.5 font-medium uppercase tracking-wide">
-        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dot, state === 'pending' && 'animate-pulse motion-reduce:animate-none')} />
+        {showDot && <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dot, state === 'pending' && 'animate-pulse motion-reduce:animate-none')} />}
         <span>{label}</span>
         {status?.scope && <span className="font-normal normal-case tracking-normal opacity-70">· {status.scope}</span>}
       </div>
       {detail && <p className="mt-0.5 line-clamp-2 break-all text-left font-normal normal-case tracking-normal opacity-85">{detail}</p>}
     </div>
   );
+}
+
+function mcpListStatus(status: ClaudeMcpRuntimeStatus | null, checking: boolean, probeFailed: boolean): 'success' | 'muted' | 'warning' | 'error' {
+  const state = checking ? 'pending' : status?.status ?? (probeFailed ? 'unavailable' : 'not-loaded');
+  if (state === 'connected') return 'success';
+  if (state === 'pending' || state === 'needs-auth') return 'warning';
+  if (state === 'disabled' || state === 'unavailable' || state === 'not-loaded') return 'muted';
+  return 'error';
 }
