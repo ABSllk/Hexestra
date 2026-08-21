@@ -12,7 +12,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-[完整用户手册](docs/user-guide.md) · [文档索引](docs/index.md)
+[用户手册](docs/user-guide.zh-CN.md) · [文档索引](docs/index.zh-CN.md)
 
 </div>
 

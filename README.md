@@ -12,6 +12,8 @@ An AI-native penetration testing IDE where human operators and AI share the same
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
+[User guide](docs/user-guide.md) · [Docs index](docs/index.md)
+
 </div>
 
 > [!WARNING]

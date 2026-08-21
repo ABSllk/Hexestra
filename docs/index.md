@@ -1,38 +1,40 @@
-# Hexestra 文档
+# Hexestra Documentation
 
-## 用户文档
+*[English](index.md) · [简体中文](index.zh-CN.md)*
 
-[完整用户手册](user-guide.md)是当前首要入口。Hexestra 当前连接本地安装的 Claude Code，可以沿用 Claude Code 的使用习惯直接下达短指令。手册最前面提供快速开始，随后介绍项目、范围和资产，并覆盖：
+## User documentation
 
-- 安装、智能体连接、项目与工作区；
-- 范围、资产、目标视图和网络图；
-- ATT&CK 任务树，以及限制规则、技能、工具、权限和工作流怎样共同驱动执行；
-- 智能体对话、附件、斜杠命令、权限、队列、分支、子智能体、定时唤起与收件箱；
-- 浏览器、流量、拦截、重放器和 Burp；
-- 终端、本地/WSL/SSH/Web 命令会话/反向命令会话与远程文件；
-- 项目级 Mihomo 节点、多跳链路、失败关闭和实际路由范围；
-- 证据、发现记录、漏洞和报告；
-- 知识精炼、技能、限制规则、工具目录和模型上下文协议；
-- 十种常见用法、故障排查、安全边界和遗留兼容入口。
+The [full user guide](user-guide.md) is the primary entry point. Hexestra currently connects to a locally installed Claude Code, so you can keep your Claude Code habits and issue short commands directly. The guide opens with a quick start, then covers projects, scope, and assets, and goes on to:
 
-根目录的[中文 README](../README.zh-CN.md)适合快速了解产品定位、环境要求和从源码启动；实际操作以完整用户手册为准。
+- installation, agent connection, projects, and workspaces;
+- scope, assets, target views, and the network map;
+- the ATT&CK task tree, and how restrictions, skills, tools, permissions, and workflows drive execution together;
+- agent conversations, attachments, slash commands, permissions, queues, branching, subagents, scheduled wakeups, and the inbox;
+- browser, traffic, interception, Repeater, and Burp;
+- terminals and local / WSL / SSH / WebShell / reverse-shell sessions and remote files;
+- project-level Mihomo nodes, multi-hop chains, fail-closed behavior, and the real routing scope;
+- evidence, findings, vulnerabilities, and reports;
+- knowledge refinery, skills, restrictions, the tool catalog, and MCP;
+- ten common workflows, troubleshooting, safety boundaries, and legacy-compatibility entry points.
 
-## 深入理解
+The [English README](../README.md) at the repo root is a quick way to understand the product's positioning, requirements, and how to run from source; treat the full user guide as authoritative for actual operation.
 
-| 文档 | 回答的问题 |
+## Going deeper
+
+| Document | Question it answers |
 | --- | --- |
-| [架构说明](architecture.md) | 渲染进程、预加载层、主进程、项目文件和外部运行环境如何协作？ |
-| [领域模型](domain-model.md) | 范围、资产图、任务、证据、发现记录、漏洞和报告如何关联？ |
-| [智能体运行机制](agent-runtime.md) | 智能体如何构造上下文、批准工具、排队、保存历史和建立对话分支？ |
-| [智能体用户上下文维护](agent-context-maintenance.md) | 如何维护限制规则、技能与工具目录？ |
+| [Architecture](architecture.md) | How do the renderer, preload layer, main process, project files, and external runtimes work together? |
+| [Domain model](domain-model.md) | How do scope, the asset graph, tasks, evidence, findings, vulnerabilities, and reports relate? |
+| [Agent runtime](agent-runtime.md) | How does the agent build context, approve tools, queue input, persist history, and branch conversations? |
+| [Agent context maintenance](agent-context-maintenance.md) | How are restrictions, skills, and the tool catalog maintained? |
 
-## 维护与贡献
+## Maintenance and contributing
 
-- [贡献指南](../CONTRIBUTING.md)：开发环境、质量检查和提交要求。
-- [英文自述文件](../README.md)：英文产品入口。
-- [Burp 桥接器说明](../resources/burp-bridge/README.md)：构建、加载和桥接边界。
-- [mitmproxy 运行环境说明](../resources/mitmproxy/README.md)：打包资源、版本与许可边界。
+- [Contributing guide](../CONTRIBUTING.md): development setup, quality checks, and submission requirements.
+- [Chinese README](../README.zh-CN.md): the Chinese-language product entry point.
+- [Burp Bridge notes](../resources/burp-bridge/README.md): building, loading, and the bridge boundary.
+- [mitmproxy runtime notes](../resources/mitmproxy/README.md): bundled resources, versions, and license boundaries.
 
-用户手册描述当前界面可达的行为；技术文档描述权威状态、跨层数据流和实现约束。两者都不能替代书面授权、测试约定或操作员的专业判断。
+The user guide describes behavior reachable from the current UI; the technical docs describe authoritative state, cross-layer data flow, and implementation constraints. Neither replaces written authorization, a rules-of-engagement agreement, or the operator's professional judgment.
 
-如果文档与实际行为不一致，应在同一改动中修正实现、测试和拥有该行为的文档，不要再建立一份平行说明。
+If a document disagrees with actual behavior, fix the implementation, the tests, and the document that owns that behavior in the same change — don't stand up a second, parallel description.

@@ -1,45 +1,41 @@
-# Hexestra Agent 运行机制
+# Hexestra Agent Runtime
 
-> 维护者参考。普通用户请先阅读[使用指南](user-guide.md)；本文解释实现边界和运行时契约。
+*[English](agent-runtime.md) · [简体中文](agent-runtime.zh-CN.md)*
 
-Hexestra 的 Agent 不是一个直接嵌入 Renderer 的聊天组件。它由 Electron Main Process 中的
-`AgentService` 协调，通过 provider-neutral `AgentAdapter` 接入具体后端，并把 Browser、Traffic、
-Shell、任务和结构化记录能力声明为受管工具。
+> Maintainer reference. Regular users should start with the [user guide](user-guide.md); this document explains implementation boundaries and runtime contracts.
 
-本文解释一次 Agent turn 如何构造上下文、执行工具、持久化历史和处理分支。整体进程边界见
-[架构文档](architecture.md)，Project、Task 与安全记录见[领域模型](domain-model.md)。
+Hexestra's Agent is not a chat component embedded directly in the renderer. It is coordinated by `AgentService` in the Electron main process, connects to a concrete backend through a provider-neutral `AgentAdapter`, and declares Browser, Traffic, Shell, task, and structured-record capabilities as managed tools.
 
-## 核心对象
+This document explains how a single Agent turn builds context, executes tools, persists history, and handles branching. For overall process boundaries see the [architecture doc](architecture.md); for Project, Task, and security records see the [domain model](domain-model.md).
 
-| 对象 | 作用 |
+## Core objects
+
+| Object | Role |
 | --- | --- |
-| `AgentService` | Main Process 协调器；拥有 IPC、项目/分支路由、上下文、工具、审批、取消、历史写入和 Renderer 事件 |
-| `AgentAdapterRegistry` | 按 Branch 的 `backendId` 选择适配器；未知 ID 不会静默回退到 Claude |
-| `AgentAdapter` | 隔离 provider SDK，声明能力并把后端事件转换为统一的 `AgentRunEvent` |
-| `AgentConversationHandle` | 可选的长生命周期对话句柄；负责输入队列、事件流、interrupt、snapshot 和 dispose |
-| `AgentRunInput` | 一次输入的统一执行参数：conversation、prompt、上下文、模型、permission mode、工具和 runtime state |
-| `AgentInteractionHandler` | 处理工具授权和 Agent 向操作员提出的问题 |
-| `AgentHistoryRepository` | 按 Branch 保存消息、活动、Subagent 记录和 live recovery 状态 |
+| `AgentService` | Main-process coordinator; owns IPC, project/branch routing, context, tools, approval, cancellation, history writes, and renderer events |
+| `AgentAdapterRegistry` | Selects an adapter by the branch's `backendId`; an unknown ID does not silently fall back to Claude |
+| `AgentAdapter` | Isolates the provider SDK, declares capabilities, and converts backend events into a unified `AgentRunEvent` |
+| `AgentConversationHandle` | Optional long-lived conversation handle; owns the input queue, event stream, interrupt, snapshot, and dispose |
+| `AgentRunInput` | Unified execution parameters for one input: conversation, prompt, context, model, permission mode, tools, and runtime state |
+| `AgentInteractionHandler` | Handles tool authorization and questions the Agent asks the operator |
+| `AgentHistoryRepository` | Persists per-branch messages, activities, Subagent records, and live-recovery state |
 
-当前默认后端是 Claude，但 `AgentService` 不消费 Claude SDK message。SDK 解析、streaming query、
-session 恢复和 provider-specific command discovery 留在 Claude adapter 内；协调器只消费统一事件。
+The default backend is currently Claude, but `AgentService` does not consume Claude SDK messages. SDK parsing, the streaming query, session recovery, and provider-specific command discovery stay inside the Claude adapter; the coordinator only consumes unified events.
 
-## 身份与生命周期
+## Identity and lifecycle
 
-### Project、Conversation 与 Branch
+### Project, Conversation, and Branch
 
-- Project 是文件夹项目，内部由稳定 `projectId` / `sessionId` 标识。
-- Conversation 在界面上对应一个 Branch 根或分叉后的聊天路径。
-- Branch 有稳定 ID、标题、`backendId`、后端 runtime state、focus Task 和历史统计。
-- Main Process 使用完整的 Project + Branch 身份路由消息、状态、审批和 Subagent 事件。
+- A Project is a folder project, identified internally by a stable `projectId` / `sessionId`.
+- A Conversation corresponds in the UI to a branch root or a forked chat path.
+- A Branch has a stable ID, title, `backendId`, backend runtime state, focused Task, and history stats.
+- The main process routes messages, state, approvals, and Subagent events using the full Project + Branch identity.
 
-同一个 Project/Branch 同时只执行一个 main turn；后续输入可进入该 runtime 的队列。不同 Project
-或 Branch 可以拥有独立 runtime。Renderer 只展示当前 Project/Branch 的完整消息，来自其他身份的
-事件不会被拼入当前聊天。
+Only one main turn runs at a time per Project/Branch; later inputs can enter that runtime's queue. Different Projects or Branches can hold independent runtimes. The renderer only shows the full messages of the current Project/Branch; events from other identities are not stitched into the current chat.
 
-### 状态
+### States
 
-统一 Agent 状态包括：
+The unified Agent states are:
 
 - `loading`
 - `ready`
@@ -48,27 +44,22 @@ session 恢复和 provider-specific command discovery 留在 Claude adapter 内�
 - `awaiting_input`
 - `error`
 
-这些是 UI 和协调层的规范化状态，不等同于某个 provider 的全部内部状态。Conversation handle
-还报告 active turn、queued input、session wakeup 和 pending interaction，用于保持后台项目资源的
-lease。
+These are normalized states for the UI and coordination layer, not the full internal state of any one provider. The conversation handle also reports the active turn, queued input, session wakeup, and pending interaction, used to keep leases on background project resources.
 
-### 长生命周期 runtime
+### Long-lived runtime
 
-支持 `openConversation` 的 adapter 可以为一个 runtime 保留后端进程和输入队列。以 Claude 为例，
-普通连续 turn 共用 streaming-input query；每次输入前更新 permission mode 和动态上下文，而不是
-为每条消息都创建新进程。
+An adapter that supports `openConversation` can keep a backend process and input queue alive for a runtime. With Claude, for example, normal consecutive turns share one streaming-input query; permission mode and dynamic context are updated before each input rather than spawning a new process per message.
 
-以下变化可能要求关闭旧 runtime 并创建新的：
+The following changes may require closing the old runtime and creating a new one:
 
-- Project 或 Branch 改变；
-- 后端、模型、可执行环境、连接 fingerprint 或工作目录改变；
-- Stable System instructions、setting sources 或 tool schema 改变；
-- 清空历史或显式销毁 Conversation。
+- Project or Branch changes;
+- backend, model, executable environment, connection fingerprint, or working directory changes;
+- stable system instructions, setting sources, or tool schema changes;
+- clearing history or explicitly disposing the Conversation.
 
-Cancel/Stop 只 interrupt 当前 turn。健康的 Conversation runtime 和尚在 provider queue 中的输入
-可以保留；项目/分支切换与 dispose 则关闭对应 runtime。
+Cancel/Stop only interrupts the current turn. A healthy conversation runtime and inputs still in the provider queue can be preserved; project/branch switches and dispose close the corresponding runtime.
 
-## 一次普通 turn
+## A normal turn
 
 ```mermaid
 sequenceDiagram
@@ -82,111 +73,93 @@ sequenceDiagram
     participant D as Project Truth
     participant H as Agent History
 
-    O->>R: 发送消息、附件或选定上下文
+    O->>R: send message, attachments, or selected context
     R->>S: agent:send(projectId, branchId, ...)
-    S->>C: 解析 Project、focused Task、Scope、Restriction
+    S->>C: resolve Project, focused Task, Scope, Restriction
     S->>A: enqueue / runTurn(AgentRunInput)
-    A->>P: 提交 prompt 与动态上下文
+    A->>P: submit prompt and dynamic context
     P-->>A: streaming event / tool request
-    A-->>S: 规范化 AgentRunEvent
+    A-->>S: normalized AgentRunEvent
 
-    alt 工具需要交互批准
+    alt tool needs interactive approval
         S-->>R: agent:tool-request
-        R-->>O: 审批卡或问题
+        R-->>O: approval card or question
         O->>R: Allow / Deny / Answer
         R->>S: permission decision
     end
 
-    S->>T: 执行通过策略与领域校验的工具
-    T->>D: 读取或修改权威状态
-    D-->>T: 规范化结果
+    S->>T: execute tools that pass policy and domain validation
+    T->>D: read or modify authoritative state
+    D-->>T: normalized result
     T-->>S: tool result
     S-->>R: session:data-changed / subsystem event
-    S->>H: 写消息、活动、Subagent 与 live recovery
+    S->>H: write messages, activities, Subagents, live recovery
     S-->>R: agent:message / status / subagent-update
 ```
 
-每个 provider event 都会按顺序被 adapter 消费，但中间 UI projection 可以合并，以避免 partial
-stream 造成主进程 I/O 和 Renderer 重绘放大。Turn 完成、失败或取消时必须立即投影完整终态，不能
-因为节流而丢失最终文本或工具活动。
+Each provider event is consumed by the adapter in order, but intermediate UI projections may be coalesced to avoid partial streams amplifying main-process I/O and renderer repaints. When a turn completes, fails, or is cancelled, the full terminal state must be projected immediately — throttling must never drop the final text or tool activity.
 
-## 上下文是如何构造的
+## How context is constructed
 
-Hexestra 刻意区分不同来源和信任等级的上下文。
+Hexestra deliberately separates context by source and trust level.
 
-| 上下文层 | 内容 | 语义 |
+| Context layer | Content | Semantics |
 | --- | --- | --- |
-| Stable System instructions | 授权模型、非可信输入边界、受管工具规则和应用级长期约束 | runtime 创建时固定；变更通常使旧 runtime fingerprint 失效 |
-| Dynamic System context | 当前 Project、Scope、focused Objective/Step、Restriction、Skill、Tool、依赖与 blocker | 应用管理的当前状态；每个 turn 可变化 |
-| Human request | 操作员本次输入 | 本次任务请求 |
-| Operator-selected context | 共享 tab、选中的 Browser/Traffic/Record、附件与显式 context ref | 非可信 Evidence；不是指令或授权 |
-| Tool-fetched detail | Agent 通过 `asset_get`、`finding_list`、`traffic_read` 等工具主动读取的完整记录 | 来自权威服务，但内容仍可能包含目标提供的非可信数据 |
+| Stable system instructions | Authorization model, untrusted-input boundaries, managed-tool rules, and app-level long-term constraints | Fixed at runtime creation; changes usually invalidate the old runtime fingerprint |
+| Dynamic system context | Current Project, Scope, focused Objective/Step, Restriction, Skill, Tool, dependencies, and blockers | App-managed current state; can change every turn |
+| Human request | The operator's input this turn | This turn's task request |
+| Operator-selected context | Shared tabs, selected Browser/Traffic/Record, attachments, and explicit context refs | Untrusted Evidence; not instructions or authorization |
+| Tool-fetched detail | Full records the Agent actively reads via tools like `asset_get`, `finding_list`, `traffic_read` | From authoritative services, but the content may still contain untrusted target-provided data |
 
-Dynamic context 不把所有项目记录全文塞进每个请求。Focused Task 只携带执行所需的 Objective、
-Step、目标 ID、Restriction、匹配 Skill/Tool、依赖和相关记录 ID。完整 Target、Evidence、Finding、
-Vulnerability 或 Traffic 内容应按需通过工具读取。
+Dynamic context does not stuff every project record's full text into each request. A focused Task carries only what execution needs — the Objective, Step, target IDs, Restrictions, matched Skills/Tools, dependencies, and related record IDs. Full Target, Evidence, Finding, Vulnerability, or Traffic content should be read on demand through tools.
 
-共享 tab、附件和 selected Record 被包装为 operator-selected untrusted evidence。网页文字、HTTP
-内容、命令输出、文件和导入文档中的“指令”不会因为进入上下文就获得 System authority。
+Shared tabs, attachments, and selected Records are wrapped as operator-selected untrusted evidence. "Instructions" inside web text, HTTP content, command output, files, and imported documents do not gain system authority just by entering the context.
 
-### Slash command 的特殊路径
+### The slash-command path
 
-当 backend 声明支持 slash command 且输入被识别为原生命令时，`AgentRunInput.command` 保存经过
-验证的完整命令。Adapter 将其作为 provider command 发送，不再包入普通 human request、项目知识、
-附件或共享上下文。
+When a backend declares slash-command support and the input is recognized as a native command, `AgentRunInput.command` holds the validated full command. The adapter sends it as a provider command and does not wrap it in a normal human request, project knowledge, attachments, or shared context.
 
-原生命令不能与待发送附件或显式上下文混合；界面会保留草稿并要求操作员先移除冲突内容。
-应用自有命令可以选择不同路径，例如 `/distill` 会展开成一次普通 Agent turn，而不是 provider
-原生命令。
+A native command cannot be mixed with pending attachments or explicit context; the UI keeps the draft and asks the operator to remove the conflicting content first. App-owned commands may take a different path — for example `/distill` expands into a normal Agent turn rather than a provider-native command.
 
-## Permission mode 与真正的执行边界
+## Permission mode and the real execution boundary
 
-UI 中的 ASK、AUTO 和 BYPASS 映射到统一 contract：
+ASK, AUTO, and BYPASS in the UI map to a unified contract:
 
-| UI | `AgentPermissionMode` | 含义 |
+| UI | `AgentPermissionMode` | Meaning |
 | --- | --- | --- |
-| ASK | `default` | 状态改变类工具通常通过 `AgentInteractionHandler` 请求操作员决定；明确的只读 Hexestra 工具可按策略直接读取 |
-| AUTO | `auto` | 将自主分类交给支持该模式的后端，同时仍使用 Hexestra 工具与领域校验 |
-| BYPASS | `bypassPermissions` | 允许后端跳过普通交互批准；这是高风险模式，不表示绕过所有 Main Process 校验 |
+| ASK | `default` | State-changing tools usually ask the operator via `AgentInteractionHandler`; clearly read-only Hexestra tools may read directly per policy |
+| AUTO | `auto` | Delegates autonomy classification to a backend that supports it, while still using Hexestra tools and domain validation |
+| BYPASS | `bypassPermissions` | Lets the backend skip normal interactive approval; a high-risk mode that does not mean bypassing all main-process validation |
 
-必须区分四层控制：
+Four control layers must be kept distinct:
 
-1. **Permission mode** 决定 Agent 工具调用如何获得批准。
-2. **Restriction / Rules of Engagement** 为 Task Resolver 和执行提供独立约束。
-3. **领域 handler** 重新验证 Project、Asset、Scope 要求、URL/路径、revision、状态机、引用和运行时所有权。
-4. **Scope annotation** 通常只是提示，不自动等于 allow/deny。
+1. **Permission mode** decides how Agent tool calls get approved.
+2. **Restriction / Rules of Engagement** provide independent constraints for the Task Resolver and execution.
+3. **Domain handlers** re-validate Project, Asset, Scope requirements, URL/path, revision, state machine, references, and runtime ownership.
+4. **Scope annotation** is usually just a hint and does not automatically equal allow/deny.
 
-例如 BYPASS 可以跳过普通 approval card，但不能让不存在的 Asset 通过外键校验、让 Renderer
-越过 Preload 白名单、让过期 revision 操作当前 Flow，或让启用的 Mihomo 在失败时回退直连。
-部分高风险领域还会在 handler 中要求 active target/Scope，即使 permission mode 是 BYPASS。
+For example, BYPASS can skip the normal approval card, but it cannot let a nonexistent Asset pass foreign-key validation, let the renderer bypass the preload allowlist, let a stale revision operate the current Flow, or let an enabled Mihomo fall back to direct on failure. Some high-risk domains also require an active target/Scope in the handler, even when the permission mode is BYPASS.
 
-因此不要把 AUTO 或 BYPASS 描述为“无人监管地执行一切”。它们改变审批行为，实际能力仍由
-adapter、tool schema、Main Process 服务和项目配置共同决定。
+So do not describe AUTO or BYPASS as "running everything unsupervised." They change approval behavior; actual capability is still determined jointly by the adapter, tool schema, main-process services, and project configuration.
 
-## Tool 边界
+## Tool boundary
 
-Hexestra tool 使用 provider-neutral `AgentToolDefinition` 声明：
+Hexestra tools are declared with a provider-neutral `AgentToolDefinition`:
 
-- 名称和说明；
-- Zod input shape；
-- `read` 或 `write` risk；
-- 具体执行函数。
+- name and description;
+- Zod input shape;
+- `read` or `write` risk;
+- the concrete execution function.
 
-Adapter 只负责翻译为 provider 原生工具接口。Browser、Traffic、Shell、Asset、Record、Task、Proxy
-等模块拥有各自 schema、handler、Scope/状态校验和事件，不把规则集中复制到 `AgentService`。
+The adapter only translates them into the provider's native tool interface. Browser, Traffic, Shell, Asset, Record, Task, Proxy, and other modules own their own schemas, handlers, Scope/state validation, and events, rather than copying the rules centrally into `AgentService`.
 
-只读工具仍可能返回敏感内容，例如 Browser cookie、Storage、Traffic 或项目文件。`read` 表示不应
-修改 Hexestra/目标状态，不表示结果可以不受保护。任意 JavaScript evaluation、网络测试、状态
-改变和记录写入都不应仅因为“会返回结果”就标成 read。
+A read-only tool can still return sensitive content — Browser cookies, Storage, Traffic, or project files. `read` means it should not modify Hexestra/target state; it does not mean the result can be unprotected. Arbitrary JavaScript evaluation, network testing, state changes, and record writes must not be labeled `read` just because "they return a result."
 
-工具拒绝、timeout 或 abort 会作为 deny/error 返回给后端；没有获得允许的动作不会先执行再补卡片。
-Subagent spawn 本身可以直接创建子任务，但子 Agent 调用的状态改变工具仍走同一 permission 与领域
-校验路径。
+Tool denial, timeout, or abort is returned to the backend as deny/error; an action that was not allowed is never executed first and carded afterward. Spawning a Subagent can directly create child tasks, but state-changing tools a child Agent calls still go through the same permission and domain-validation path.
 
-## 历史、事件与恢复
+## History, events, and recovery
 
-`.hexestra/project-state.json` 保存 Branch 元数据、active Branch、backend runtime resume state、
-focused Task 和历史统计。完整消息与活动位于 `.hexestra/agent-history/<branch>/`：
+`.hexestra/project-state.json` holds branch metadata, the active branch, backend runtime resume state, focused Task, and history stats. Full messages and activities live under `.hexestra/agent-history/<branch>/`:
 
 - `messages.jsonl`
 - `activities.jsonl`
@@ -194,10 +167,9 @@ focused Task 和历史统计。完整消息与活动位于 `.hexestra/agent-hist
 - `subagent-activities.jsonl`
 - `live.jsonl`
 
-`live.jsonl` 是一条可原子替换的最新恢复记录，不是每个 token 都追加的日志。应用重启时，未完成
-消息和非终态 Subagent 会恢复为 `interrupted`，已持久化内容不会因为 turn 中断而消失。
+`live.jsonl` is a single atomically replaceable latest-recovery record, not a per-token append log. On app restart, unfinished messages and non-terminal Subagents are recovered as `interrupted`, and already-persisted content does not disappear because a turn was interrupted.
 
-Main Process 向 Renderer 发送的关键事件带 Project/Branch 身份，例如：
+Key events the main process sends to the renderer carry Project/Branch identity, for example:
 
 - `agent:message`
 - `agent:status`
@@ -205,72 +177,60 @@ Main Process 向 Renderer 发送的关键事件带 Project/Branch 身份，例�
 - `agent:subagent-update`
 - `agent:attention`
 
-Renderer 必须同时检查当前 Project 和 Branch。后台 turn 的完成、失败、approval 或 question 可以进入
-process-local attention inbox；打开 inbox item 时先导航到来源 Project/Branch，再恢复交互卡片。
+The renderer must check both the current Project and Branch. A background turn's completion, failure, approval, or question can enter the process-local attention inbox; opening an inbox item first navigates to the source Project/Branch, then restores the interaction card.
 
-## Queue、scheduled input 与后台 lease
+## Queue, scheduled input, and background lease
 
-手动输入在进入 provider queue 前获得稳定 UUID，并以 `queued` 状态保存。Provider 开始消费后，
-统一事件把它推进为普通 user message。输入来源区分：
+A manual input gets a stable UUID before entering the provider queue and is saved in the `queued` state. Once the provider starts consuming it, unified events promote it to a normal user message. Input sources are distinguished:
 
 - `operator`
 - `scheduled`
 - `runtime`
 
-Scheduled turn 必须继续使用创建它的 Project/Branch 上下文，不能读取当时恰好可见的项目。当前 MVP
-只允许 session 内的一次性 wakeup；不把 recurring schedule 当作跨重启的 durable automation。
+A scheduled turn must keep using the Project/Branch context that created it and must not read whatever project happens to be visible at the time. The current MVP allows only a one-shot wakeup within a session; it does not treat a recurring schedule as durable automation across restarts.
 
-Active turn、queued input、pending wakeup 和 pending interaction 都可以持有项目 runtime lease。
-项目退到后台时，只要最后一个 lease 尚未释放，相关 Browser/Shell 资源就不能按普通项目切换逻辑
-提前销毁。
+An active turn, queued input, pending wakeup, and pending interaction can all hold a project runtime lease. When a project goes to the background, the related Browser/Shell resources must not be torn down early by the normal project-switch logic while the last lease is still held.
 
-## Conversation branching 的边界
+## Conversation-branching boundaries
 
-编辑已完成的 user message 会：
+Editing a completed user message will:
 
-1. 保留原 Branch；
-2. 在分叉点创建新 Branch；
-3. 让支持 message-level branching 的 adapter 从前一条 assistant anchor 恢复或 fork；
-4. 将新输入与之后的历史写入新 Branch。
+1. keep the original Branch;
+2. create a new Branch at the fork point;
+3. let an adapter that supports message-level branching resume or fork from the previous assistant anchor;
+4. write the new input and subsequent history into the new Branch.
 
-它不会：
+It will not:
 
-- 恢复旧版 `engagement.db`；
-- 撤销 Terminal、Shell 或 Browser 的外部副作用；
-- 回滚文件、Traffic、Evidence、Finding、Vulnerability、Report 或 Task；
-- 把 Project Scope 变成 Branch 私有状态。
+- restore an old `engagement.db`;
+- undo external side effects of Terminal, Shell, or Browser;
+- roll back files, Traffic, Evidence, Finding, Vulnerability, Report, or Task;
+- turn Project Scope into branch-private state.
 
-新 Branch 看到的是当前项目权威状态。分支解决的是“保留另一条推理和对话路径”，不是项目级
-time travel。SDK 自带的文件 checkpoint 能力也不等于 Hexestra 会在 Branch 切换时自动使用它。
+A new Branch sees the current authoritative project state. Branching solves "keep another reasoning and conversation path," not project-level time travel. The SDK's own file-checkpoint capability also does not mean Hexestra uses it automatically on branch switch.
 
-## Backend capability 与降级
+## Backend capability and degradation
 
-每个 adapter 声明：
+Each adapter declares:
 
-- `branching`: `message`、`session` 或 `none`；
-- 是否支持 Subagent、Tool、interactive question、slash command、queued input 和 scheduled wakeup；
-- 支持的 attachment 类型。
+- `branching`: `message`, `session`, or `none`;
+- whether it supports Subagents, Tools, interactive questions, slash commands, queued input, and scheduled wakeups;
+- the attachment types it supports.
 
-UI 和协调器应按这些 capability 工作，不应把 Claude 的能力假定为所有 backend 的公共能力。
-当 command discovery、MCP status 或可选集成探测失败时，只降级对应能力；不能把静态配置存在、
-`effective` precedence 或某次网络可达误报为整个 Agent runtime 已健康。
+The UI and coordinator should work off these capabilities and must not assume Claude's capabilities are common to all backends. When command discovery, MCP status, or an optional-integration probe fails, degrade only the affected capability; do not mistake the presence of static config, `effective` precedence, or one network reachability for the whole Agent runtime being healthy.
 
-## 维护者检查清单
+## Maintainer checklist
 
-修改 Agent 路径时，至少确认：
+When changing the Agent path, confirm at least:
 
-- 每个事件都携带并校验正确的 Project/Branch 身份；
-- provider SDK 类型没有越过 adapter 进入协调器或 Renderer；
-- dynamic context 不被永久写进历史 user message；
-- operator-selected context 仍标记为非可信 Evidence；
-- permission mode、Restriction、Scope 和领域校验没有互相替代；
-- tool input 中的凭据在 approval card 和持久化活动之前已被完整 redaction；
-- partial stream 可合并，但 terminal projection 与 history 完整；
-- queue、cancel、dispose 和 background lease 的状态不会串到其他 runtime；
-- Branch 操作不会声称回滚项目级副作用。
+- every event carries and validates the correct Project/Branch identity;
+- provider SDK types do not cross the adapter into the coordinator or renderer;
+- dynamic context is not written permanently into historical user messages;
+- operator-selected context is still marked as untrusted Evidence;
+- permission mode, Restriction, Scope, and domain validation do not substitute for each other;
+- credentials in tool input are fully redacted before the approval card and persisted activity;
+- partial streams may coalesce, but the terminal projection and history are complete;
+- queue, cancel, dispose, and background-lease state do not leak into another runtime;
+- branch operations do not claim to roll back project-level side effects.
 
-实现入口包括 [`agent-runtime.ts`](../electron/contracts/agent-runtime.ts)、
-[`agent.service.ts`](../electron/services/agent.service.ts)、
-[`agent-prompt-context.ts`](../electron/services/agent-prompt-context.ts)、
-[`agent-tool-policy.ts`](../electron/services/agent-tool-policy.ts) 和
-[`agent-history.repository.ts`](../electron/services/agent-history.repository.ts)。
+Implementation entry points include [`agent-runtime.ts`](../electron/contracts/agent-runtime.ts), [`agent.service.ts`](../electron/services/agent.service.ts), [`agent-prompt-context.ts`](../electron/services/agent-prompt-context.ts), [`agent-tool-policy.ts`](../electron/services/agent-tool-policy.ts), and [`agent-history.repository.ts`](../electron/services/agent-history.repository.ts).

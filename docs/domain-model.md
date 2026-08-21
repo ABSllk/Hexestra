@@ -1,19 +1,18 @@
-# Hexestra 领域模型
+# Hexestra Domain Model
 
-> 维护者参考。普通用户请先阅读[使用指南](user-guide.md)。
+*[English](domain-model.md) · [简体中文](domain-model.zh-CN.md)*
 
-Hexestra 把一次渗透测试组织为一个文件夹项目。项目中的 Scope、Asset Graph、任务树和安全记录
-构成共享的权威状态；Browser、Terminal、Agent 对话和工作区 tab 围绕这些状态工作，但不各自
-维护一份项目事实。
+> Maintainer reference. Regular users should start with the [user guide](user-guide.md).
 
-本文使用实现中的英文类型名，以便读者能直接从概念定位到代码。存储与进程边界见
-[架构文档](architecture.md)。
+Hexestra organizes a penetration test as a folder project. The project's Scope, Asset Graph, task tree, and security records form the shared authoritative state; Browser, Terminal, Agent conversations, and workspace tabs work around that state without each keeping their own copy of project truth.
 
-## 关系总览
+This document uses the English type names from the implementation so you can go straight from a concept to the code. For storage and process boundaries, see the [architecture doc](architecture.md).
+
+## Relationship overview
 
 ```mermaid
 flowchart TD
-    P["Project"] --> S["Scope<br/>项目级提示策略"]
+    P["Project"] --> S["Scope<br/>project-level hint policy"]
     P --> G["Asset Graph"]
     P --> T["PTT Task Tree"]
     P --> R["Managed Records"]
@@ -23,209 +22,176 @@ flowchart TD
     G --> E["Typed Relation"]
     E --> A
 
-    T --> O["Objective<br/>绑定一个 ATT&CK Technique"]
+    T --> O["Objective<br/>bound to one ATT&CK Technique"]
     O --> ST["Execution Step"]
-    O -->|"目标引用"| A
+    O -->|"target reference"| A
 
-    R --> EV["Evidence<br/>必须关联 Asset"]
-    R --> F["Finding<br/>可选关联 Asset"]
-    R --> V["Vulnerability<br/>必须关联 Asset"]
+    R --> EV["Evidence<br/>must link an Asset"]
+    R --> F["Finding<br/>optional Asset link"]
+    R --> V["Vulnerability<br/>must link an Asset"]
     R --> RP["Report"]
 
-    F <-->|"多对多"| EV
-    V <-->|"多对多"| F
-    V <-->|"多对多"| EV
-    RP -.->|"引用列表"| F
-    RP -.->|"引用列表"| V
+    F <-->|"many-to-many"| EV
+    V <-->|"many-to-many"| F
+    V <-->|"many-to-many"| EV
+    RP -.->|"reference list"| F
+    RP -.->|"reference list"| V
 
-    C -.->|"聚焦或选取上下文"| O
-    C -.->|"引用，不拥有"| R
+    C -.->|"focus or select context"| O
+    C -.->|"reference, not own"| R
 ```
 
-虚线表示“引用或上下文”，不是所有权。切换或分叉 Conversation 不会恢复旧版本的 Asset、Task、
-Evidence、Finding、Vulnerability、Report 或项目文件。
+Dashed lines mean "reference or context," not ownership. Switching or forking a Conversation does not restore an old version of an Asset, Task, Evidence, Finding, Vulnerability, Report, or project file.
 
-## 项目（Project）
+## Project
 
-项目对应用户选择的文件夹，稳定 ID 位于 `.hexestra/project.json`。这个 ID 在内部 IPC 中
-通常以 `sessionId` 或 `projectId` 传递；它们表示同一个文件夹项目身份，不是一次临时 UI 会话。
+A project corresponds to the folder the user selected, with a stable ID in `.hexestra/project.json`. In internal IPC this ID is usually passed as `sessionId` or `projectId`; both denote the same folder-project identity, not a transient UI session.
 
-项目拥有：
+A project owns:
 
-- 名称、状态、OPSEC/自主性偏好与 Scope；
-- Asset Graph、NetMap 布局和结构化安全记录；
-- `ptt.md` 任务树；
-- Conversation 与 Agent History；
-- 工作区恢复状态和项目级 Traffic、Proxy、Shell 配置；
-- 项目内可读文件及 Evidence。
+- name, status, OPSEC/autonomy preferences, and Scope;
+- the Asset Graph, NetMap layout, and structured security records;
+- the `ptt.md` task tree;
+- Conversations and Agent History;
+- workspace recovery state and project-level Traffic, Proxy, and Shell config;
+- readable files and Evidence in the project.
 
-Recent Projects 只是路径引用。将项目从 Recent 中移除不会删除、移动或重写文件夹。
+Recent Projects are just path references. Removing a project from Recent does not delete, move, or rewrite the folder.
 
-## 范围（Scope）
+## Scope
 
-范围由两种模式和两组独立规则组成：
+Scope consists of two modes and two independent rule sets:
 
-- `whitelist`：匹配 `allowRules` 的对象标记为 `authorized` / `included`，其余为 `unlisted`。
-- `blacklist`：匹配 `excludeRules` 的对象标记为 `excluded`，其余为 `neutral`。
+- `whitelist`: objects matching `allowRules` are marked `authorized` / `included`, the rest `unlisted`.
+- `blacklist`: objects matching `excludeRules` are marked `excluded`, the rest `neutral`.
 
-规则可以匹配域名、URL host、IPv4/IPv6 地址和 CIDR。`belongs_to` 结构关系可以把父级标注
-传递给子级；其他关系不会自动传播 Scope。
+Rules can match domain names, URL hosts, IPv4/IPv6 addresses, and CIDRs. The `belongs_to` structural relation can propagate a parent's annotation to children; other relations do not propagate Scope automatically.
 
-Scope annotation 是读取时计算的投影，不写入 Asset 的 operational status。改变 Scope 不会把
-`scanned` 改成 `excluded`，也不会删除 Asset。Browser、Traffic、Terminal 和普通 Agent 行为通常
-仍可处理标记为 OUT 的对象。
+A Scope annotation is a projection computed at read time and is not written into an Asset's operational status. Changing Scope does not turn `scanned` into `excluded`, nor does it delete an Asset. Browser, Traffic, Terminal, and normal Agent behavior can usually still act on objects marked OUT.
 
-> Scope 用于语义上下文和优先级提示。真实阻断由 permission mode、Restriction、Rules of
-> Engagement、工具处理器校验、Shell 目标校验或 fail-closed 路由等独立机制完成。
+> Scope is for semantic context and priority hints. Real blocking is done by independent mechanisms — permission mode, Restriction, Rules of Engagement, tool-handler validation, Shell target validation, or fail-closed routing.
 
-## 资产图
+## Asset graph
 
-### 资产
+### Assets
 
-资产是具有稳定身份的对象。当前图模型包含：
+An Asset is an object with a stable identity. The current graph model includes:
 
-| 类别 | 用途与身份示例 |
+| Kind | Purpose and identity example |
 | --- | --- |
-| `local` | 本机操作员的上下文/路径锚点，例如 `local-operator` |
-| `host` | 规范化 IPv4/IPv6 Host |
-| `domain`、`subnet` | DNS 名称与网络范围 |
-| `port`、`service` | Host 下的网络端口与服务；Port 身份包含 Host、协议与端口号 |
-| `webapp`、`api` | Web Application 与 API 根 |
-| `endpoint`、`parameter` | API method/path template 与输入位置/名称 |
-| `certificate`、`identity` | 证书指纹和身份主体 |
+| `local` | The local operator's context/path anchor, e.g. `local-operator` |
+| `host` | A normalized IPv4/IPv6 Host |
+| `domain`, `subnet` | DNS names and network ranges |
+| `port`, `service` | Network ports and services under a Host; a Port identity includes Host, protocol, and port number |
+| `webapp`, `api` | Web Application and API root |
+| `endpoint`, `parameter` | API method/path template and input location/name |
+| `certificate`, `identity` | Certificate fingerprint and identity principal |
 
-除 Host 外，多数类型通过确定性的 semantic key 合并重复发现。重复注册更新同一身份的属性，
-不会因为来自另一次扫描就创建第二个节点。
+Except for Host, most kinds merge duplicate discoveries through a deterministic semantic key. Re-registering updates the attributes of the same identity; it does not create a second node just because it came from another scan.
 
-每个资产还有独立的 operational status：`untested`、`in_progress`、`scanned`、
-`vulnerable` 或 `compromised`。它与 Scope annotation 表达不同维度。
+Each Asset also has an independent operational status: `untested`, `in_progress`, `scanned`, `vulnerable`, or `compromised`. It expresses a different dimension than the Scope annotation.
 
-### 关系
+### Relations
 
-资产之间只持久化有限的基础关系：
+Only a limited set of base relations are persisted between assets:
 
-- `belongs_to`（属于）
-- `resolves_to`（解析到）
-- `connected_to`（连接到）
-- `attack_path`（攻击链）
+- `belongs_to`
+- `resolves_to`
+- `connected_to`
+- `attack_path`
 
-`semantic` 进一步给出严格子类型，例如 `subdomain_of`、`port_of`、`service_of`、
-`endpoint_of`、`dns_resolves`、`served_by` 或 `attack_step`。来源工具、命令文本和发现过程不应
-被伪装成拓扑关系；它们属于 Evidence 或扫描历史。
+A `semantic` field further gives a strict subtype, e.g. `subdomain_of`, `port_of`, `service_of`, `endpoint_of`, `dns_resolves`, `served_by`, or `attack_step`. The source tool, command text, and discovery process must not be disguised as topology relations; they belong in Evidence or scan history.
 
-### 目标（Target） 与 Netmap
+### Target and NetMap
 
-`Target` 不是与 Asset Graph 并列的第二个数据库。`targets:list` 从规范化 Host 与端口/服务记录
-重建兼容的详细 Target 投影；NetMap 则从同一批规范记录构造不同视角。
+`Target` is not a second database parallel to the Asset Graph. `targets:list` rebuilds a compatible detailed Target projection from normalized Host and port/service records; the NetMap constructs different perspectives from the same normalized records.
 
-NetMap 有三个 projection：
+The NetMap has three projections:
 
-- `network`：Subnet → Host → Port → Service；
-- `domain`：Domain → WebApp/API → 共享 Host；
-- `application`：WebApp/API → Endpoint → Parameter。
+- `network`: Subnet → Host → Port → Service;
+- `domain`: Domain → WebApp/API → shared Host;
+- `application`: WebApp/API → Endpoint → Parameter.
 
-每个视角有独立的 pan、zoom 和手动位置。Renderer 中的虚拟聚合节点只为可视化服务，不能作为
-数据库 Asset 或位置键持久化。选择节点也只是导航与 Agent 当前目标上下文，不会自行修改记录或
-启动扫描。
+Each perspective has its own pan, zoom, and manual positions. Virtual aggregate nodes in the renderer serve visualization only and must not be persisted as database Assets or position keys. Selecting a node is also just navigation and the Agent's current-target context; it does not modify records or launch scans on its own.
 
-### 发现如何进入图
+### How discoveries enter the graph
 
-Terminal、Browser、Traffic、外部工具和 Agent 输出都是非可信输入。Hexestra 不从一段 raw
-output 中静默猜测 Asset。标准流程是：
+Terminal, Browser, Traffic, external tools, and Agent output are all untrusted input. Hexestra does not silently guess an Asset from a chunk of raw output. The standard flow is:
 
-1. 执行发现动作；
-2. 将需要保留的原始结果显式保存为 Evidence；
-3. 人或 Agent 解释结果；
-4. 通过结构化 `asset_register` 写入一个确认的 Asset；
-5. 通过 `asset_get` 读回并确认身份与关系；
-6. 再继续下一个发现或注册。
+1. run a discovery action;
+2. explicitly save the raw results worth keeping as Evidence;
+3. a human or the Agent interprets the results;
+4. write a confirmed Asset through the structured `asset_register`;
+5. read it back with `asset_get` and confirm identity and relationships;
+6. then continue with the next discovery or registration.
 
-Asset registration 可以写 Asset、Endpoint、Relation、Scan Run 和 material change，但不会自动
-制造 Evidence。
+Asset registration can write Assets, Endpoints, Relations, Scan Runs, and material changes, but does not automatically produce Evidence.
 
-## 渗透测试任务树（PTT）
+## Penetration test task tree (PTT)
 
-`ptt.md` 是任务树的源文件。运行时使用内置的 MITRE ATT&CK Enterprise Catalog 对输入进行校验，
-不会从网络动态同步目录。
+`ptt.md` is the source file for the task tree. The runtime validates input against a built-in MITRE ATT&CK Enterprise catalog and does not sync the catalog from the network dynamically.
 
-层级为：
+The hierarchy is:
 
 ```text
 ATT&CK Tactic
 └── ATT&CK Technique
-    └── Objective（Agent Task）
+    └── Objective (Agent Task)
         └── Execution Step
 ```
 
 ### Objective
 
-Objective 表示一个可验证的测试目标：
+An Objective represents a verifiable test goal:
 
-- 绑定恰好一个有效 Technique，并选择其 `primaryTacticId`；
-- 可引用目标 Asset、所需 capability、首选 tool/Skill 和依赖 Task；
-- 拥有 success criteria；
-- 是 Scope、ATT&CK 和执行上下文的所有者。
+- bound to exactly one valid Technique, with a chosen `primaryTacticId`;
+- may reference target Assets, required capabilities, preferred tools/Skills, and dependency Tasks;
+- owns success criteria;
+- is the owner of Scope, ATT&CK, and execution context.
 
-跨 Technique 的工作应拆成多个 Objective，再显式声明依赖，而不是把一个 Task 同时挂在多个
-Technique 下。
+Work that spans Techniques should be split into multiple Objectives with explicit dependencies, rather than hanging one Task under several Techniques at once.
 
 ### Execution Step
 
-Step 是 Objective 下的实际执行计划。它保存顺序、状态、结果摘要、阻塞原因和自己的验收项，
-但 ATT&CK、目标、Restriction、Skill 与 Tool 由父 Objective 解析投影而来，不在每个 Step
-中复制一份。
+A Step is the actual execution plan under an Objective. It stores order, status, result summary, blocked reason, and its own acceptance items, but ATT&CK, targets, Restrictions, Skills, and Tools are projected from the parent Objective's resolution and are not copied into each Step.
 
-一个 Conversation Branch 可以持久化自己的 `focusedTaskId`。Focus 影响该分支下一次 Agent
-turn 的动态上下文和活动归属，不会把 Task 变成对话私有数据。
+A Conversation Branch can persist its own `focusedTaskId`. Focus affects that branch's next Agent turn's dynamic context and activity attribution; it does not make a Task conversation-private data.
 
-## 记录
+## Records
 
-### 证据（Evidence）
+### Evidence
 
-Evidence 保存来自命名命令或工具的原始、可追溯内容。它必须关联一个真实 Asset，可以额外记录
-`sourceAssetId`，并可与多个 Finding 或 Vulnerability 关联。
+Evidence stores raw, traceable content from a named command or tool. It must link a real Asset, may additionally record a `sourceAssetId`, and may link to multiple Findings or Vulnerabilities.
 
-Evidence 的职责是保存观察到的材料，不负责判断材料意味着什么。摘要、推断、线索和结论应进入
-Finding。
+Evidence's job is to preserve observed material, not to judge what the material means. Summaries, inferences, leads, and conclusions belong in a Finding.
 
-### 发现（Finding）
+### Finding
 
-Finding 是可复用的项目知识，类型包括 `observation`、`lead`、`hypothesis`、`behavior`、
-`access` 和 `note`。它有 confidence 与 `active` / `used` / `archived` 生命周期，但没有 severity。
+A Finding is reusable project knowledge, of kind `observation`, `lead`, `hypothesis`, `behavior`, `access`, or `note`. It has a confidence and an `active` / `used` / `archived` lifecycle, but no severity.
 
-Finding 可以关联一个 Asset，也可以是跨 Asset 的项目级知识。它可以引用多条 Evidence；尚未复现
-或等价验证的弱点应停留在 Finding，而不是提前创建 Vulnerability。
+A Finding can link one Asset or be cross-asset project knowledge. It can reference multiple Evidence; a weakness not yet reproduced or equivalently verified should stay a Finding rather than becoming a premature Vulnerability.
 
-### 漏洞（Vulnerability）
+### Vulnerability
 
-Vulnerability 表示已复现或等价验证的弱点，因此必须关联真实 Asset。它拥有 severity、
-`confirmed` / `remediation` / `resolved` / `accepted` 生命周期，以及 description、impact、
-remediation 和可选 CVE/CWE/CVSS。
+A Vulnerability represents a reproduced or equivalently verified weakness, so it must link a real Asset. It owns a severity, a `confirmed` / `remediation` / `resolved` / `accepted` lifecycle, and description, impact, remediation, and optional CVE/CWE/CVSS.
 
-Vulnerability 可以链接多个 Finding 与 Evidence。未处于 `resolved` 的 Vulnerability 会投影到
-Asset 的 `vulnCount`；Finding 本身不会增加风险计数。
+A Vulnerability can link multiple Findings and Evidence. A Vulnerability not in `resolved` projects into the Asset's `vulnCount`; a Finding alone does not raise the risk count.
 
-### Report （报告）
+### Report
 
-Report 聚合项目结论，状态为 `draft` 或 `final`，并通过 ID 列表引用 Finding 与 Vulnerability。
-删除某条受管记录会清理 Report 中失效的引用，但不会递归删除其他支持材料。
+A Report aggregates project conclusions, has a `draft` or `final` status, and references Findings and Vulnerabilities by ID list. Deleting a managed record cleans up stale references in a Report but does not recursively delete other supporting material.
 
-与 Vulnerability 关联的 final Report 必须为每个弱点包含可执行的编号复现步骤和可观察结果。
-Renderer 中的 live report preview 不是权威 Report；正式内容需要通过受管写入路径保存，并接受
-Main Process 的完整性校验。
+A final Report linked to Vulnerabilities must include executable numbered reproduction steps and observable results for each weakness. The live report preview in the renderer is not the authoritative Report; the formal content must be saved through the managed write path and pass main-process integrity validation.
 
-## 维护这些概念时
+## When maintaining these concepts
 
-修改领域模型通常会跨越至少三个层面：持久化 schema/repository、Main Process contract/IPC、
-Renderer type/store/component。应同时确认：
+Changing the domain model usually spans at least three layers: the persistence schema/repository, the main-process contract/IPC, and the renderer type/store/component. Confirm together that:
 
-- 数据只有一个权威写入路径；
-- migration 保留稳定 ID 和既有关联；
-- `session:data-changed` flags 能让所有受影响投影刷新；
-- Agent 工具 schema、handler、read-back 和权限分类保持一致；
-- Scope annotation 与 operational status 没有重新耦合；
-- Conversation 分支没有被误写成项目记录的所有者。
+- data has only one authoritative write path;
+- migrations preserve stable IDs and existing links;
+- `session:data-changed` flags refresh all affected projections;
+- the Agent tool schema, handler, read-back, and permission classification stay consistent;
+- Scope annotation and operational status are not re-coupled;
+- a Conversation branch is not mistakenly made the owner of project records.
 
-实现入口包括 [`asset-graph.repository.ts`](../electron/services/asset-graph.repository.ts)、
-[`tasks.ts`](../electron/contracts/tasks.ts)、[`asset.ts`](../src/types/asset.ts)、
-[`asm.ts`](../src/types/asm.ts) 和 [`netmap.ts`](../src/types/netmap.ts)。
+Implementation entry points include [`asset-graph.repository.ts`](../electron/services/asset-graph.repository.ts), [`tasks.ts`](../electron/contracts/tasks.ts), [`asset.ts`](../src/types/asset.ts), [`asm.ts`](../src/types/asm.ts), and [`netmap.ts`](../src/types/netmap.ts).
