@@ -41,7 +41,10 @@ export function createProxyAgentTools({ sessionId }: AgentToolContext) {
     }, async (chain) => text(await egressProxyService.chainSave(projectId(), chain))),
     createAgentTool('proxy_chain_delete', 'Delete a project proxy chain. Deleting the active chain leaves the enabled project blocked until another chain is activated.', { chainId: z.string().min(1).max(200) }, async ({ chainId }) => text({ chainId, deleted: await egressProxyService.chainDelete(projectId(), chainId) })),
     createAgentTool('proxy_chain_activate', 'Validate and activate an existing proxy chain. Existing managed connections are closed after the atomic switch.', { chainId: z.string().min(1).max(200) }, async ({ chainId }) => text(withoutCapabilities(await egressProxyService.chainActivate(projectId(), chainId)))),
-    createAgentTool('proxy_enforcement_set', 'Turn the project proxy on or off. Turning it on starts the active chain; turning it off stops Mihomo and uses the direct connection.', { enabled: z.boolean() }, async ({ enabled }) => text(withoutCapabilities(await egressProxyService.setEnforcement(projectId(), enabled)))),
+    createAgentTool('proxy_enforcement_set', 'Turn the project proxy on for the active chain. The agent can enable enforcement but cannot disable it; the operator turns it off manually. Passing enabled=false is rejected.', { enabled: z.boolean() }, async ({ enabled }) => {
+      if (!enabled) throw new Error('The agent can enable the project proxy but cannot disable it. Ask the operator to turn it off manually.');
+      return text(withoutCapabilities(await egressProxyService.setEnforcement(projectId(), true)));
+    }),
     createAgentTool('proxy_runtime_start', 'Start Mihomo. This does not turn the project proxy on.', {}, async () => text(withoutCapabilities(await egressProxyService.start(projectId())))),
     createAgentTool('proxy_runtime_stop', 'Stop Mihomo. If the project proxy is on, network access remains blocked.', {}, async () => text(withoutCapabilities(await egressProxyService.stop(projectId())))),
   ];

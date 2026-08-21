@@ -142,7 +142,7 @@ describe('proxy Agent tool projections', () => {
     await executeJson(tools, 'proxy_chain_save', { id: 'chain-1', name: 'Exit', nodeIds: ['node-1'] });
     await executeJson(tools, 'proxy_chain_delete', { chainId: 'chain-1' });
     await executeJson(tools, 'proxy_chain_activate', { chainId: 'chain-1' });
-    const enforcement = await executeJson(tools, 'proxy_enforcement_set', { enabled: false });
+    const enforcement = await executeJson(tools, 'proxy_enforcement_set', { enabled: true });
     const started = await executeJson(tools, 'proxy_runtime_start', {});
     const stopped = await executeJson(tools, 'proxy_runtime_stop', {});
 
@@ -151,13 +151,24 @@ describe('proxy Agent tool projections', () => {
     expect(mocks.chainSave).toHaveBeenCalledWith('project-1', { id: 'chain-1', name: 'Exit', nodeIds: ['node-1'] });
     expect(mocks.chainDelete).toHaveBeenCalledWith('project-1', 'chain-1');
     expect(mocks.chainActivate).toHaveBeenCalledWith('project-1', 'chain-1');
-    expect(mocks.setEnforcement).toHaveBeenCalledWith('project-1', false);
+    expect(mocks.setEnforcement).toHaveBeenCalledWith('project-1', true);
     expect(mocks.start).toHaveBeenCalledWith('project-1');
     expect(mocks.stop).toHaveBeenCalledWith('project-1');
     for (const result of [enforcement, started, stopped]) {
       expect(result).not.toHaveProperty('tcpReady');
       expect(result).not.toHaveProperty('udpReady');
     }
+  });
+
+  it('lets the agent enable the proxy but rejects disabling it', async () => {
+    const tools = createTools();
+    await executeJson(tools, 'proxy_enforcement_set', { enabled: true });
+    expect(mocks.setEnforcement).toHaveBeenCalledWith('project-1', true);
+
+    mocks.setEnforcement.mockClear();
+    await expect(executeJson(tools, 'proxy_enforcement_set', { enabled: false }))
+      .rejects.toThrow(/cannot disable/i);
+    expect(mocks.setEnforcement).not.toHaveBeenCalled();
   });
 });
 
