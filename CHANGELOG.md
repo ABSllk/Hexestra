@@ -2,6 +2,29 @@
 
 ## Unreleased / 未发布
 
+## [0.7.0] - 2026-08-28
+
+### Added / 新增
+
+- 新增 `asset_import`，可导入 Nmap XML 与 httpx JSONL 扫描结果，并生成类型化资产及其关系。
+  Added `asset_import` for Nmap XML and httpx JSONL scan results, producing typed assets and relationships.
+- 补齐 README、用户手册、架构、领域模型、Agent 运行机制与上下文维护文档的中英文版本。
+  Completed bilingual coverage for the READMEs, user guide, architecture, domain model, Agent runtime, and context-maintenance documentation.
+
+### Changed / 变更
+
+- 重构 Agent 工具管理与应用版本解析，并统一设置页列表行等界面组件。
+  Refactored Agent tool management and application-version resolution, and unified shared Settings list-row components.
+- Agent 现在只能启用项目代理，关闭代理仍需由操作者手动执行。
+  Agents can now enable the project proxy but disabling it remains an explicit operator action.
+
+### Fixed / 修复
+
+- 修复 Agent 任务门禁反复要求创建或聚焦任务的问题：只读工具无需任务，执行工具按当前对话分支的聚焦任务校验，任务切换会立即生效。
+  Fixed Agent task gates repeatedly requesting task creation or focus: read-only tools remain available, execution tools validate the focused task on the current conversation branch, and task changes take effect immediately.
+- 稳定大型 NetMap 布局等高负载测试在并行完整测试套件中的超时行为。
+  Stabilized timeout behavior for heavy cases such as large NetMap layouts under the parallel full test suite.
+
 ## [0.6.0] - 2026-08-19
 
 ### Added / 新增

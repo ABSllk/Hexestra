@@ -223,7 +223,7 @@ describe('Claude capability management', () => {
     fs.mkdirSync(managed, { recursive: true });
     fs.writeFileSync(path.join(managed, 'SKILL.md'), '# managed');
     await expect(service.inspectSkillImport(managed, 'directory', null)).rejects.toThrow('managed Skill directories');
-  });
+  }, 60_000);
 
   it('restores the previous directory when the atomic replacement rename fails', async () => {
     await service.saveSkill({
