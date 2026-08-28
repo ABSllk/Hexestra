@@ -4,6 +4,7 @@ import type { AgentPermissionMode } from '../../contracts/agent-runtime';
 export interface AgentToolContext {
   sender: WebContents;
   sessionId?: string;
+  branchId?: string;
   selectedTargetId?: string;
   permissionMode: AgentPermissionMode;
   taskGuard?: (toolName: string) => Promise<void> | void;

@@ -299,6 +299,56 @@ describe('folder project service', () => {
     await expect(sessionService.focusTask(project.id, prepared.id)).resolves.toMatchObject({
       activeStep: { id: prepared.id },
     });
+  }, 60_000);
+
+  it('scopes task focus, execution gates, and Agent lifecycle updates to the originating branch', async () => {
+    const projectPath = path.join(root, 'branch-scoped-task-focus');
+    fs.mkdirSync(projectPath, { recursive: true });
+    const project = await sessionService.openProjectPath(projectPath, { name: 'Branch-scoped task focus' });
+    const [objective] = await sessionService.planTasks(project.id, [{
+      tacticId: 'TA0043',
+      techniqueId: 'T1595.002',
+      tasks: [{
+        title: 'Inventory branch-specific services',
+        successCriteria: [{ text: 'Branch-specific service inventory recorded' }],
+      }],
+    }]);
+    const initialState = sessionService.getProjectState(project.id);
+    const mainBranch = initialState.agent.branches[0];
+    sessionService.updateProjectState(project.id, {
+      agent: {
+        activeBranchId: mainBranch.id,
+        branches: [
+          mainBranch,
+          { ...mainBranch, id: 'branch-b', title: 'Branch B', runtime: null, focusedTaskId: null },
+        ],
+      },
+    });
+
+    await sessionService.focusTask(project.id, objective.id, 'branch-b');
+    const steps = await sessionService.planTaskSteps(project.id, {
+      objectiveId: objective.id,
+      steps: [{ title: 'Prepare inputs' }, { title: 'Probe services' }, { title: 'Record results' }],
+    }, 'branch-b');
+    await sessionService.focusTask(project.id, steps[0].id, 'branch-b');
+
+    const state = sessionService.getProjectState(project.id);
+    expect(state.agent.branches.find((branch) => branch.id === mainBranch.id)?.focusedTaskId).toBeNull();
+    expect(state.agent.branches.find((branch) => branch.id === 'branch-b')?.focusedTaskId).toBe(steps[0].id);
+    await expect(sessionService.assertTaskExecutionReady(project.id, 'Bash', 'branch-b')).resolves.toBeUndefined();
+    await expect(sessionService.assertTaskExecutionReady(project.id, 'Bash', mainBranch.id)).rejects.toThrow(
+      'Create and focus an Agent Task before using execution tools',
+    );
+    await expect(sessionService.updateTaskStatusForBranch(project.id, steps[1].id, 'in_progress', 'branch-b')).rejects.toThrow(
+      'Focus the Task or one of its Steps before updating execution state',
+    );
+    await expect(sessionService.updateTaskStatusForBranch(project.id, steps[0].id, 'in_progress', 'branch-b')).resolves.toMatchObject({
+      id: steps[0].id,
+      status: 'in_progress',
+    });
+    await expect(sessionService.focusTask(project.id, objective.id, 'missing-branch')).rejects.toThrow(
+      'Conversation branch missing-branch not found',
+    );
   });
 
   it('canonicalizes Windows watcher roots without changing POSIX paths', () => {

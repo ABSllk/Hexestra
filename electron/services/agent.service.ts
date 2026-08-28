@@ -57,7 +57,7 @@ import {
   type AgentCommandsChangedPayload,
 } from '../agent-command-contract';
 import { createHexestraAgentTools } from './agent-tools';
-import { sanitizeAgentToolInputForDisplay } from './agent-tool-policy';
+import { isSubagentSpawnTool, isTaskGuardedTool, sanitizeAgentToolInputForDisplay } from './agent-tool-policy';
 import { ClaudeAgentAdapter } from './agent-adapters/claude-agent-adapter';
 import { KnowledgeRefineryService, refineryInvocation } from './knowledge-refinery.service';
 import { buildAgentDistillPrompt, resolveAgentInputCommand } from './agent-distill';
@@ -788,7 +788,7 @@ class AgentService {
       runtime: branch.runtime,
       fork: false,
       settingSources: settings.settingSources,
-      tools: this.createHexestraToolDefinitions(sender, projectId, request.selectedTarget?.id, permissionMode),
+      tools: this.createHexestraToolDefinitions(sender, projectId, branch.id, request.selectedTarget?.id, permissionMode),
       projectId,
     };
   }
@@ -812,7 +812,7 @@ class AgentService {
       return;
     }
     const originHistoryRepository = originProjectId ? sessionService.getAgentHistory(originProjectId) : this.historyRepository;
-    const focusedTaskId = activeBranch.focusedTaskId ?? undefined;
+    const initialFocusedTaskId = activeBranch.focusedTaskId ?? undefined;
     const adapter = this.adapterRegistry.require(activeBranch.backendId);
     const available = await adapter.initialize(request.session?.id);
     if (!available) {
@@ -890,7 +890,7 @@ class AgentService {
     let latestContent = '';
     let latestActivities: AgentActivity[] = [];
     const activityTaskBindings = new Map<string, string>();
-    let focusedTaskTransitionChecked = false;
+    const transitionedTaskIds = new Set<string>();
     let completedEvent: Extract<import('../contracts/agent-runtime').AgentRunEvent, { type: 'turn_completed' }> | undefined;
     let completionPersisted = false;
     const streamScheduler = new AgentStreamScheduler();
@@ -1000,6 +1000,7 @@ class AgentService {
     const hexestraTools = this.createHexestraToolDefinitions(
       sender,
       request.session?.id,
+      originBranchId,
       request.selectedTarget?.id,
       permissionMode,
     );
@@ -1065,20 +1066,30 @@ class AgentService {
           }
         } else if (event.type === 'turn_snapshot' && belongsToInitialInput) {
           latestContent = event.content;
-          latestActivities = this.bindActivitiesToFocusedTask(focusedTaskId, event.activities, activityTaskBindings);
-          if (!focusedTaskTransitionChecked && request.session?.id && focusedTaskId && event.activities.some((activity) => activity.kind === 'tool' && activity.toolName && !/^(task_|restriction_list|tool_catalog_)/.test(activity.toolName))) {
-            focusedTaskTransitionChecked = true;
-            await this.markFocusedTaskInProgress(request.session.id, focusedTaskId);
+          const currentFocusedTaskId = this.resolveFocusedTaskId(originProjectId ?? undefined, originBranchId, initialFocusedTaskId);
+          latestActivities = this.bindActivitiesToFocusedTask(currentFocusedTaskId, event.activities, activityTaskBindings);
+          if (request.session?.id && currentFocusedTaskId && !transitionedTaskIds.has(currentFocusedTaskId)
+            && this.hasTaskExecutionActivity(event.activities, currentFocusedTaskId, activityTaskBindings)) {
+            transitionedTaskIds.add(currentFocusedTaskId);
+            await this.markFocusedTaskInProgress(request.session.id, currentFocusedTaskId);
           }
           mainProjectionDirty = true;
           streamScheduler.schedule(publishPendingProjection);
           persistLiveSnapshotIfDue();
         } else if (event.type === 'subagent_snapshot') {
-          runSubagentRuns.set(event.run.id, cloneSubagentRun(event.run));
-          if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) this.mergeSubagentRuns([event.run]);
-          const terminal = isTerminalSubagentRun(event.run);
-          if (terminal) originHistoryRepository?.appendSubagent(originBranchId, event.run);
-          pendingSubagentRunIds.add(event.run.id);
+          const currentFocusedTaskId = this.resolveFocusedTaskId(originProjectId ?? undefined, originBranchId, initialFocusedTaskId);
+          const scopedRun = cloneSubagentRun(event.run);
+          const priorTaskId = runSubagentRuns.get(scopedRun.id)?.pttTaskId;
+          if (!scopedRun.pttTaskId && (priorTaskId || currentFocusedTaskId)) {
+            scopedRun.pttTaskId = priorTaskId ?? currentFocusedTaskId;
+          }
+          runSubagentRuns.set(scopedRun.id, scopedRun);
+          if (originProjectId === this.activeSessionId && originBranchId === this.activeBranchId) {
+            this.mergeSubagentRuns([scopedRun], currentFocusedTaskId);
+          }
+          const terminal = isTerminalSubagentRun(scopedRun);
+          if (terminal) originHistoryRepository?.appendSubagent(originBranchId, scopedRun);
+          pendingSubagentRunIds.add(scopedRun.id);
           if (terminal) {
             streamScheduler.cancel();
             publishPendingProjection(runSubagentRuns);
@@ -1091,7 +1102,13 @@ class AgentService {
         } else if (event.type === 'turn_completed' && belongsToInitialInput) {
           completedEvent = event;
           latestContent = event.content;
-          latestActivities = this.bindActivitiesToFocusedTask(focusedTaskId, event.activities, activityTaskBindings);
+          const currentFocusedTaskId = this.resolveFocusedTaskId(originProjectId ?? undefined, originBranchId, initialFocusedTaskId);
+          latestActivities = this.bindActivitiesToFocusedTask(currentFocusedTaskId, event.activities, activityTaskBindings);
+          if (request.session?.id && currentFocusedTaskId && !transitionedTaskIds.has(currentFocusedTaskId)
+            && this.hasTaskExecutionActivity(event.activities, currentFocusedTaskId, activityTaskBindings)) {
+            transitionedTaskIds.add(currentFocusedTaskId);
+            await this.markFocusedTaskInProgress(request.session.id, currentFocusedTaskId);
+          }
           streamScheduler.cancel();
           publishPendingProjection(runSubagentRuns);
           persistCompletion(event);
@@ -1197,15 +1214,19 @@ class AgentService {
   private createHexestraToolDefinitions(
     sender: WebContents,
     sessionId?: string,
+    branchId?: string,
     selectedTargetId?: string,
     permissionMode: SupportedAgentMode = 'default',
   ) {
     return createHexestraAgentTools({
       sender,
       sessionId,
+      branchId,
       selectedTargetId,
       permissionMode,
-      taskGuard: sessionId ? (toolName) => sessionService.assertTaskExecutionReady(sessionId, toolName) : undefined,
+      taskGuard: sessionId
+        ? (toolName) => sessionService.assertTaskExecutionReady(sessionId, toolName, branchId)
+        : undefined,
     });
   }
 
@@ -1413,9 +1434,9 @@ class AgentService {
       const { toolName, input, signal, toolUseId, agentId } = request;
       const subagentContext = this.getSubagentContext(agentId, projectId ?? undefined, branchId);
 
-      if (projectId && !/^(task_|restriction_|tool_catalog_)/.test(toolName) && /^(browser|shell|traffic|egress-proxy|mcp|subagent|Task$|Agent)/.test(toolName)) {
+      if (projectId && isTaskGuardedTool(toolName, request.riskLevel)) {
         try {
-          await sessionService.assertTaskExecutionReady(projectId, toolName);
+          await sessionService.assertTaskExecutionReady(projectId, toolName, branchId);
         } catch (error) {
           return {
             behavior: 'deny',
@@ -1424,6 +1445,16 @@ class AgentService {
             decisionClassification: 'user_reject',
           };
         }
+      }
+
+      // Native subagents inherit the parent permission mode and were
+      // historically auto-approved. Keep that behavior after the task gate.
+      if (isSubagentSpawnTool(toolName)) {
+        return {
+          behavior: 'allow',
+          updatedInput: input,
+          decisionClassification: 'user_temporary',
+        };
       }
 
       const disposition = resolvePermissionDisposition(
@@ -1788,10 +1819,9 @@ class AgentService {
     }
   }
 
-  private mergeSubagentRuns(runs: SubagentRun[]) {
+  private mergeSubagentRuns(runs: SubagentRun[], focusedTaskId?: string) {
     if (runs.length === 0) return;
     const byId = new Map(this.subagentRuns.map((run) => [run.id, run]));
-    const focusedTaskId = this.branches.find((branch) => branch.id === this.activeBranchId)?.focusedTaskId ?? undefined;
     for (const run of runs) {
       const next = cloneSubagentRun(run);
       if (!next.pttTaskId && focusedTaskId) next.pttTaskId = focusedTaskId;
@@ -1848,10 +1878,30 @@ class AgentService {
     } catch { return false; }
   }
 
+  private resolveFocusedTaskId(projectId: string | undefined, branchId: string, fallback?: string) {
+    if (!projectId) return fallback;
+    try {
+      const branch = sessionService.getProjectState(projectId).agent.branches.find((candidate) => candidate.id === branchId);
+      return branch ? branch.focusedTaskId ?? undefined : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private hasTaskExecutionActivity(activities: AgentActivity[], focusedTaskId: string, bindings: Map<string, string>) {
+    return activities.some((activity) => (
+      activity.kind === 'tool'
+      && activity.status !== 'error'
+      && Boolean(activity.toolName)
+      && bindings.get(activity.id) === focusedTaskId
+      && isTaskGuardedTool(activity.toolName!, 'write')
+    ));
+  }
+
   private bindActivitiesToFocusedTask(focusedTaskId: string | undefined, activities: AgentActivity[], bindings: Map<string, string>) {
     if (!focusedTaskId && bindings.size === 0) return activities;
     return activities.map((activity) => {
-      const prior = bindings.get(activity.id);
+      const prior = bindings.get(activity.id) ?? activity.pttTaskId;
       const taskId = prior ?? (focusedTaskId || undefined);
       if (taskId) bindings.set(activity.id, taskId);
       return taskId ? { ...activity, pttTaskId: taskId } : activity;

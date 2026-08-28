@@ -75,7 +75,12 @@ import type {
 } from '../../contracts/knowledge-refinery';
 import { ATTACK_TACTICS, ATTACK_TECHNIQUES } from '../../contracts/tasks';
 import { createClaudeSdkTools } from './claude-tool-bridge';
-import { isSubagentSpawnTool, isManagedRecordFileMutation } from '../agent-tool-policy';
+import {
+  isManagedRecordFileMutation,
+  isNativeReadOnlyTool,
+  normalizeAgentToolName,
+  normalizeHexestraToolName,
+} from '../agent-tool-policy';
 
 type AgentSdk = typeof import('@anthropic-ai/claude-agent-sdk');
 
@@ -1227,13 +1232,6 @@ export class ClaudeAgentAdapter implements AgentAdapter {
           toolUseID: options.toolUseID,
         };
       }
-      if (isSubagentSpawnTool(toolName)) {
-        return {
-          behavior: 'allow',
-          updatedInput: input,
-          toolUseID: options.toolUseID,
-        };
-      }
       const decision = await interactions.authorizeTool({
         toolName,
         riskLevel: resolveClaudeToolRisk(toolName, definitions),
@@ -1640,10 +1638,10 @@ function extractSdkPrompt(message: SDKUserMessage) {
 }
 
 function resolveClaudeToolRisk(toolName: string, definitions: AgentToolDefinition[]) {
-  const neutralName = toolName.replace(/^mcp__hexestra__/, '');
+  const neutralName = normalizeHexestraToolName(toolName);
   const definition = definitions.find((candidate) => candidate.name === neutralName);
   if (definition) return definition.riskLevel;
-  return CLAUDE_READ_ONLY_BUILTINS.has(toolName)
+  return (CLAUDE_READ_ONLY_BUILTINS.has(toolName) || isNativeReadOnlyTool(toolName))
     ? 'read' as const
     : 'write' as const;
 }
@@ -1677,7 +1675,7 @@ function createManagedRecordGuard(): HookCallback {
 function createSessionCronScopeGuard(): HookCallback {
   return async (input) => {
     if (input.hook_event_name !== 'PreToolUse') return {};
-    const name = input.tool_name.replace(/^mcp__[^_]+__/, '');
+    const name = normalizeAgentToolName(input.tool_name);
     if (name !== 'CronCreate') return { continue: true };
     const value = input.tool_input as Record<string, unknown>;
     if (value.recurring === true || value.durable === true) {

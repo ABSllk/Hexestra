@@ -25,7 +25,7 @@ The [English README](../README.md) at the repo root is a quick way to understand
 | --- | --- |
 | [Architecture](architecture.md) | How do the renderer, preload layer, main process, project files, and external runtimes work together? |
 | [Domain model](domain-model.md) | How do scope, the asset graph, tasks, evidence, findings, vulnerabilities, and reports relate? |
-| [Agent runtime](agent-runtime.md) | How does the agent build context, approve tools, queue input, persist history, and branch conversations? |
+| [Agent runtime](agent-runtime.md) | How does the agent build context, apply task and permission gates, queue input, persist history, and branch conversations? |
 | [Agent context maintenance](agent-context-maintenance.md) | How are restrictions, skills, and the tool catalog maintained? |
 
 ## Maintenance and contributing

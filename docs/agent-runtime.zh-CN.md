@@ -165,6 +165,54 @@ UI 中的 ASK、AUTO 和 BYPASS 映射到统一 contract：
 因此不要把 AUTO 或 BYPASS 描述为“无人监管地执行一切”。它们改变审批行为，实际能力仍由
 adapter、tool schema、Main Process 服务和项目配置共同决定。
 
+### Task 工作流门禁
+
+Hexestra 在普通 ASK/AUTO/BYPASS 审批之前执行 Task 工作流门禁。它用于把真实执行挂到一个经过
+规划、可审计的 Step 上，不能替代操作员审批或领域校验。
+
+```text
+工具请求
+  -> 使用保留来源信息的原始工具名进行分类
+  -> 如果是真实动作，检查发起该 turn 的 Branch 所聚焦的 Step
+  -> 应用 ASK/AUTO/BYPASS 审批行为
+  -> 执行，并把活动绑定到该 Step
+```
+
+核心规则是：
+
+> 会执行目标/运行时动作或调用不受信任外部工具的请求，必须在发起该 turn 的对话 Branch 上聚焦
+> 一个可执行 Step；读取、规划、受管项目记录以及停止/清理控制不使用这道门禁。
+
+| 类别 | 示例 | 是否要求聚焦执行 Step |
+| --- | --- | --- |
+| 读取 | `Read`、`task_list`、`browser_read`、`ListMcpResources` | 否 |
+| 规划与聚焦 | `TaskCreate`、`task_plan_create`、`task_steps_plan`、`task_focus` | 否；这些工具负责建立门禁所需状态 |
+| 停止与清理 | `TaskStop`、`CronDelete`、`RefreshMcpTools` | 否；仍可能进入普通 permission 处理 |
+| 受管项目状态 | `asset_register`、`finding_upsert`、`evidence_upsert`、Task lifecycle 工具 | 否；仍必须通过 service/repository 校验 |
+| 真实执行 | `Bash`、Browser 导航/修改、Shell、Traffic、代理执行 | 是 |
+| 原生 Subagent 或工作流 | `Agent`、`Task`、`Workflow`、`REPL` | 是 |
+| 未知原生写工具或第三方 MCP | 未分类 write，或任意 `mcp__<other-server>__*` | 是，默认从严 |
+
+仅聚焦 Agent Task 还不能执行。首次真实动作前，Task 必须已经规划 3–7 个 Step，并聚焦其中一个
+可运行 Step；依赖缺失、目标未解析或其他 resolver blocker 仍会拒绝执行。规划工具必须位于该门禁
+之外，否则系统会要求 Agent 先创建 Task，同时又拦截创建 Task 所需的工具，形成死锁。免除执行
+门禁不代表可以任意修改：受管记录仍接受 schema、引用、状态机和 repository 校验，Agent Task
+lifecycle 更新则只能指向当前聚焦 Task 或它的某个 Step。
+
+MCP server 来源是信任边界的一部分。只有精确的 `mcp__hexestra__` namespace 可以继承 Hexestra
+的只读/规划豁免。例如 `mcp__third_party__task_list` 即使本地名称相同，也不能作为 Hexestra
+`task_list`。展示层可以去掉 MCP 前缀，但授权必须把原始名称交给 `agent-tool-policy.ts` 中的共享
+策略分类。
+
+Task focus 按 Branch 隔离。后台 turn 始终检查发起它的 Branch，不能读取 Renderer 当前恰好显示的
+Branch。如果一个 turn 先调用 `task_focus` 再执行工具，门禁、活动绑定、自动 `in_progress` 转换和
+Subagent 记录都使用刚持久化的新 focus。Activity 或 Subagent run 首次关联 Step 后必须保持稳定，
+后续 focus 改变不能重写历史。
+
+两个工具入口必须使用同一个分类策略：进程内 Hexestra MCP wrapper，以及 `AgentService` 对原生/
+namespaced 工具的授权。不能在两个入口分别维护正则门禁。原生 Subagent spawn 只有在 Task 门禁通过
+后才保留不弹 approval card 的行为，子 Agent 的每个状态改变工具仍会重新经过门禁。
+
 ## Tool 边界
 
 Hexestra tool 使用 provider-neutral `AgentToolDefinition` 声明：
@@ -182,8 +230,8 @@ Adapter 只负责翻译为 provider 原生工具接口。Browser、Traffic、She
 改变和记录写入都不应仅因为“会返回结果”就标成 read。
 
 工具拒绝、timeout 或 abort 会作为 deny/error 返回给后端；没有获得允许的动作不会先执行再补卡片。
-Subagent spawn 本身可以直接创建子任务，但子 Agent 调用的状态改变工具仍走同一 permission 与领域
-校验路径。
+Subagent spawn 需要已经聚焦可执行 Step，子 Agent 调用的状态改变工具仍走同一 Task、permission
+与领域校验路径。
 
 ## 历史、事件与恢复
 

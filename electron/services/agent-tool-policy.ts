@@ -35,13 +35,62 @@ const READ_ONLY_HEXESTRA_TOOLS = new Set([
 ]);
 
 const SUBAGENT_SPAWN_TOOLS = new Set(['Agent', 'Task']);
+const NATIVE_TASK_PLANNING_TOOLS = new Set([
+  'TaskCreate', 'TaskGet', 'TaskUpdate', 'TaskList', 'TodoWrite',
+  'EnterPlanMode', 'ExitPlanMode', 'ProposeSkills',
+]);
+const NATIVE_READ_ONLY_TOOLS = new Set([
+  'Read', 'Glob', 'Grep', 'LS', 'WebSearch', 'WebFetch', 'NotebookRead',
+  'CronList', 'TaskOutput', 'ListMcpResources', 'ReadMcpResourceDir',
+  'ReadMcpResource',
+]);
+const NATIVE_TASK_GATE_CONTROL_TOOLS = new Set(['TaskStop', 'CronDelete', 'RefreshMcpTools']);
+const HEXESTRA_MCP_PREFIX = 'mcp__hexestra__';
 
 export function isSubagentSpawnTool(toolName: string) {
   return SUBAGENT_SPAWN_TOOLS.has(toolName);
 }
 
+export function normalizeAgentToolName(toolName: string) {
+  return toolName.replace(/^mcp__.+?__/, '');
+}
+
+export function normalizeHexestraToolName(toolName: string) {
+  return toolName.startsWith(HEXESTRA_MCP_PREFIX)
+    ? toolName.slice(HEXESTRA_MCP_PREFIX.length)
+    : toolName;
+}
+
 export function isReadOnlyHexestraTool(toolName: string) {
-  return READ_ONLY_HEXESTRA_TOOLS.has(toolName);
+  const localName = normalizeHexestraToolName(toolName);
+  if (localName === toolName && toolName.startsWith('mcp__')) return false;
+  return READ_ONLY_HEXESTRA_TOOLS.has(localName);
+}
+
+export function isNativeReadOnlyTool(toolName: string) {
+  return NATIVE_READ_ONLY_TOOLS.has(toolName);
+}
+
+export function isTaskGuardedTool(toolName: string, riskLevel?: string) {
+  const localName = normalizeHexestraToolName(toolName);
+  // A third-party MCP server cannot inherit Hexestra exemptions by choosing a
+  // colliding local tool name. Its provenance is part of the trust boundary.
+  if (localName === toolName && toolName.startsWith('mcp__')) return true;
+  // Read-only tools (recon, catalog lookup, and reading pages/scrollback) do
+  // not mutate state, so they must not require a focused Task.
+  if (isReadOnlyHexestraTool(localName)) return false;
+  // Planning and managed-record tools have their own validation contracts.
+  if (isNativeReadOnlyTool(localName)) return false;
+  if (NATIVE_TASK_PLANNING_TOOLS.has(localName)) return false;
+  if (NATIVE_TASK_GATE_CONTROL_TOOLS.has(localName)) return false;
+  if (/^(task_|restriction_|tool_catalog_|attack_catalog_)/.test(localName)) return false;
+  if (/^(target_|asset_|finding_|vulnerability_|evidence_|report_|scope_)/.test(localName)) return false;
+  if (/^(Bash|browser|shell|traffic|egress-proxy|subagent|Task$|Agent)/.test(localName)) return true;
+  // Unknown MCP tools must remain behind the execution gate. This keeps the
+  // policy fail-closed while still allowing the explicit planning/read-only
+  // exceptions above.
+  if (localName !== toolName) return true;
+  return riskLevel === 'write';
 }
 
 const WRITE_ONLY_PROXY_NODE_TOOLS = new Set([
@@ -56,7 +105,7 @@ export function sanitizeAgentToolInputForDisplay(
   toolName: string,
   input: Record<string, unknown>,
 ): Record<string, unknown> {
-  const localName = toolName.replace(/^mcp__[^_]+__/, '');
+  const localName = normalizeAgentToolName(toolName);
   if (localName === 'shell_file_write' && typeof input.content === 'string') {
     const encoding = input.encoding === 'base64' ? 'base64' : 'utf8';
     const content = Buffer.from(input.content, encoding);
@@ -78,7 +127,7 @@ export function sanitizeAgentToolInputForDisplay(
 }
 
 export function sanitizeAgentToolOutputForDisplay(toolName: string, output: string) {
-  const localName = toolName.replace(/^mcp__[^_]+__/, '');
+  const localName = normalizeAgentToolName(toolName);
   if (localName !== 'shell_file_read' && localName !== 'shell_file_write') return output;
   try {
     const parsed = JSON.parse(output) as Record<string, unknown>;

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   isManagedRecordFileMutation,
   isReadOnlyHexestraTool,
+  isTaskGuardedTool,
+  normalizeAgentToolName,
   sanitizeAgentToolInputForDisplay,
   sanitizeAgentToolOutputForDisplay,
 } from '@electron/services/agent-tool-policy';
@@ -63,6 +65,37 @@ describe('Agent tool policy', () => {
     expect(isReadOnlyHexestraTool('shell_file_delete')).toBe(false);
     expect(isReadOnlyHexestraTool('shell_file_upload')).toBe(false);
     expect(isReadOnlyHexestraTool('shell_file_download')).toBe(false);
+  });
+
+  it('applies the same task gate to namespaced MCP tools without gating planning or reads', () => {
+    expect(isReadOnlyHexestraTool('mcp__hexestra__attack_catalog_list')).toBe(true);
+    expect(isReadOnlyHexestraTool('mcp__hexestra__shell_profiles')).toBe(true);
+    expect(isTaskGuardedTool('mcp__hexestra__attack_catalog_list')).toBe(false);
+    expect(isTaskGuardedTool('mcp__hexestra__task_list')).toBe(false);
+    expect(isTaskGuardedTool('mcp__hexestra__task_plan_create')).toBe(false);
+    expect(isTaskGuardedTool('mcp__hexestra__shell_profiles')).toBe(false);
+    expect(isTaskGuardedTool('mcp__hexestra__proxy_status')).toBe(false);
+    expect(isTaskGuardedTool('mcp__hexestra__browser_navigate')).toBe(true);
+    expect(isTaskGuardedTool('mcp__hexestra__shell_execute')).toBe(true);
+    expect(isTaskGuardedTool('mcp__hexestra__unknown_write')).toBe(true);
+    expect(isTaskGuardedTool('Bash')).toBe(true);
+    expect(isTaskGuardedTool('Read')).toBe(false);
+    expect(isTaskGuardedTool('TaskList')).toBe(false);
+    expect(isTaskGuardedTool('TaskCreate', 'write')).toBe(false);
+    expect(isTaskGuardedTool('TaskUpdate', 'write')).toBe(false);
+    expect(isTaskGuardedTool('Agent', 'write')).toBe(true);
+    expect(isTaskGuardedTool('Workflow', 'write')).toBe(true);
+    expect(isTaskGuardedTool('REPL', 'write')).toBe(true);
+    expect(isTaskGuardedTool('CronCreate', 'write')).toBe(true);
+    expect(isTaskGuardedTool('ListMcpResources', 'write')).toBe(false);
+    expect(isTaskGuardedTool('ReadMcpResource', 'write')).toBe(false);
+    expect(isTaskGuardedTool('RefreshMcpTools', 'write')).toBe(false);
+    expect(isTaskGuardedTool('TaskStop', 'write')).toBe(false);
+    expect(isTaskGuardedTool('CronDelete', 'write')).toBe(false);
+    expect(isReadOnlyHexestraTool('mcp__third_party__task_list')).toBe(false);
+    expect(isTaskGuardedTool('mcp__third_party__task_list')).toBe(true);
+    expect(isTaskGuardedTool('mcp__third_party__shell_profiles')).toBe(true);
+    expect(normalizeAgentToolName('mcp__third_party__tool_name')).toBe('tool_name');
   });
 
   it('redacts write-only proxy node values before approval display', () => {

@@ -128,6 +128,53 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
     expect(close).toHaveBeenCalled();
   });
 
+  it('preserves MCP server provenance and routes native subagent spawns through authorization', async () => {
+    const authorizeTool = vi.fn(async (request: Parameters<AgentInteractionHandler['authorizeTool']>[0]) => ({
+      behavior: 'allow' as const,
+      updatedInput: request.input,
+    }));
+    const localInteractions: AgentInteractionHandler = { authorizeTool, requestAnswers: vi.fn(async () => ({})) };
+    sdk.query.mockImplementation((params) => ({
+      supportedCommands: vi.fn(async () => []),
+      setPermissionMode: vi.fn(async () => undefined),
+      interrupt: vi.fn(async () => undefined),
+      close: vi.fn(),
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'system', subtype: 'init', session_id: 'claude-session-1', model: 'deepseek-v4-pro' };
+        for await (const _prompt of params.prompt) {
+          const options = { toolUseID: 'tool-use-1', signal: new AbortController().signal };
+          await params.options.canUseTool('mcp__third_party__task_list', {}, options);
+          await params.options.canUseTool('mcp__hexestra__task_list', {}, { ...options, toolUseID: 'tool-use-2' });
+          await params.options.canUseTool('Agent', { prompt: 'Inspect headers' }, { ...options, toolUseID: 'tool-use-3' });
+          await params.options.canUseTool('ListMcpResources', {}, { ...options, toolUseID: 'tool-use-4' });
+          yield { type: 'result', subtype: 'success', result: 'done' };
+        }
+      },
+    }));
+    const input = runInput('context');
+    input.tools = [{
+      name: 'task_list', description: 'Read tasks', inputSchema: {}, riskLevel: 'read',
+      execute: async () => ({ content: [] }),
+    }];
+
+    const adapter = new ClaudeAgentAdapter();
+    await collect(adapter.runTurn(input, localInteractions));
+
+    expect(authorizeTool).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      toolName: 'mcp__third_party__task_list', riskLevel: 'write',
+    }));
+    expect(authorizeTool).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      toolName: 'mcp__hexestra__task_list', riskLevel: 'read',
+    }));
+    expect(authorizeTool).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      toolName: 'Agent', riskLevel: 'write',
+    }));
+    expect(authorizeTool).toHaveBeenNthCalledWith(4, expect.objectContaining({
+      toolName: 'ListMcpResources', riskLevel: 'read',
+    }));
+    await adapter.disposeConversation('project-1', 'main');
+  });
+
   it('coalesces bursty partial messages while flushing the complete timeline immediately', async () => {
     vi.useFakeTimers();
     let burstFinished!: () => void;

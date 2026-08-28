@@ -142,6 +142,40 @@ For example, BYPASS can skip the normal approval card, but it cannot let a nonex
 
 So do not describe AUTO or BYPASS as "running everything unsupervised." They change approval behavior; actual capability is still determined jointly by the adapter, tool schema, main-process services, and project configuration.
 
+### Task workflow gate
+
+Hexestra applies a task workflow gate before normal ASK/AUTO/BYPASS approval. Its purpose is to attach real execution to a planned, auditable Step; it is not a replacement for operator permission or domain validation.
+
+```text
+tool request
+  -> classify the original source-qualified tool name
+  -> if this is a real action, validate the originating Branch's focused Step
+  -> apply ASK/AUTO/BYPASS approval behavior
+  -> execute and bind the activity to that Step
+```
+
+The core rule is:
+
+> A tool that performs target/runtime execution or invokes an untrusted external tool requires a runnable focused Step on the conversation Branch that originated the turn. Reading, planning, managed project records, and stop/cleanup controls do not use this gate.
+
+| Category | Examples | Focused execution Step required? |
+| --- | --- | --- |
+| Read | `Read`, `task_list`, `browser_read`, `ListMcpResources` | No |
+| Plan and focus | `TaskCreate`, `task_plan_create`, `task_steps_plan`, `task_focus` | No; these tools create the state required by the gate |
+| Stop and cleanup | `TaskStop`, `CronDelete`, `RefreshMcpTools` | No; normal permission handling may still apply |
+| Managed project state | `asset_register`, `finding_upsert`, `evidence_upsert`, Task lifecycle tools | No; service/repository validation remains mandatory |
+| Real execution | `Bash`, Browser mutation/navigation, Shell, Traffic, proxy execution | Yes |
+| Native subagent or workflow | `Agent`, `Task`, `Workflow`, `REPL` | Yes |
+| Unknown native write or third-party MCP tool | Any unclassified write or `mcp__<other-server>__*` | Yes, fail-closed |
+
+A focused Agent Task is not yet executable. Before the first real action, it must have 3–7 planned Steps and one runnable Step must be focused. Missing dependencies, unresolved targets, or other resolver blockers still reject execution. Planning tools must remain outside this gate; otherwise the Agent would be told to create a Task while the tools needed to create that Task were themselves blocked. Exemption from the execution gate never means unrestricted mutation: managed records retain schema, reference, state-machine, and repository validation, while Agent Task lifecycle updates must target the focused Task or one of its Steps.
+
+MCP server provenance is part of the trust boundary. Only the exact `mcp__hexestra__` namespace may inherit Hexestra's read/planning exemptions. For example, `mcp__third_party__task_list` is not treated as Hexestra `task_list`, even though the local portion of the name collides. Display formatting may remove an MCP prefix, but authorization must classify the original name through the shared policy in `agent-tool-policy.ts`.
+
+Task focus is Branch-scoped. A background turn always checks the Branch that originated it, not whichever Branch is currently visible in the renderer. If a turn calls `task_focus` and then executes a tool in the same turn, the gate, activity binding, automatic `in_progress` transition, and Subagent record use the newly persisted focus. An activity or Subagent run keeps the Step association it received when first observed; later focus changes do not rewrite history.
+
+The same classification policy is used at both tool entry points: the in-process Hexestra MCP wrapper and `AgentService` authorization for native/namespaced tools. Do not add a second regular-expression gate in either path. Native Subagent spawning keeps its no-card behavior only after the task gate passes, and every state-changing child tool call is checked again.
+
 ## Tool boundary
 
 Hexestra tools are declared with a provider-neutral `AgentToolDefinition`:
@@ -155,7 +189,7 @@ The adapter only translates them into the provider's native tool interface. Brow
 
 A read-only tool can still return sensitive content — Browser cookies, Storage, Traffic, or project files. `read` means it should not modify Hexestra/target state; it does not mean the result can be unprotected. Arbitrary JavaScript evaluation, network testing, state changes, and record writes must not be labeled `read` just because "they return a result."
 
-Tool denial, timeout, or abort is returned to the backend as deny/error; an action that was not allowed is never executed first and carded afterward. Spawning a Subagent can directly create child tasks, but state-changing tools a child Agent calls still go through the same permission and domain-validation path.
+Tool denial, timeout, or abort is returned to the backend as deny/error; an action that was not allowed is never executed first and carded afterward. Spawning a Subagent requires a ready focused Step, and state-changing tools a child Agent calls still go through the same task, permission, and domain-validation path.
 
 ## History, events, and recovery
 

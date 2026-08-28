@@ -25,7 +25,7 @@
 | --- | --- |
 | [架构说明](architecture.zh-CN.md) | 渲染进程、预加载层、主进程、项目文件和外部运行环境如何协作？ |
 | [领域模型](domain-model.zh-CN.md) | 范围、资产图、任务、证据、发现记录、漏洞和报告如何关联？ |
-| [智能体运行机制](agent-runtime.zh-CN.md) | 智能体如何构造上下文、批准工具、排队、保存历史和建立对话分支？ |
+| [智能体运行机制](agent-runtime.zh-CN.md) | 智能体如何构造上下文、执行 Task 与 permission 门禁、排队、保存历史和建立对话分支？ |
 | [智能体用户上下文维护](agent-context-maintenance.zh-CN.md) | 如何维护限制规则、技能与工具目录？ |
 
 ## 维护与贡献

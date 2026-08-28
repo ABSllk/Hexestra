@@ -116,7 +116,7 @@ const relationSemanticSchema = z.enum([
   'authenticates_to', 'attack_step',
 ]);
 
-export function createProjectAgentTools({ sender, sessionId, selectedTargetId }: AgentToolContext) {
+export function createProjectAgentTools({ sender, sessionId, branchId, selectedTargetId }: AgentToolContext) {
   return [
     createAgentTool(
       'target_list',
@@ -493,7 +493,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
       },
       async (input) => {
         if (!sessionId) throw new Error('No active engagement');
-        const steps = await sessionService.planTaskSteps(sessionId, input);
+        const steps = await sessionService.planTaskSteps(sessionId, input, branchId);
         sender.send('session:data-changed', { sessionId, tasks: true });
         return { content: [{ type: 'text', text: JSON.stringify(steps, null, 2) }] };
       },
@@ -514,7 +514,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
       },
       async (input) => {
         if (!sessionId) throw new Error('No active engagement');
-        const step = await sessionService.upsertTaskStep(sessionId, input);
+        const step = await sessionService.upsertTaskStep(sessionId, input, branchId);
         sender.send('session:data-changed', { sessionId, tasks: true });
         return { content: [{ type: 'text', text: JSON.stringify(step, null, 2) }] };
       },
@@ -525,7 +525,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
       { stepId: z.string().min(1) },
       async ({ stepId }) => {
         if (!sessionId) throw new Error('No active engagement');
-        const result = await sessionService.deleteTaskStep(sessionId, stepId);
+        const result = await sessionService.deleteTaskStep(sessionId, stepId, branchId);
         sender.send('session:data-changed', { sessionId, tasks: true });
         return { content: [{ type: 'text', text: JSON.stringify(result) }] };
       },
@@ -536,7 +536,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
       { parentId: z.string().min(1), stepIds: z.array(z.string().min(1)).min(1) },
       async ({ parentId, stepIds }) => {
         if (!sessionId) throw new Error('No active engagement');
-        const steps = await sessionService.reorderTaskSteps(sessionId, parentId, stepIds);
+        const steps = await sessionService.reorderTaskSteps(sessionId, parentId, stepIds, branchId);
         sender.send('session:data-changed', { sessionId, tasks: true });
         return { content: [{ type: 'text', text: JSON.stringify(steps, null, 2) }] };
       },
@@ -558,7 +558,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
       { taskId: z.string().nullable() },
       async ({ taskId }) => {
         if (!sessionId) throw new Error('No active engagement');
-        const context = await sessionService.focusTask(sessionId, taskId);
+        const context = await sessionService.focusTask(sessionId, taskId, branchId);
         sender.send('session:data-changed', { sessionId, tasks: true });
         return { content: [{ type: 'text', text: JSON.stringify(context, null, 2) }] };
       },
@@ -579,7 +579,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
       { taskId: z.string(), criterionId: z.string(), completed: z.boolean() },
       async ({ taskId, criterionId, completed }) => {
         if (!sessionId) throw new Error('No active engagement');
-        const task = await sessionService.updateTaskCriterion(sessionId, taskId, criterionId, completed);
+        const task = await sessionService.updateTaskCriterionForBranch(sessionId, taskId, criterionId, completed, branchId);
         sender.send('session:data-changed', { sessionId, tasks: true });
         return { content: [{ type: 'text', text: JSON.stringify(task, null, 2) }] };
       },
@@ -593,7 +593,7 @@ export function createProjectAgentTools({ sender, sessionId, selectedTargetId }:
       },
       async ({ taskId, status }) => {
         if (!sessionId) throw new Error('No active engagement');
-        await sessionService.updateTaskStatus(sessionId, taskId, status);
+        await sessionService.updateTaskStatusForBranch(sessionId, taskId, status, branchId);
         sender.send('session:data-changed', { sessionId, tasks: true });
         return { content: [{ type: 'text', text: `Updated ${taskId} to ${status}` }] };
       },

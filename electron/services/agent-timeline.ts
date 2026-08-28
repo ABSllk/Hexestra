@@ -1,6 +1,6 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentActivity } from '../contracts/agent-runtime';
-import { sanitizeAgentToolInputForDisplay, sanitizeAgentToolOutputForDisplay } from './agent-tool-policy';
+import { normalizeAgentToolName, sanitizeAgentToolInputForDisplay, sanitizeAgentToolOutputForDisplay } from './agent-tool-policy';
 export type { AgentActivity } from '../contracts/agent-runtime';
 export type AgentActivityStatus = AgentActivity['status'];
 
@@ -417,8 +417,7 @@ export function summarizeToolCall(toolName: string, input: Record<string, unknow
 }
 
 function humanizeToolName(name: string) {
-  const clean = name
-    .replace(/^mcp__[^_]+__/, '')
+  const clean = normalizeAgentToolName(name)
     .replace(/[_-]+/g, ' ')
     .trim();
   return clean

@@ -917,8 +917,14 @@ class SessionService {
     return result.task;
   }
 
-  async planTaskSteps(sessionId: string, input: TaskStepPlanInput) {
-    this.assertObjectiveFocused(sessionId, input.objectiveId);
+  async updateTaskStatusForBranch(sessionId: string, taskId: string, status: TaskStatus, branchId?: string) {
+    const tasks = await this.listTasks(sessionId);
+    this.assertTaskOrDescendantFocused(sessionId, taskId, tasks, branchId);
+    return this.updateTaskStatus(sessionId, taskId, status);
+  }
+
+  async planTaskSteps(sessionId: string, input: TaskStepPlanInput, branchId?: string) {
+    this.assertObjectiveFocused(sessionId, input.objectiveId, branchId);
     const sessionPath = this.getSessionPath(sessionId);
     const pttPath = path.join(sessionPath, 'ptt.md');
     await this.listTasks(sessionId);
@@ -927,13 +933,13 @@ class SessionService {
     return result.steps;
   }
 
-  async upsertTaskStep(sessionId: string, input: TaskStepInput) {
+  async upsertTaskStep(sessionId: string, input: TaskStepInput, branchId?: string) {
     const sessionPath = this.getSessionPath(sessionId);
     const pttPath = path.join(sessionPath, 'ptt.md');
     const tasks = await this.listTasks(sessionId);
     const markdown = fs.readFileSync(pttPath, 'utf8');
     if (!input.id) {
-      this.assertObjectiveFocused(sessionId, input.parentId);
+      this.assertObjectiveFocused(sessionId, input.parentId, branchId);
       const result = insertPttStep(markdown, input);
       this.writePtt(sessionPath, result.markdown);
       return result.step;
@@ -955,20 +961,20 @@ class SessionService {
     if (definitionChanged && lifecycleChanged) {
       throw new Error('Change Step structure while its Objective is focused, then focus the Step before updating execution state');
     }
-    if (definitionChanged) this.assertObjectiveFocused(sessionId, input.parentId);
-    else if (lifecycleChanged) this.assertStepFocused(sessionId, input.id);
-    else this.assertObjectiveOrStepFocused(sessionId, input.parentId, input.id);
+    if (definitionChanged) this.assertObjectiveFocused(sessionId, input.parentId, branchId);
+    else if (lifecycleChanged) this.assertStepFocused(sessionId, input.id, branchId);
+    else this.assertObjectiveOrStepFocused(sessionId, input.parentId, input.id, branchId);
     this.writePtt(sessionPath, result.markdown);
     return result.step;
   }
 
-  async deleteTaskStep(sessionId: string, stepId: string) {
+  async deleteTaskStep(sessionId: string, stepId: string, branchId?: string) {
     const sessionPath = this.getSessionPath(sessionId);
     const pttPath = path.join(sessionPath, 'ptt.md');
     await this.listTasks(sessionId);
     const step = (await this.listTasks(sessionId)).find((task): task is ExecutionStep => task.kind === 'step' && task.id === stepId);
     if (!step) throw new Error(`Step ${stepId} not found`);
-    this.assertObjectiveFocused(sessionId, step.parentId);
+    this.assertObjectiveFocused(sessionId, step.parentId, branchId);
     const state = this.getProjectState(sessionId);
     const hasActivity = state.agent.branches.some((branch) => this.getAgentHistory(sessionId).getMessages(branch.id).some((message) => (message.activities ?? []).some((activity) => activity.pttTaskId === stepId)));
     if (hasActivity) throw new Error('Steps with activity records cannot be deleted');
@@ -976,8 +982,8 @@ class SessionService {
     return { deleted: stepId };
   }
 
-  async reorderTaskSteps(sessionId: string, parentId: string, stepIds: string[]) {
-    this.assertObjectiveFocused(sessionId, parentId);
+  async reorderTaskSteps(sessionId: string, parentId: string, stepIds: string[], branchId?: string) {
+    this.assertObjectiveFocused(sessionId, parentId, branchId);
     const tasks = await this.listTasks(sessionId);
     const siblings = tasks.filter((task): task is ExecutionStep => task.kind === 'step' && task.parentId === parentId);
     if (siblings.some((step) => step.status !== 'pending')) throw new Error('Started Steps cannot be reordered');
@@ -1031,27 +1037,35 @@ class SessionService {
     return { deleted: taskId };
   }
 
-  async focusTask(sessionId: string, taskId: string | null) {
+  async focusTask(sessionId: string, taskId: string | null, branchId?: string) {
     const state = this.getProjectState(sessionId);
-    const branchId = state.agent.activeBranchId;
-    const currentTaskId = state.agent.branches.find((branch) => branch.id === branchId)?.focusedTaskId ?? null;
+    const targetBranchId = branchId ?? state.agent.activeBranchId;
+    const targetBranch = state.agent.branches.find((branch) => branch.id === targetBranchId);
+    if (!targetBranch) throw new Error(`Conversation branch ${targetBranchId} not found`);
+    const currentTaskId = targetBranch.focusedTaskId ?? null;
     const context = taskId ? await this.resolveTaskContext(sessionId, taskId) : null;
     if (currentTaskId === taskId) return context;
     if (context?.blockers.length) throw new Error(`Task cannot be focused: ${context.blockers.join('; ')}`);
-    const branches = state.agent.branches.map((branch) => branch.id === branchId ? { ...branch, focusedTaskId: taskId } : branch);
+    const branches = state.agent.branches.map((branch) => branch.id === targetBranchId ? { ...branch, focusedTaskId: taskId } : branch);
     this.updateProjectState(sessionId, { agent: { branches } });
     return context;
   }
 
-  async updateTaskCriterion(sessionId: string, taskId: string, criterionId: string, completed: boolean) {
+  async updateTaskCriterion(sessionId: string, taskId: string, criterionId: string, completed: boolean, branchId?: string) {
     const tasks = await this.listTasks(sessionId);
     const task = tasks.find((candidate) => candidate.id === taskId);
     if (!task) throw new Error(`Task ${taskId} not found`);
     const criterion = task.successCriteria.find((candidate) => candidate.id === criterionId);
     if (!criterion) throw new Error(`Criterion ${criterionId} not found`);
     const criteria = task.successCriteria.map((candidate) => candidate.id === criterionId ? { ...candidate, completed } : candidate);
-    if (task.kind === 'step') return this.upsertTaskStep(sessionId, { id: task.id, parentId: task.parentId, title: task.title, successCriteria: criteria });
+    if (task.kind === 'step') return this.upsertTaskStep(sessionId, { id: task.id, parentId: task.parentId, title: task.title, successCriteria: criteria }, branchId);
     return this.upsertTask(sessionId, { ...task, successCriteria: criteria });
+  }
+
+  async updateTaskCriterionForBranch(sessionId: string, taskId: string, criterionId: string, completed: boolean, branchId?: string) {
+    const tasks = await this.listTasks(sessionId);
+    this.assertTaskOrDescendantFocused(sessionId, taskId, tasks, branchId);
+    return this.updateTaskCriterion(sessionId, taskId, criterionId, completed, branchId);
   }
 
   getRestrictions(sessionId: string) {
@@ -1225,12 +1239,13 @@ class SessionService {
     };
   }
 
-  async assertTaskExecutionReady(sessionId: string, toolName: string) {
+  async assertTaskExecutionReady(sessionId: string, toolName: string, branchId?: string) {
     // Read-only tools do not mutate state and must not require a focused Task.
     if (isReadOnlyHexestraTool(toolName)) return;
     if (/^(task_|restriction_|tool_catalog_)/.test(toolName)) return;
     const state = this.getProjectState(sessionId);
-    const branch = state.agent.branches.find((candidate) => candidate.id === state.agent.activeBranchId);
+    const targetBranchId = branchId ?? state.agent.activeBranchId;
+    const branch = state.agent.branches.find((candidate) => candidate.id === targetBranchId);
     if (!branch?.focusedTaskId) throw new Error('Create and focus an Agent Task before using execution tools');
     const tasks = await this.listTasks(sessionId);
     const focused = tasks.find((task) => task.id === branch.focusedTaskId);
@@ -1244,24 +1259,35 @@ class SessionService {
     if (context.blockers.length) throw new Error(`Task execution blocked: ${context.blockers.join('; ')}`);
   }
 
-  private assertObjectiveFocused(sessionId: string, objectiveId: string) {
-    const state = this.getProjectState(sessionId);
-    const focusedTaskId = state.agent.branches.find((branch) => branch.id === state.agent.activeBranchId)?.focusedTaskId;
+  private assertObjectiveFocused(sessionId: string, objectiveId: string, branchId?: string) {
+    const focusedTaskId = this.getFocusedTaskId(sessionId, branchId);
     if (focusedTaskId !== objectiveId) throw new Error('Focus the Objective before changing its execution plan');
   }
 
-  private assertStepFocused(sessionId: string, stepId: string) {
-    const state = this.getProjectState(sessionId);
-    const focusedTaskId = state.agent.branches.find((branch) => branch.id === state.agent.activeBranchId)?.focusedTaskId;
+  private assertStepFocused(sessionId: string, stepId: string, branchId?: string) {
+    const focusedTaskId = this.getFocusedTaskId(sessionId, branchId);
     if (focusedTaskId !== stepId) throw new Error('Focus the Step before updating its execution state');
   }
 
-  private assertObjectiveOrStepFocused(sessionId: string, objectiveId: string, stepId: string) {
-    const state = this.getProjectState(sessionId);
-    const focusedTaskId = state.agent.branches.find((branch) => branch.id === state.agent.activeBranchId)?.focusedTaskId;
+  private assertObjectiveOrStepFocused(sessionId: string, objectiveId: string, stepId: string, branchId?: string) {
+    const focusedTaskId = this.getFocusedTaskId(sessionId, branchId);
     if (focusedTaskId !== objectiveId && focusedTaskId !== stepId) {
       throw new Error('Focus the Objective or Step before updating it');
     }
+  }
+
+  private assertTaskOrDescendantFocused(sessionId: string, taskId: string, tasks: PentestTask[], branchId?: string) {
+    const focusedTaskId = this.getFocusedTaskId(sessionId, branchId);
+    if (focusedTaskId === taskId) return;
+    const focused = tasks.find((task) => task.id === focusedTaskId);
+    if (focused?.kind === 'step' && focused.parentId === taskId) return;
+    throw new Error('Focus the Task or one of its Steps before updating execution state');
+  }
+
+  private getFocusedTaskId(sessionId: string, branchId?: string) {
+    const state = this.getProjectState(sessionId);
+    const targetBranchId = branchId ?? state.agent.activeBranchId;
+    return state.agent.branches.find((branch) => branch.id === targetBranchId)?.focusedTaskId ?? undefined;
   }
 
   async getTaskTrace(sessionId: string, nodeId: string): Promise<TaskTracePackage> {
