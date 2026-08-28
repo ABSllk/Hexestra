@@ -49,6 +49,27 @@ npm run audit:public
 npm run check
 ```
 
+### Test timeout budgets
+
+Keep Vitest's default timeout for ordinary unit tests. Use an explicit per-test
+timeout only for intentionally high-work stress cases or filesystem/process
+integration tests whose isolated assertions are fast enough but whose wall time
+can grow under the full parallel suite.
+
+Before raising a timeout:
+
+1. Run the test file alone with the verbose reporter and record the slow test's
+   actual duration.
+2. Preserve the representative input size and behavioral assertions; do not make
+   the test pass by shrinking its coverage.
+3. Set the timeout on that test only (`30_000` for CPU stress tests or `60_000`
+   for filesystem/process integration tests are the current reference budgets).
+4. Run the complete `npm test` suite to catch another default-timeout failure
+   hidden by the first one.
+
+Do not increase the global `testTimeout`: that would weaken the failure signal for
+all normal unit tests and could hide a real performance regression.
+
 Build the Burp Bridge:
 
 ```powershell

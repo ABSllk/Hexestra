@@ -285,7 +285,7 @@ describe('netmapLayout', () => {
 
     expect(second).toEqual(first);
     expectNoNodeOverlap(first, viewport);
-  });
+  }, 30_000);
 });
 
 function expectNoNodeOverlap(

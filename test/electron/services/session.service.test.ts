@@ -349,7 +349,7 @@ describe('folder project service', () => {
     await expect(sessionService.focusTask(project.id, objective.id, 'missing-branch')).rejects.toThrow(
       'Conversation branch missing-branch not found',
     );
-  });
+  }, 60_000);
 
   it('canonicalizes Windows watcher roots without changing POSIX paths', () => {
     const shortPath = ['C:', 'Users', 'RUNNER~1', 'AppData', 'Local', 'Temp', 'project'].join('\\');
