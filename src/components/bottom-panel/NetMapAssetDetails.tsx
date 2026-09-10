@@ -33,7 +33,7 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
   return (
     <aside
       aria-label={`Asset details for ${node.label}`}
-      className="pointer-events-auto flex max-h-full w-[min(320px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg border border-accent-teal/25 bg-[rgb(var(--color-netmap-chrome)/0.95)] shadow-2xl shadow-black/50 backdrop-blur-md"
+      className="pointer-events-auto flex max-h-full w-[min(320px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg border border-accent-teal/25 bg-[rgb(var(--app-color-netmap-chrome)/0.95)] shadow-2xl shadow-black/50 backdrop-blur-md"
     >
       <div className="flex shrink-0 items-center justify-between border-b border-accent-teal/10 px-3 py-2 select-none">
         <div className="min-w-0">

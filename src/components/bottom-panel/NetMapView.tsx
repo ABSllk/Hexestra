@@ -425,7 +425,7 @@ export function NetMapView() {
 
   return (
     <section className="netmap-shell flex h-full flex-col" aria-label={`${perspective} asset relationship map`}>
-      <header className="flex shrink-0 items-center justify-between border-b border-accent-teal/10 bg-[rgb(var(--color-netmap-chrome)/0.95)] px-3 py-1.5">
+      <header className="flex shrink-0 items-center justify-between border-b border-accent-teal/10 bg-[rgb(var(--app-color-netmap-chrome)/0.95)] px-3 py-1.5">
         <div className="flex items-center gap-2">
           <Icon name="network" size={14} className="text-accent-teal" />
           <span className="font-mono text-xs font-semibold tracking-[0.16em] text-text-secondary select-none">
@@ -547,7 +547,7 @@ export function NetMapView() {
 
         {selectedProjectNode && !selectedIsVisible && (
           <button
-            className="absolute bottom-3 left-3 z-20 rounded border border-accent-teal/35 bg-[rgb(var(--color-netmap-chrome)/0.96)] px-3 py-1.5 font-mono text-[11px] uppercase text-accent-teal"
+            className="absolute bottom-3 left-3 z-20 rounded border border-accent-teal/35 bg-[rgb(var(--app-color-netmap-chrome)/0.96)] px-3 py-1.5 font-mono text-[11px] uppercase text-accent-teal"
             onClick={() => useNetMapStore.getState().requestReveal(selectedProjectNode.id)}
           >
             View in {perspectiveForAsset(selectedProjectNode.id, nodes, edges)}
@@ -555,7 +555,7 @@ export function NetMapView() {
         )}
         {selectedApplicationExpandable && selectedIsVisible && (
           <button
-            className="absolute bottom-3 left-3 z-20 rounded border border-accent-teal/35 bg-[rgb(var(--color-netmap-chrome)/0.96)] px-3 py-1.5 font-mono text-[11px] uppercase text-accent-teal"
+            className="absolute bottom-3 left-3 z-20 rounded border border-accent-teal/35 bg-[rgb(var(--app-color-netmap-chrome)/0.96)] px-3 py-1.5 font-mono text-[11px] uppercase text-accent-teal"
             onClick={() => setExpandedNodeIds((current) => {
               const next = new Set(current);
               if (next.has(selectedProjectNode.id)) next.delete(selectedProjectNode.id);
@@ -569,7 +569,7 @@ export function NetMapView() {
 
       </div>
 
-      <footer className="flex shrink-0 items-center gap-3 border-t border-accent-teal/10 bg-[rgb(var(--color-netmap-chrome)/0.95)] px-3 py-1 font-mono text-[11px] text-text-muted select-none">
+      <footer className="flex shrink-0 items-center gap-3 border-t border-accent-teal/10 bg-[rgb(var(--app-color-netmap-chrome)/0.95)] px-3 py-1 font-mono text-[11px] text-text-muted select-none">
         {Object.entries(palette.nodeColors).map(([status, color]) => (
           <div key={status} className="flex items-center gap-1.5">
             <span

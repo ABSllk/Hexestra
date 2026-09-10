@@ -267,7 +267,7 @@ function ConnectionSettings() {
                           : [...claudeSettings.settingSources, source.id];
                         if (next.length) updateClaude({ settingSources: next });
                       }}
-                      className="mt-0.5 accent-[rgb(var(--color-accent-blue))]"
+                      className="mt-0.5 accent-[rgb(var(--app-color-accent-blue))]"
                     />
                     <span className="min-w-0">
                       <span className="block text-xs text-text-secondary">{source.label}</span>

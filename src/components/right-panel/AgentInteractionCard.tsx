@@ -188,7 +188,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
                     >
                       <input
                         checked={selected}
-                        className="mt-0.5 accent-[rgb(var(--color-accent-blue))]"
+                        className="mt-0.5 accent-[rgb(var(--app-color-accent-blue))]"
                         name={`question-${request.id}-${questionIndex}`}
                         onChange={() => selectOption(question, option.label)}
                         type={question.multiSelect ? 'checkbox' : 'radio'}
@@ -216,7 +216,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
                   <span className="flex cursor-pointer items-center gap-2 text-[11px] font-medium text-text-primary">
                     <input
                       checked={draft.customActive}
-                      className="accent-[rgb(var(--color-accent-blue))]"
+                      className="accent-[rgb(var(--app-color-accent-blue))]"
                       name={`question-${request.id}-${questionIndex}`}
                       onChange={(event) => setCustomActive(question, event.target.checked)}
                       type={question.multiSelect ? 'checkbox' : 'radio'}

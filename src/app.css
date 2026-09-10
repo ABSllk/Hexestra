@@ -1,6 +1,47 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-mono-stack);
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  --color-canvas: rgb(var(--app-color-canvas));
+  --color-panel: rgb(var(--app-color-panel));
+  --color-raised: rgb(var(--app-color-raised));
+  --color-border-subtle: rgb(var(--app-color-border-subtle));
+  --color-border-strong: rgb(var(--app-color-border-strong));
+  --color-focus: rgb(var(--app-color-focus));
+  --color-bg-primary: rgb(var(--app-color-bg-primary));
+  --color-bg-secondary: rgb(var(--app-color-bg-secondary));
+  --color-bg-tertiary: rgb(var(--app-color-bg-tertiary));
+  --color-surface: rgb(var(--app-color-surface));
+  --color-surface-hover: rgb(var(--app-color-surface-hover));
+  --color-surface-active: rgb(var(--app-color-surface-active));
+  --color-surface-light: rgb(var(--app-color-surface-light));
+  --color-text-primary: rgb(var(--app-color-text-primary));
+  --color-text-secondary: rgb(var(--app-color-text-secondary));
+  --color-text-muted: rgb(var(--app-color-text-muted));
+  --color-accent-blue: rgb(var(--app-color-accent-blue));
+  --color-accent-green: rgb(var(--app-color-accent-green));
+  --color-accent-red: rgb(var(--app-color-accent-red));
+  --color-accent-yellow: rgb(var(--app-color-accent-yellow));
+  --color-accent-purple: rgb(var(--app-color-accent-purple));
+  --color-accent-teal: rgb(var(--app-color-accent-teal));
+  --color-status-success: rgb(var(--app-color-accent-teal));
+  --color-status-warning: rgb(var(--app-color-accent-yellow));
+  --color-status-error: rgb(var(--app-color-accent-red));
+  --color-severity-critical: rgb(var(--app-color-severity-critical));
+  --color-severity-high: rgb(var(--app-color-severity-high));
+  --color-severity-medium: rgb(var(--app-color-severity-medium));
+  --color-severity-low: rgb(var(--app-color-severity-low));
+  --color-severity-info: rgb(var(--app-color-severity-info));
+  --color-node-untested: rgb(var(--app-color-node-untested));
+  --color-node-progress: rgb(var(--app-color-node-progress));
+  --color-node-scanned: rgb(var(--app-color-node-scanned));
+  --color-node-vulnerable: rgb(var(--app-color-node-vulnerable));
+  --color-node-compromised: rgb(var(--app-color-node-compromised));
+}
 
 [data-presentation-sensitive] {
   transition: filter var(--motion-fast) ease;
@@ -20,7 +61,7 @@
 :root {
   color-scheme: dark;
   --font-ui: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI Variable", "Segoe UI", sans-serif;
-  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "Noto Sans SC", "Microsoft YaHei UI", monospace;
+  --font-mono-stack: "Cascadia Mono", "Cascadia Code", Consolas, "Noto Sans SC", "Microsoft YaHei UI", monospace;
   --font-size-ui: 13px;
   --space-xs: 2px;
   --space-sm: 4px;
@@ -34,134 +75,134 @@
   --radius-overlay: 12px;
   --motion-fast: 140ms;
   --motion-standard: 180ms;
-  --color-canvas: 11 15 23;
-  --color-panel: 17 24 39;
-  --color-raised: 23 32 51;
-  --color-border-subtle: 39 50 68;
-  --color-border-strong: 49 67 95;
-  --color-focus: 79 140 255;
-  --color-bg-primary: 17 24 39;
-  --color-bg-secondary: 11 15 23;
-  --color-bg-tertiary: 9 13 21;
-  --color-surface: 23 32 51;
-  --color-surface-hover: 34 47 72;
-  --color-surface-active: 49 67 95;
-  --color-surface-light: 139 153 176;
-  --color-text-primary: 241 245 249;
-  --color-text-secondary: 168 179 196;
-  --color-text-muted: 124 137 155;
-  --color-accent-blue: 79 140 255;
-  --color-accent-green: 52 211 153;
-  --color-accent-red: 251 113 133;
-  --color-accent-yellow: 253 230 138;
-  --color-accent-purple: 167 139 250;
-  --color-accent-teal: 45 212 191;
-  --color-severity-critical: 251 113 133;
-  --color-severity-high: 253 186 116;
-  --color-severity-medium: 253 230 138;
-  --color-severity-low: 110 231 183;
-  --color-severity-info: 79 140 255;
-  --color-node-untested: 124 137 155;
-  --color-node-progress: 79 140 255;
-  --color-node-scanned: 253 230 138;
-  --color-node-vulnerable: 253 186 116;
-  --color-node-compromised: 110 231 183;
-  --color-netmap-shell: 11 15 23;
-  --color-netmap-canvas: 11 15 23;
-  --color-netmap-chrome: 17 24 39;
-  --color-netmap-grid: 90 112 142;
-  --color-netmap-edge: 39 78 94;
-  --color-netmap-label: 190 207 222;
-  --color-netmap-focus: 230 255 251;
+  --app-color-canvas: 11 15 23;
+  --app-color-panel: 17 24 39;
+  --app-color-raised: 23 32 51;
+  --app-color-border-subtle: 39 50 68;
+  --app-color-border-strong: 49 67 95;
+  --app-color-focus: 79 140 255;
+  --app-color-bg-primary: 17 24 39;
+  --app-color-bg-secondary: 11 15 23;
+  --app-color-bg-tertiary: 9 13 21;
+  --app-color-surface: 23 32 51;
+  --app-color-surface-hover: 34 47 72;
+  --app-color-surface-active: 49 67 95;
+  --app-color-surface-light: 139 153 176;
+  --app-color-text-primary: 241 245 249;
+  --app-color-text-secondary: 168 179 196;
+  --app-color-text-muted: 124 137 155;
+  --app-color-accent-blue: 79 140 255;
+  --app-color-accent-green: 52 211 153;
+  --app-color-accent-red: 251 113 133;
+  --app-color-accent-yellow: 253 230 138;
+  --app-color-accent-purple: 167 139 250;
+  --app-color-accent-teal: 45 212 191;
+  --app-color-severity-critical: 251 113 133;
+  --app-color-severity-high: 253 186 116;
+  --app-color-severity-medium: 253 230 138;
+  --app-color-severity-low: 110 231 183;
+  --app-color-severity-info: 79 140 255;
+  --app-color-node-untested: 124 137 155;
+  --app-color-node-progress: 79 140 255;
+  --app-color-node-scanned: 253 230 138;
+  --app-color-node-vulnerable: 253 186 116;
+  --app-color-node-compromised: 110 231 183;
+  --app-color-netmap-shell: 11 15 23;
+  --app-color-netmap-canvas: 11 15 23;
+  --app-color-netmap-chrome: 17 24 39;
+  --app-color-netmap-grid: 90 112 142;
+  --app-color-netmap-edge: 39 78 94;
+  --app-color-netmap-label: 190 207 222;
+  --app-color-netmap-focus: 230 255 251;
   font-family: var(--font-ui);
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']):not([data-theme='light']) {
     color-scheme: light;
-    --color-canvas: 225 230 237;
-    --color-panel: 234 237 242;
-    --color-raised: 229 233 239;
-    --color-border-subtle: 196 205 216;
-    --color-border-strong: 166 178 192;
-    --color-focus: 49 95 159;
-    --color-bg-primary: 234 237 242;
-    --color-bg-secondary: 225 230 237;
-    --color-bg-tertiary: 216 222 230;
-    --color-surface: 226 231 237;
-    --color-surface-hover: 213 220 229;
-    --color-surface-active: 197 207 219;
-    --color-surface-light: 70 86 106;
-    --color-text-primary: 31 42 58;
-    --color-text-secondary: 70 86 106;
-    --color-text-muted: 86 100 118;
-    --color-accent-blue: 49 95 159;
-    --color-accent-green: 23 107 82;
-    --color-accent-red: 168 58 80;
-    --color-accent-yellow: 122 91 0;
-    --color-accent-purple: 102 81 154;
-    --color-accent-teal: 23 110 103;
-    --color-severity-critical: 168 58 80;
-    --color-severity-high: 154 69 33;
-    --color-severity-medium: 122 91 0;
-    --color-severity-low: 23 107 82;
-    --color-severity-info: 49 95 159;
-    --color-node-untested: 86 100 118;
-    --color-node-progress: 49 95 159;
-    --color-node-scanned: 122 91 0;
-    --color-node-vulnerable: 154 69 33;
-    --color-node-compromised: 23 107 82;
-    --color-netmap-shell: 225 230 237;
-    --color-netmap-canvas: 225 230 237;
-    --color-netmap-chrome: 234 237 242;
-    --color-netmap-grid: 86 100 118;
-    --color-netmap-edge: 117 134 154;
-    --color-netmap-label: 50 64 83;
-    --color-netmap-focus: 23 110 103;
+    --app-color-canvas: 225 230 237;
+    --app-color-panel: 234 237 242;
+    --app-color-raised: 229 233 239;
+    --app-color-border-subtle: 196 205 216;
+    --app-color-border-strong: 166 178 192;
+    --app-color-focus: 49 95 159;
+    --app-color-bg-primary: 234 237 242;
+    --app-color-bg-secondary: 225 230 237;
+    --app-color-bg-tertiary: 216 222 230;
+    --app-color-surface: 226 231 237;
+    --app-color-surface-hover: 213 220 229;
+    --app-color-surface-active: 197 207 219;
+    --app-color-surface-light: 70 86 106;
+    --app-color-text-primary: 31 42 58;
+    --app-color-text-secondary: 70 86 106;
+    --app-color-text-muted: 86 100 118;
+    --app-color-accent-blue: 49 95 159;
+    --app-color-accent-green: 23 107 82;
+    --app-color-accent-red: 168 58 80;
+    --app-color-accent-yellow: 122 91 0;
+    --app-color-accent-purple: 102 81 154;
+    --app-color-accent-teal: 23 110 103;
+    --app-color-severity-critical: 168 58 80;
+    --app-color-severity-high: 154 69 33;
+    --app-color-severity-medium: 122 91 0;
+    --app-color-severity-low: 23 107 82;
+    --app-color-severity-info: 49 95 159;
+    --app-color-node-untested: 86 100 118;
+    --app-color-node-progress: 49 95 159;
+    --app-color-node-scanned: 122 91 0;
+    --app-color-node-vulnerable: 154 69 33;
+    --app-color-node-compromised: 23 107 82;
+    --app-color-netmap-shell: 225 230 237;
+    --app-color-netmap-canvas: 225 230 237;
+    --app-color-netmap-chrome: 234 237 242;
+    --app-color-netmap-grid: 86 100 118;
+    --app-color-netmap-edge: 117 134 154;
+    --app-color-netmap-label: 50 64 83;
+    --app-color-netmap-focus: 23 110 103;
   }
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --color-canvas: 225 230 237;
-  --color-panel: 234 237 242;
-  --color-raised: 229 233 239;
-  --color-border-subtle: 196 205 216;
-  --color-border-strong: 166 178 192;
-  --color-focus: 49 95 159;
-  --color-bg-primary: 234 237 242;
-  --color-bg-secondary: 225 230 237;
-  --color-bg-tertiary: 216 222 230;
-  --color-surface: 226 231 237;
-  --color-surface-hover: 213 220 229;
-  --color-surface-active: 197 207 219;
-  --color-surface-light: 70 86 106;
-  --color-text-primary: 31 42 58;
-  --color-text-secondary: 70 86 106;
-  --color-text-muted: 86 100 118;
-  --color-accent-blue: 49 95 159;
-  --color-accent-green: 23 107 82;
-  --color-accent-red: 168 58 80;
-  --color-accent-yellow: 122 91 0;
-  --color-accent-purple: 102 81 154;
-  --color-accent-teal: 23 110 103;
-  --color-severity-critical: 168 58 80;
-  --color-severity-high: 154 69 33;
-  --color-severity-medium: 122 91 0;
-  --color-severity-low: 23 107 82;
-  --color-severity-info: 49 95 159;
-  --color-node-untested: 86 100 118;
-  --color-node-progress: 49 95 159;
-  --color-node-scanned: 122 91 0;
-  --color-node-vulnerable: 154 69 33;
-  --color-node-compromised: 23 107 82;
-  --color-netmap-shell: 225 230 237;
-  --color-netmap-canvas: 225 230 237;
-  --color-netmap-chrome: 234 237 242;
-  --color-netmap-grid: 86 100 118;
-  --color-netmap-edge: 117 134 154;
-  --color-netmap-label: 50 64 83;
-  --color-netmap-focus: 23 110 103;
+  --app-color-canvas: 225 230 237;
+  --app-color-panel: 234 237 242;
+  --app-color-raised: 229 233 239;
+  --app-color-border-subtle: 196 205 216;
+  --app-color-border-strong: 166 178 192;
+  --app-color-focus: 49 95 159;
+  --app-color-bg-primary: 234 237 242;
+  --app-color-bg-secondary: 225 230 237;
+  --app-color-bg-tertiary: 216 222 230;
+  --app-color-surface: 226 231 237;
+  --app-color-surface-hover: 213 220 229;
+  --app-color-surface-active: 197 207 219;
+  --app-color-surface-light: 70 86 106;
+  --app-color-text-primary: 31 42 58;
+  --app-color-text-secondary: 70 86 106;
+  --app-color-text-muted: 86 100 118;
+  --app-color-accent-blue: 49 95 159;
+  --app-color-accent-green: 23 107 82;
+  --app-color-accent-red: 168 58 80;
+  --app-color-accent-yellow: 122 91 0;
+  --app-color-accent-purple: 102 81 154;
+  --app-color-accent-teal: 23 110 103;
+  --app-color-severity-critical: 168 58 80;
+  --app-color-severity-high: 154 69 33;
+  --app-color-severity-medium: 122 91 0;
+  --app-color-severity-low: 23 107 82;
+  --app-color-severity-info: 49 95 159;
+  --app-color-node-untested: 86 100 118;
+  --app-color-node-progress: 49 95 159;
+  --app-color-node-scanned: 122 91 0;
+  --app-color-node-vulnerable: 154 69 33;
+  --app-color-node-compromised: 23 107 82;
+  --app-color-netmap-shell: 225 230 237;
+  --app-color-netmap-canvas: 225 230 237;
+  --app-color-netmap-chrome: 234 237 242;
+  --app-color-netmap-grid: 86 100 118;
+  --app-color-netmap-edge: 117 134 154;
+  --app-color-netmap-label: 50 64 83;
+  --app-color-netmap-focus: 23 110 103;
 }
 
 /* ============================================================
@@ -175,16 +216,16 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: rgb(var(--color-bg-tertiary));
+  background: rgb(var(--app-color-bg-tertiary));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--color-surface-hover));
+  background: rgb(var(--app-color-surface-hover));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--color-surface-active));
+  background: rgb(var(--app-color-surface-active));
 }
 
 /* Base overrides */
@@ -196,8 +237,8 @@ html, body, #root {
 }
 
 body {
-  background: rgb(var(--color-canvas));
-  color: rgb(var(--color-text-primary));
+  background: rgb(var(--app-color-canvas));
+  color: rgb(var(--app-color-text-primary));
   font-family: var(--font-ui);
   font-size: var(--font-size-ui);
 }
@@ -223,8 +264,8 @@ samp {
 }
 
 ::selection {
-  background: rgb(var(--color-accent-blue) / 0.28);
-  color: rgb(var(--color-text-primary));
+  background: rgb(var(--app-color-accent-blue) / 0.28);
+  color: rgb(var(--app-color-text-primary));
 }
 
 button:not(:disabled),
@@ -246,17 +287,23 @@ summary:focus-visible,
 select:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid rgb(var(--color-focus) / 0.86);
+  outline: 2px solid rgb(var(--app-color-focus) / 0.86);
   outline-offset: 2px;
 }
 
-/* Controls with an explicit focus treatment must not also inherit the global
-   outline. The combination rendered as two misaligned blue strokes. */
+/* Controls with a custom border/box-shadow treatment must not also inherit the
+   global outline. Explicit outline-none utilities keep a visible replacement
+   focus ring so keyboard navigation remains discoverable in every context. */
 .ui-control:focus-visible,
 .settings-input:focus-visible,
+.agent-composer-input:focus-visible {
+  outline: none;
+}
+
 .outline-none:focus-visible,
 .focus-visible\:outline-none:focus-visible {
-  outline: none;
+  outline: 2px solid rgb(var(--app-color-focus) / 0.86);
+  outline-offset: 2px;
 }
 
 @layer components {
@@ -265,35 +312,35 @@ textarea:focus-visible {
   }
 
   .ui-button-primary {
-    border-color: rgb(var(--color-accent-blue) / 0.8);
-    background: rgb(var(--color-accent-blue));
+    border-color: rgb(var(--app-color-accent-blue) / 0.8);
+    background: rgb(var(--app-color-accent-blue));
     color: white;
   }
 
   .ui-button-primary:hover:not(:disabled) {
-    background: rgb(var(--color-accent-blue) / 0.86);
+    background: rgb(var(--app-color-accent-blue) / 0.86);
   }
 
   .ui-button-neutral {
-    border-color: rgb(var(--color-border-subtle));
-    background: rgb(var(--color-raised) / 0.56);
-    color: rgb(var(--color-text-secondary));
+    border-color: rgb(var(--app-color-border-subtle));
+    background: rgb(var(--app-color-raised) / 0.56);
+    color: rgb(var(--app-color-text-secondary));
   }
 
   .ui-button-neutral:hover:not(:disabled) {
-    border-color: rgb(var(--color-border-strong));
-    background: rgb(var(--color-surface-hover) / 0.7);
-    color: rgb(var(--color-text-primary));
+    border-color: rgb(var(--app-color-border-strong));
+    background: rgb(var(--app-color-surface-hover) / 0.7);
+    color: rgb(var(--app-color-text-primary));
   }
 
   .ui-button-danger {
-    border-color: rgb(var(--color-severity-critical) / 0.36);
-    background: rgb(var(--color-severity-critical) / 0.1);
-    color: rgb(var(--color-severity-critical));
+    border-color: rgb(var(--app-color-severity-critical) / 0.36);
+    background: rgb(var(--app-color-severity-critical) / 0.1);
+    color: rgb(var(--app-color-severity-critical));
   }
 
   .ui-button-danger:hover:not(:disabled) {
-    background: rgb(var(--color-severity-critical) / 0.18);
+    background: rgb(var(--app-color-severity-critical) / 0.18);
   }
 
   .ui-input {
@@ -305,9 +352,9 @@ textarea:focus-visible {
   }
 
   .ui-icon-button:hover:not(:disabled) {
-    border-color: rgb(var(--color-border-strong) / 0.8);
-    background: rgb(var(--color-surface-hover) / 0.7);
-    color: rgb(var(--color-text-primary));
+    border-color: rgb(var(--app-color-border-strong) / 0.8);
+    background: rgb(var(--app-color-surface-hover) / 0.7);
+    color: rgb(var(--app-color-text-primary));
   }
 
   .ui-segmented {
@@ -328,19 +375,19 @@ textarea:focus-visible {
 
   .ui-control {
     @apply min-h-7 rounded-md border outline-none transition-colors;
-    border-color: rgb(var(--color-border-subtle));
-    background: rgb(var(--color-panel) / 0.72);
+    border-color: rgb(var(--app-color-border-subtle));
+    background: rgb(var(--app-color-panel) / 0.72);
   }
 
   .ui-control:hover:not(:disabled) {
-    border-color: rgb(var(--color-border-strong) / 0.8);
-    background: rgb(var(--color-panel) / 0.92);
+    border-color: rgb(var(--app-color-border-strong) / 0.8);
+    background: rgb(var(--app-color-panel) / 0.92);
   }
 
   .ui-control:focus-within,
   .ui-control:focus {
-    border-color: rgb(var(--color-focus) / 0.72);
-    box-shadow: 0 0 0 3px rgb(var(--color-focus) / 0.08);
+    border-color: rgb(var(--app-color-focus) / 0.72);
+    box-shadow: 0 0 0 3px rgb(var(--app-color-focus) / 0.08);
   }
 
   .ui-hover-row {
@@ -353,31 +400,31 @@ textarea:focus-visible {
 
   .ui-card {
     @apply rounded-lg border shadow-sm shadow-black/10;
-    border-color: rgb(var(--color-border-subtle) / 0.8);
-    background: rgb(var(--color-raised) / 0.56);
+    border-color: rgb(var(--app-color-border-subtle) / 0.8);
+    background: rgb(var(--app-color-raised) / 0.56);
   }
 
   .ui-popover {
     @apply rounded-xl border shadow-2xl shadow-black/35;
-    border-color: rgb(var(--color-border-strong) / 0.9);
-    background: rgb(var(--color-panel));
+    border-color: rgb(var(--app-color-border-strong) / 0.9);
+    background: rgb(var(--app-color-panel));
   }
 
   .ui-panel-header {
     @apply flex min-h-9 shrink-0 items-center gap-2 border-b px-3;
-    border-color: rgb(var(--color-border-subtle) / 0.75);
-    background: rgb(var(--color-panel) / 0.88);
+    border-color: rgb(var(--app-color-border-subtle) / 0.75);
+    background: rgb(var(--app-color-panel) / 0.88);
   }
 
   .ui-toolbar {
     @apply flex min-h-9 shrink-0 items-center gap-2 border-b px-2.5;
-    border-color: rgb(var(--color-border-subtle) / 0.7);
-    background: rgb(var(--color-panel) / 0.72);
+    border-color: rgb(var(--app-color-border-subtle) / 0.7);
+    background: rgb(var(--app-color-panel) / 0.72);
   }
 
   .ui-empty-state {
     @apply flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-5 py-8 text-center;
-    color: rgb(var(--color-text-muted));
+    color: rgb(var(--app-color-text-muted));
   }
 
   .ui-field-label {
@@ -389,7 +436,7 @@ textarea:focus-visible {
   }
 
   .ui-divider {
-    border-color: rgb(var(--color-border-subtle) / 0.72);
+    border-color: rgb(var(--app-color-border-subtle) / 0.72);
   }
 }
 
@@ -409,7 +456,7 @@ textarea:focus-visible {
 
 .xterm-container .xterm-viewport {
   overflow-y: scroll !important;
-  scrollbar-color: rgb(var(--color-surface-hover)) rgb(var(--color-bg-tertiary));
+  scrollbar-color: rgb(var(--app-color-surface-hover)) rgb(var(--app-color-bg-tertiary));
   scrollbar-width: auto;
 }
 
@@ -418,40 +465,40 @@ textarea:focus-visible {
 }
 
 .xterm-container .xterm-viewport::-webkit-scrollbar-track {
-  background: rgb(var(--color-bg-tertiary));
+  background: rgb(var(--app-color-bg-tertiary));
 }
 
 .xterm-container .xterm-viewport::-webkit-scrollbar-thumb {
   min-height: 24px;
-  border: 2px solid rgb(var(--color-bg-tertiary));
+  border: 2px solid rgb(var(--app-color-bg-tertiary));
   border-radius: 6px;
-  background: rgb(var(--color-surface-active));
+  background: rgb(var(--app-color-surface-active));
 }
 
 .xterm-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--color-text-muted));
+  background: rgb(var(--app-color-text-muted));
 }
 
 /* Hacknet-inspired NetMap */
 .netmap-shell {
   background:
-    radial-gradient(circle at 50% 45%, rgb(var(--color-accent-teal) / 0.08), transparent 42%),
-    rgb(var(--color-netmap-shell));
+    radial-gradient(circle at 50% 45%, rgb(var(--app-color-accent-teal) / 0.08), transparent 42%),
+    rgb(var(--app-color-netmap-shell));
 }
 
 .netmap-canvas {
   background:
-    linear-gradient(180deg, rgb(var(--color-accent-teal) / 0.04), transparent 35%),
-    rgb(var(--color-netmap-canvas));
+    linear-gradient(180deg, rgb(var(--app-color-accent-teal) / 0.04), transparent 35%),
+    rgb(var(--app-color-netmap-canvas));
 }
 
 .netmap-grid {
   opacity: 0.28;
   background-image:
-    linear-gradient(rgb(var(--color-netmap-grid) / 0.14) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(var(--color-netmap-grid) / 0.14) 1px, transparent 1px),
-    linear-gradient(rgb(var(--color-netmap-grid) / 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(var(--color-netmap-grid) / 0.06) 1px, transparent 1px);
+    linear-gradient(rgb(var(--app-color-netmap-grid) / 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--app-color-netmap-grid) / 0.14) 1px, transparent 1px),
+    linear-gradient(rgb(var(--app-color-netmap-grid) / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--app-color-netmap-grid) / 0.06) 1px, transparent 1px);
   background-size: 72px 72px, 72px 72px, 18px 18px, 18px 18px;
   mask-image: radial-gradient(circle at center, black 25%, transparent 88%);
 }
@@ -460,8 +507,8 @@ textarea:focus-visible {
   z-index: 2;
   opacity: 0;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgb(var(--color-accent-teal) / 0.32), transparent);
-  box-shadow: 0 0 8px rgb(var(--color-accent-teal) / 0.08);
+  background: linear-gradient(90deg, transparent, rgb(var(--app-color-accent-teal) / 0.32), transparent);
+  box-shadow: 0 0 8px rgb(var(--app-color-accent-teal) / 0.08);
   animation: netmap-scan 22s linear infinite;
 }
 
@@ -470,7 +517,7 @@ textarea:focus-visible {
 }
 
 .netmap-node:focus-visible rect {
-  stroke: rgb(var(--color-netmap-focus));
+  stroke: rgb(var(--app-color-netmap-focus));
   stroke-width: 2;
 }
 
@@ -523,19 +570,19 @@ textarea:focus-visible {
 }
 
 [data-panel-resize-handle-id]:hover {
-  background-color: rgb(var(--color-accent-blue)) !important;
+  background-color: rgb(var(--app-color-accent-blue)) !important;
 }
 
 [data-panel-resize-handle-id][data-resize-handle-active] {
-  background-color: rgb(var(--color-accent-blue)) !important;
+  background-color: rgb(var(--app-color-accent-blue)) !important;
 }
 
 /* Tab bar styles */
 .tab-bar {
   display: flex;
   align-items: center;
-  background: rgb(var(--color-panel));
-  border-bottom: 1px solid rgb(var(--color-border-subtle));
+  background: rgb(var(--app-color-panel));
+  border-bottom: 1px solid rgb(var(--app-color-border-subtle));
   min-height: 36px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -551,11 +598,11 @@ textarea:focus-visible {
 .settings-input {
   width: 100%;
   min-height: 34px;
-  border: 1px solid rgb(var(--color-border-subtle));
+  border: 1px solid rgb(var(--app-color-border-subtle));
   border-radius: var(--radius-control);
-  background: rgb(var(--color-panel));
+  background: rgb(var(--app-color-panel));
   padding: 0 10px;
-  color: rgb(var(--color-text-primary));
+  color: rgb(var(--app-color-text-primary));
   font-size: 13px;
   outline: none;
 }
@@ -577,12 +624,12 @@ textarea.settings-textarea-large {
 }
 
 .settings-input:focus {
-  border-color: rgb(var(--color-focus) / 0.72);
-  box-shadow: 0 0 0 3px rgb(var(--color-focus) / 0.08);
+  border-color: rgb(var(--app-color-focus) / 0.72);
+  box-shadow: 0 0 0 3px rgb(var(--app-color-focus) / 0.08);
 }
 
 .settings-input:hover:not(:focus) {
-  border-color: rgb(var(--color-border-strong) / 0.85);
+  border-color: rgb(var(--app-color-border-strong) / 0.85);
 }
 
 /* Animation for streaming messages */

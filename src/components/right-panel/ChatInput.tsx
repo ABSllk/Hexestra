@@ -321,7 +321,7 @@ export function ChatInput() {
             aria-expanded={showCommandSuggestions}
             aria-controls={showCommandSuggestions ? 'agent-command-suggestions' : undefined}
             aria-activedescendant={showCommandSuggestions ? `agent-command-option-${activeCommandIndex}` : undefined}
-            className="max-h-36 min-h-10 min-w-0 flex-1 resize-none rounded-xl border-0 bg-transparent p-0 font-sans text-xs leading-5 text-text-primary placeholder:text-text-muted focus-visible:outline-none"
+            className="agent-composer-input max-h-36 min-h-10 min-w-0 flex-1 resize-none rounded-md border-0 bg-transparent p-0 font-sans text-xs leading-5 text-text-primary placeholder:text-text-muted"
           />
         </div>
 

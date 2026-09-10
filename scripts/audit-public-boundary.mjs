@@ -18,8 +18,6 @@ const PUBLIC_ROOT_FILES = new Set([
   'index.html',
   'package-lock.json',
   'package.json',
-  'postcss.config.cjs',
-  'tailwind.config.ts',
   'tsconfig.json',
   'vite.config.ts',
   'vitest.config.ts',
