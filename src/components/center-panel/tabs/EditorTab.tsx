@@ -10,6 +10,7 @@ import { useAppPreferences } from '@/i18n';
 import { useSessionStore, useTabStore } from '@/stores';
 import type { SessionFileContent } from '@/types';
 import { SHELL_IPC, type ShellRemoteFileContent, type ShellSession } from '@electron/contracts/shell';
+import { eventMatchesShortcut, resolveShortcutBinding } from '@electron/contracts/shortcuts';
 
 type RemoteWriteResult = ShellRemoteFileContent | {
   status: 'conflict';
@@ -18,7 +19,7 @@ type RemoteWriteResult = ShellRemoteFileContent | {
 };
 
 export function EditorTab({ tabId }: { tabId: string }) {
-  const { resolvedTheme } = useAppPreferences();
+  const { resolvedTheme, settings, platform } = useAppPreferences();
   const tab = useTabStore((state) => state.tabs.find((candidate) => candidate.id === tabId));
   const updateTabTitle = useTabStore((state) => state.updateTabTitle);
   const updateTabData = useTabStore((state) => state.updateTabData);
@@ -176,14 +177,14 @@ export function EditorTab({ tabId }: { tabId: string }) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+      if (eventMatchesShortcut(event, resolveShortcutBinding(settings.shortcutOverrides, 'editor.save'), platform)) {
         event.preventDefault();
         void save();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [save]);
+  }, [platform, save, settings.shortcutOverrides]);
 
   const handleMount: OnMount = (editor, editorApi) => {
     prepareMonaco(editorApi, resolvedTheme);

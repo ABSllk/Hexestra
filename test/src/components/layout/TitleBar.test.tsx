@@ -25,11 +25,18 @@ describe('TitleBar', () => {
     expect(screen.getByRole('img', { name: 'Hexestra' }).getAttribute('src')).toMatch(/^(data:image\/svg\+xml|.*hexestra-mark)/);
     expect(screen.getByText('HEXESTRA')).toBeInTheDocument();
     expect(screen.getByText('Example Project')).toBeInTheDocument();
+    expect(screen.getByText('Example Project')).toHaveAttribute('data-presentation-sensitive');
+    expect(screen.queryByText('Presentation')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     expect(useTabStore.getState().activeTab()).toMatchObject({ type: 'settings' });
     fireEvent.click(screen.getByRole('button', { name: 'File' }));
     expect(screen.getByRole('menuitem', { name: /Open Folder/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Minimize' }));
     expect(invoke).toHaveBeenCalledWith('app:window:minimize');
+  });
+
+  it('does not expose a presentation-mode button or status', () => {
+    render(<TitleBar />);
+    expect(screen.queryByRole('button', { name: /presentation mode/i })).not.toBeInTheDocument();
   });
 });

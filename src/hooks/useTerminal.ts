@@ -7,6 +7,7 @@ import { APP_CODE_FONT_SIZE_PX, getMonoFontFamily } from '@/lib/typography';
 import { useAppPreferences } from '@/i18n';
 import { getTerminalTheme } from '@/lib/theme';
 import { SHELL_IPC, type ShellSession } from '@electron/contracts/shell';
+import { resolveShortcutBinding } from '@electron/contracts/shortcuts';
 
 interface UseTerminalOptions {
   disabled?: boolean;
@@ -36,9 +37,11 @@ export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   options?: UseTerminalOptions,
 ) {
-  const { resolvedTheme } = useAppPreferences();
+  const { resolvedTheme, settings, platform } = useAppPreferences();
   const resolvedThemeRef = useRef(resolvedTheme);
   resolvedThemeRef.current = resolvedTheme;
+  const shortcutSettingsRef = useRef({ overrides: settings.shortcutOverrides, platform });
+  shortcutSettingsRef.current = { overrides: settings.shortcutOverrides, platform };
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -209,14 +212,28 @@ export function useTerminal(
     container.addEventListener('wheel', handleWheel, { passive: false, capture: true });
 
     terminal.attachCustomKeyEventHandler((event) => {
-      const clipboardAction = terminalClipboardAction(event);
+      const shortcutSettings = shortcutSettingsRef.current;
+      const clipboardAction = terminalClipboardAction(event, {
+        copy: resolveShortcutBinding(shortcutSettings.overrides, 'terminal.copy'),
+        paste: resolveShortcutBinding(shortcutSettings.overrides, 'terminal.paste'),
+      }, shortcutSettings.platform);
       if (clipboardAction === 'copy') {
+        event.preventDefault();
         void copySelection();
         return false;
       }
       if (clipboardAction === 'native-paste') {
         // xterm's native paste event owns keyboard paste. Context-menu paste
         // still uses the bounded Electron clipboard IPC path.
+        return false;
+      }
+      if (clipboardAction === 'paste') {
+        event.preventDefault();
+        void pasteFromClipboard();
+        return false;
+      }
+      if (clipboardAction === 'suppress-native-paste') {
+        event.preventDefault();
         return false;
       }
       if (event.type !== 'keydown') return true;

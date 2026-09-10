@@ -38,7 +38,7 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
       <div className="flex shrink-0 items-center justify-between border-b border-accent-teal/10 px-3 py-2 select-none">
         <div className="min-w-0">
           <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent-teal/70">Selected asset</div>
-          <div className="truncate font-mono text-xs font-semibold text-text-primary">{node.label}</div>
+          <div data-presentation-sensitive className="truncate font-mono text-xs font-semibold text-text-primary">{node.label}</div>
         </div>
         <div className="ml-3 flex shrink-0 items-center gap-2">
           {node.scopeAnnotation && <ScopeAnnotationBadge annotation={node.scopeAnnotation} />}
@@ -75,16 +75,16 @@ export function NetMapAssetDetails({ nodeId, onClose }: NetMapAssetDetailsProps)
                 {openPorts.map((port) => (
                   <div key={port.id} className="ui-card p-2 transition-colors hover:border-accent-teal/20 hover:bg-panel/60">
                     <div className="flex items-center justify-between">
-                      <span className="font-mono font-semibold text-accent-teal">{port.endpoint}</span>
+                      <span data-presentation-sensitive className="font-mono font-semibold text-accent-teal">{port.endpoint}</span>
                       <span className="font-mono text-[11px] uppercase tracking-wider text-accent-green">{port.state}</span>
                     </div>
                     <div className="mt-1 grid grid-cols-[48px_1fr] gap-x-2 leading-relaxed">
                       <span className="text-text-muted">Service</span>
-                      <span className="break-words font-mono text-text-primary">{port.service}</span>
+                      <span data-presentation-sensitive className="break-words font-mono text-text-primary">{port.service}</span>
                       {port.serviceDetail && (
                         <>
                           <span className="text-text-muted">Version</span>
-                          <span className="break-words font-mono text-text-secondary">{port.serviceDetail}</span>
+                          <span data-presentation-sensitive className="break-words font-mono text-text-secondary">{port.serviceDetail}</span>
                         </>
                       )}
                     </div>
@@ -133,7 +133,7 @@ function DetailRow({ label, value, mono = false, danger = false }: { label: stri
   return (
     <div>
       <span className="text-text-muted">{label}: </span>
-      <span className={`${mono ? 'font-mono' : 'capitalize'} ${danger ? 'text-severity-high' : 'text-text-primary'}`}>{value}</span>
+      <span data-presentation-sensitive className={`${mono ? 'font-mono' : 'capitalize'} ${danger ? 'text-severity-high' : 'text-text-primary'}`}>{value}</span>
     </div>
   );
 }

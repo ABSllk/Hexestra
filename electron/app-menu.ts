@@ -1,32 +1,37 @@
 import type { MenuItemConstructorOptions } from 'electron';
+import {
+  resolveShortcutBinding,
+  toElectronAccelerator,
+  type ShortcutCommandId,
+  type ShortcutOverrides,
+} from './contracts/shortcuts';
 
-export const PROJECT_MENU_EVENTS = {
-  OPEN_FOLDER: 'menu:open-folder',
-  CREATE_FOLDER: 'menu:create-project-folder',
-} as const;
-
-interface ProjectMenuActions {
-  openFolder: () => void;
-  createProjectFolder: () => void;
+interface ApplicationMenuActions {
+  runShortcutCommand: (commandId: ShortcutCommandId) => void;
 }
 
 export function createApplicationMenuTemplate(
-  actions: ProjectMenuActions,
+  actions: ApplicationMenuActions,
+  overrides: ShortcutOverrides = {},
+  platform: NodeJS.Platform = process.platform,
 ): MenuItemConstructorOptions[] {
+  const command = (label: string, id: ShortcutCommandId): MenuItemConstructorOptions => ({
+    label,
+    accelerator: toElectronAccelerator(resolveShortcutBinding(overrides, id), platform),
+    click: () => actions.runShortcutCommand(id),
+  });
+
   return [
     {
       label: 'File',
       submenu: [
-        {
-          label: 'Open Folder...',
-          accelerator: 'CmdOrCtrl+O',
-          click: () => actions.openFolder(),
-        },
-        {
-          label: 'New Project Folder...',
-          accelerator: 'CmdOrCtrl+Shift+O',
-          click: () => actions.createProjectFolder(),
-        },
+        command('New Terminal', 'workspace.newTerminal'),
+        command('Open Browser', 'workspace.openBrowser'),
+        { type: 'separator' },
+        command('Open Folder...', 'project.openFolder'),
+        command('New Project Folder...', 'project.createFolder'),
+        { type: 'separator' },
+        command('Close Tab', 'tabs.closeActive'),
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -46,6 +51,14 @@ export function createApplicationMenuTemplate(
     {
       label: 'View',
       submenu: [
+        command('Settings', 'settings.open'),
+        command('Toggle Presentation Mode', 'presentation.toggle'),
+        command('Toggle NetMap', 'view.toggleNetMap'),
+        command('Open Traffic', 'view.openTraffic'),
+        { type: 'separator' },
+        command('Next Tab', 'tabs.next'),
+        command('Previous Tab', 'tabs.previous'),
+        { type: 'separator' },
         { role: 'reload' },
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
@@ -61,7 +74,7 @@ export function createApplicationMenuTemplate(
       label: 'Window',
       submenu: [
         { role: 'minimize' },
-        { role: 'close' },
+        { role: 'close', accelerator: 'CmdOrCtrl+Shift+W' },
       ],
     },
   ];

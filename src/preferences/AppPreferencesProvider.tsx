@@ -5,15 +5,22 @@ import {
   type AppSettings,
   type AppThemePreference,
 } from '@electron/contracts/app-settings';
+import {
+  normalizeShortcutOverrides,
+  type ShortcutCommandId,
+  type ShortcutOverrides,
+} from '@electron/contracts/shortcuts';
+import type { PlatformCapabilities } from '@electron/contracts/platform';
 
 export type ResolvedTheme = 'dark' | 'light';
 
 const DEFAULT_SETTINGS: AppSettings = {
-  version: 4,
+  version: 5,
   language: 'en',
   theme: 'system',
   mitmdumpPath: null,
   mihomoPath: null,
+  shortcutOverrides: {},
 };
 
 interface AppPreferencesValue {
@@ -21,8 +28,11 @@ interface AppPreferencesValue {
   language: AppLanguage;
   themePreference: AppThemePreference;
   resolvedTheme: ResolvedTheme;
+  platform: NodeJS.Platform;
   setLanguage: (language: AppLanguage) => Promise<void>;
   setTheme: (theme: AppThemePreference) => Promise<void>;
+  setShortcutOverride: (id: ShortcutCommandId, binding: string | null | undefined) => Promise<void>;
+  resetShortcutOverrides: () => Promise<void>;
 }
 
 const AppPreferencesContext = createContext<AppPreferencesValue>({
@@ -30,13 +40,17 @@ const AppPreferencesContext = createContext<AppPreferencesValue>({
   language: DEFAULT_SETTINGS.language,
   themePreference: DEFAULT_SETTINGS.theme,
   resolvedTheme: 'dark',
+  platform: 'win32',
   setLanguage: async () => undefined,
   setTheme: async () => undefined,
+  setShortcutOverride: async () => undefined,
+  resetShortcutOverrides: async () => undefined,
 });
 
 export function AppPreferencesProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [systemIsDark, setSystemIsDark] = useState(readSystemIsDark);
+  const [platform, setPlatform] = useState<NodeJS.Platform>('win32');
 
   useEffect(() => {
     if (!window.hexestra) return;
@@ -51,6 +65,13 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
       active = false;
       remove?.();
     };
+  }, []);
+
+  useEffect(() => {
+    if (!window.hexestra) return;
+    void window.hexestra.invoke<PlatformCapabilities>('app:getCapabilities')
+      .then((value) => setPlatform(value.platform))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -99,14 +120,36 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
     }
   }, [settings]);
 
+  const persistShortcutOverrides = useCallback(async (shortcutOverrides: ShortcutOverrides) => {
+    const saved = await window.hexestra.invoke<unknown>(APP_SETTINGS_IPC.UPDATE, { shortcutOverrides });
+    setSettings(normalizeRendererSettings(saved));
+  }, []);
+
+  const setShortcutOverride = useCallback(async (
+    id: ShortcutCommandId,
+    binding: string | null | undefined,
+  ) => {
+    const next = { ...settings.shortcutOverrides };
+    if (binding === undefined) delete next[id];
+    else next[id] = binding;
+    await persistShortcutOverrides(next);
+  }, [persistShortcutOverrides, settings.shortcutOverrides]);
+
+  const resetShortcutOverrides = useCallback(async () => {
+    await persistShortcutOverrides({});
+  }, [persistShortcutOverrides]);
+
   const value = useMemo<AppPreferencesValue>(() => ({
     settings,
     language: settings.language,
     themePreference: settings.theme,
     resolvedTheme,
+    platform,
     setLanguage,
     setTheme,
-  }), [resolvedTheme, setLanguage, setTheme, settings]);
+    setShortcutOverride,
+    resetShortcutOverrides,
+  }), [platform, resetShortcutOverrides, resolvedTheme, setLanguage, setShortcutOverride, setTheme, settings]);
 
   return <AppPreferencesContext.Provider value={value}>{children}</AppPreferencesContext.Provider>;
 }
@@ -119,7 +162,7 @@ export function normalizeRendererSettings(value: unknown): AppSettings {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return DEFAULT_SETTINGS;
   const record = value as Record<string, unknown>;
   return {
-    version: 4,
+    version: 5,
     language: record.language === 'zh-CN' ? 'zh-CN' : 'en',
     theme: isThemePreference(record.theme) ? record.theme : 'system',
     mitmdumpPath: typeof record.mitmdumpPath === 'string' && record.mitmdumpPath.trim()
@@ -128,6 +171,7 @@ export function normalizeRendererSettings(value: unknown): AppSettings {
     mihomoPath: typeof record.mihomoPath === 'string' && record.mihomoPath.trim()
       ? record.mihomoPath.trim()
       : null,
+    shortcutOverrides: normalizeShortcutOverrides(record.shortcutOverrides),
   };
 }
 

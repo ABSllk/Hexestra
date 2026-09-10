@@ -784,6 +784,7 @@ const AssetNode = memo(function AssetNode({
         </g>
       )}
       {showLabels && <text
+        data-presentation-sensitive
         className="font-mono select-none"
         y={riskSize + 19}
         fill={selected ? palette.nodeFocus : palette.nodeLabel}
@@ -796,6 +797,7 @@ const AssetNode = memo(function AssetNode({
       </text>}
       {showLabels && showSecondaryLabel && (
         <text
+          data-presentation-sensitive
           className="font-mono select-none"
           y={riskSize + 35}
           fill={palette.nodeSecondaryLabel}

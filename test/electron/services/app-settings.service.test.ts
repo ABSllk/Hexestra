@@ -33,28 +33,28 @@ describe('AppSettingsService', () => {
   afterEach(() => fs.rmSync(mocks.root, { recursive: true, force: true }));
 
   it('normalizes unsupported or legacy values to English and system theme', () => {
-    expect(normalizeAppSettings(null)).toEqual({ version: 4, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null });
-    expect(normalizeAppSettings({ version: 99, language: 'fr', theme: 'sepia' })).toEqual({ version: 4, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null });
-    expect(normalizeAppSettings({ version: 1, language: 'zh-CN' })).toEqual({ version: 4, language: 'zh-CN', theme: 'system', mitmdumpPath: null, mihomoPath: null });
+    expect(normalizeAppSettings(null)).toEqual({ version: 5, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null, shortcutOverrides: {} });
+    expect(normalizeAppSettings({ version: 99, language: 'fr', theme: 'sepia' })).toEqual({ version: 5, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null, shortcutOverrides: {} });
+    expect(normalizeAppSettings({ version: 1, language: 'zh-CN' })).toEqual({ version: 5, language: 'zh-CN', theme: 'system', mitmdumpPath: null, mihomoPath: null, shortcutOverrides: {} });
   });
 
   it('migrates and bounds an optional mitmdump path', () => {
     expect(normalizeAppSettings({ version: 1, language: 'en', mitmdumpPath: '  /usr/local/bin/mitmdump  ' }))
-      .toEqual({ version: 4, language: 'en', theme: 'system', mitmdumpPath: '/usr/local/bin/mitmdump', mihomoPath: null });
+      .toEqual({ version: 5, language: 'en', theme: 'system', mitmdumpPath: '/usr/local/bin/mitmdump', mihomoPath: null, shortcutOverrides: {} });
   });
 
   it('writes normalized legacy settings back to the profile during migration', () => {
     fs.writeFileSync(path.join(mocks.root, 'app-settings.json'), JSON.stringify({ version: 2, language: 'zh-CN', mitmdumpPath: '/tmp/mitmdump' }), 'utf8');
-    expect(new AppSettingsService().get()).toEqual({ version: 4, language: 'zh-CN', theme: 'system', mitmdumpPath: '/tmp/mitmdump', mihomoPath: null });
-    expect(JSON.parse(fs.readFileSync(path.join(mocks.root, 'app-settings.json'), 'utf8'))).toEqual({ version: 4, language: 'zh-CN', theme: 'system', mitmdumpPath: '/tmp/mitmdump', mihomoPath: null });
+    expect(new AppSettingsService().get()).toEqual({ version: 5, language: 'zh-CN', theme: 'system', mitmdumpPath: '/tmp/mitmdump', mihomoPath: null, shortcutOverrides: {} });
+    expect(JSON.parse(fs.readFileSync(path.join(mocks.root, 'app-settings.json'), 'utf8'))).toEqual({ version: 5, language: 'zh-CN', theme: 'system', mitmdumpPath: '/tmp/mitmdump', mihomoPath: null, shortcutOverrides: {} });
   });
 
   it('persists the selected language and theme and restores them in a new service instance', () => {
     const service = new AppSettingsService();
-    expect(service.update({ language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo' })).toEqual({ version: 4, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo' });
+    expect(service.update({ language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo' })).toEqual({ version: 5, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo', shortcutOverrides: {} });
     expect(mocks.nativeTheme.themeSource).toBe('light');
-    expect(JSON.parse(fs.readFileSync(path.join(mocks.root, 'app-settings.json'), 'utf8'))).toEqual({ version: 4, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo' });
-    expect(new AppSettingsService().get()).toEqual({ version: 4, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo' });
+    expect(JSON.parse(fs.readFileSync(path.join(mocks.root, 'app-settings.json'), 'utf8'))).toEqual({ version: 5, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo', shortcutOverrides: {} });
+    expect(new AppSettingsService().get()).toEqual({ version: 5, language: 'zh-CN', theme: 'light', mitmdumpPath: '/tmp/mitmdump', mihomoPath: '/tmp/mihomo', shortcutOverrides: {} });
   });
 
   it('applies the resolved native background to open windows', () => {
@@ -67,5 +67,19 @@ describe('AppSettingsService', () => {
 
   it('rejects an invalid theme patch before persistence', () => {
     expect(() => new AppSettingsService().update({ theme: 'sepia' })).toThrow('Unsupported interface theme');
+  });
+
+  it('persists shortcut overrides, notifies subscribers, and rejects conflicts', () => {
+    const service = new AppSettingsService();
+    const listener = vi.fn();
+    service.subscribe(listener);
+    expect(service.update({ shortcutOverrides: { 'presentation.toggle': 'Mod+Alt+H', 'terminal.copy': null } }).shortcutOverrides)
+      .toEqual({ 'presentation.toggle': 'Mod+Alt+H', 'terminal.copy': null });
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      version: 5,
+      shortcutOverrides: { 'presentation.toggle': 'Mod+Alt+H', 'terminal.copy': null },
+    }));
+    expect(() => service.update({ shortcutOverrides: { 'workspace.newTerminal': 'Mod+Shift+H' } }))
+      .toThrow(/conflicts with presentation\.toggle/);
   });
 });

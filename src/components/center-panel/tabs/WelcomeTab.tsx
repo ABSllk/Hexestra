@@ -2,13 +2,18 @@ import { useEffect, useState } from 'react';
 import { DismissibleNotice, Icon, type IconName } from '@/components/shared';
 import { useAppStore, useSessionStore, useTabStore } from '@/stores';
 import { useAppPreferences, useI18n } from '@/i18n';
+import { formatShortcutBinding, resolveShortcutBinding } from '@electron/contracts/shortcuts';
 
 const hexestraLightLogo = new URL('../../../assets/branding/hexestra-logo-light.svg', import.meta.url).href;
 const hexestraDarkLogo = new URL('../../../assets/branding/hexestra-logo-dark.svg', import.meta.url).href;
 
 export function WelcomeTab() {
   const { t } = useI18n();
-  const { resolvedTheme } = useAppPreferences();
+  const { resolvedTheme, settings, platform } = useAppPreferences();
+  const newTerminalShortcut = formatShortcutBinding(
+    resolveShortcutBinding(settings.shortcutOverrides, 'workspace.newTerminal'),
+    platform,
+  );
   const openTab = useTabStore((state) => state.openTab);
   const setLeftPanelView = useAppStore((state) => state.setLeftPanelView);
   const openProjectFolder = useSessionStore((state) => state.openProjectFolder);
@@ -106,7 +111,7 @@ export function WelcomeTab() {
                 >
                   <Icon name="folder" size={12} className="shrink-0 text-accent-teal" />
                   <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] text-text-secondary">{session.name}</span>
+                  <span data-presentation-sensitive className="block truncate text-[13px] text-text-secondary">{session.name}</span>
                     <span className="block truncate font-mono text-[11px] text-text-muted">
                       {session.basePath}
                     </span>
@@ -132,7 +137,7 @@ export function WelcomeTab() {
 
       {currentSession && (
         <div className="mt-8 w-[min(24rem,calc(100%-2rem))] text-center text-[11px] text-text-muted">
-          <span className="block font-mono text-accent-teal">{currentSession.name}</span>
+          <span data-presentation-sensitive className="block font-mono text-accent-teal">{currentSession.name}</span>
           <span
             className="mt-1 block truncate font-mono text-[11px]"
             title={currentSession.basePath}
@@ -142,9 +147,9 @@ export function WelcomeTab() {
         </div>
       )}
 
-      <div className="mt-4 text-[11px] text-text-muted/70">
-        Press <kbd className="rounded-md border border-border-subtle bg-raised px-1.5 py-0.5 text-[11px]">Ctrl+T</kbd> for a new terminal
-      </div>
+      {newTerminalShortcut && <div className="mt-4 text-[11px] text-text-muted/70">
+        {t('welcome.newTerminalShortcutPrefix')} <kbd className="rounded-md border border-border-subtle bg-raised px-1.5 py-0.5 text-[11px]">{newTerminalShortcut}</kbd> {t('welcome.newTerminalShortcutSuffix')}
+      </div>}
     </div>
   );
 }

@@ -7,14 +7,17 @@ import { AIChatSidebar } from '@/components/right-panel/AIChatSidebar';
 import { NetMapView } from '@/components/bottom-panel/NetMapView';
 import { ErrorBoundary } from '@/components/shared';
 import { projectNetMapNodes } from '@/lib/networkGraph';
-import { useChatStore, useNetMapStore, usePentestTreeStore, useSessionStore, useTabStore } from '@/stores';
-import { openBrowserTab, serializeProjectWorkspace } from '@/stores/useTabStore';
+import { useAppStore, useChatStore, useNetMapStore, usePentestTreeStore, useSessionStore, useTabStore } from '@/stores';
+import { openBrowserTab, openSettingsTab, serializeProjectWorkspace } from '@/stores/useTabStore';
 import type { ProjectWorkspaceState } from '@/types';
 import { TitleBar } from './TitleBar';
 import { BROWSER_IPC, type BrowserContextActionEvent, type BrowserOpenTabEvent } from '@electron/contracts/browser';
 import { isSessionDataChangedEvent } from '@electron/contracts/session';
+import { usePresentationMode } from '@/hooks/usePresentationMode';
+import { SHORTCUT_COMMAND_EVENT, isShortcutCommandId, type ShortcutCommandId } from '@electron/contracts/shortcuts';
 
 export function AppShell() {
+  const presentationMode = usePresentationMode();
   const currentSessionId = useSessionStore((state) => state.currentSession?.id);
   const targets = useSessionStore((state) => state.targets);
   const assets = useSessionStore((state) => state.assets);
@@ -43,25 +46,10 @@ export function AppShell() {
 
   useEffect(() => {
     if (!window.hexestra) return;
-    const runProjectAction = (
-      action: () => Promise<unknown>,
-      label: string,
-    ) => {
-      void action().catch((error) => {
-        console.error(`[Project] ${label} failed:`, error);
-      });
-    };
-    const removeOpenFolderListener = window.hexestra.on('menu:open-folder', () => {
-      runProjectAction(useSessionStore.getState().openProjectFolder, 'Open Folder');
+    return window.hexestra.on(SHORTCUT_COMMAND_EVENT, (value: unknown) => {
+      if (isShortcutCommandId(value)) runApplicationShortcutCommand(value, presentationMode.toggle);
     });
-    const removeCreateFolderListener = window.hexestra.on('menu:create-project-folder', () => {
-      runProjectAction(useSessionStore.getState().createProjectFolder, 'New Project Folder');
-    });
-    return () => {
-      removeOpenFolderListener();
-      removeCreateFolderListener();
-    };
-  }, []);
+  }, [presentationMode.toggle]);
 
   useEffect(() => {
     if (!window.hexestra) return;
@@ -163,7 +151,10 @@ export function AppShell() {
   }, [assets, currentSessionId, netmapEdges, setGraphData, targets]);
 
   return (
-    <div className="h-screen flex flex-col bg-canvas">
+    <div
+      className="h-screen flex flex-col bg-canvas"
+      data-presentation-mode={presentationMode.enabled ? 'true' : 'false'}
+    >
       <TitleBar />
       {/* Main resizable layout */}
       <div className="flex-1 min-h-0">
@@ -179,4 +170,59 @@ export function AppShell() {
       <StatusBar />
     </div>
   );
+}
+
+export function runApplicationShortcutCommand(commandId: ShortcutCommandId, togglePresentationMode: () => void) {
+  const tabs = useTabStore.getState();
+  switch (commandId) {
+    case 'presentation.toggle':
+      togglePresentationMode();
+      return;
+    case 'project.openFolder':
+      void useSessionStore.getState().openProjectFolder().catch((error) => console.error('[Project] Open Folder failed:', error));
+      return;
+    case 'project.createFolder':
+      void useSessionStore.getState().createProjectFolder().catch((error) => console.error('[Project] New Project Folder failed:', error));
+      return;
+    case 'workspace.newTerminal':
+      tabs.openTab({ type: 'terminal', title: 'Terminal', closable: true });
+      return;
+    case 'workspace.openBrowser':
+      openBrowserTab();
+      return;
+    case 'settings.open':
+      openSettingsTab();
+      return;
+    case 'tabs.closeActive': {
+      const active = tabs.activeTab();
+      if (active?.closable) tabs.closeTab(active.id);
+      return;
+    }
+    case 'tabs.next':
+      activateAdjacentTab(1);
+      return;
+    case 'tabs.previous':
+      activateAdjacentTab(-1);
+      return;
+    case 'view.toggleNetMap':
+      useAppStore.getState().toggleNetMap();
+      return;
+    case 'view.openTraffic':
+      useAppStore.getState().setLeftPanelView('traffic');
+      return;
+    case 'editor.save':
+    case 'terminal.copy':
+    case 'terminal.paste':
+      return;
+  }
+}
+
+function activateAdjacentTab(direction: -1 | 1) {
+  const store = useTabStore.getState();
+  if (!store.tabs.length) return;
+  const currentIndex = store.tabs.findIndex((tab) => tab.id === store.activeTabId);
+  const startIndex = currentIndex >= 0 ? currentIndex : 0;
+  const nextIndex = (startIndex + direction + store.tabs.length) % store.tabs.length;
+  const next = store.tabs[nextIndex];
+  if (next) store.setActiveTab(next.id);
 }

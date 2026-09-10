@@ -76,7 +76,7 @@ const EVENT_CHANNELS = new Set([
   'egress-proxy:changed',
   'shell:output', 'shell:changed',
   'shell:file:changed', 'shell:file:transfer',
-  'menu:open-folder', 'menu:create-project-folder',
+  'shortcut:command',
   'app:settings:changed', 'dialog:requested',
 ]);
 

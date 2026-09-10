@@ -22,6 +22,8 @@ describe('VulnerabilitiesTab', () => {
   it('opens validated weakness details in the center workspace', () => {
     render(<VulnerabilitiesTab />);
     expect(screen.queryByRole('button', { name: 'Create vulnerability' })).not.toBeInTheDocument();
+    expect(screen.getByText('Unauthenticated admin access')).not.toHaveAttribute('data-presentation-sensitive');
+    expect(screen.getByText('192.0.2.10')).toHaveAttribute('data-presentation-sensitive');
     fireEvent.click(screen.getByText('Unauthenticated admin access'));
     expect(useNetMapStore.getState().selectedNodeId).toBe('host-1');
     expect(useTabStore.getState().activeTab()).toMatchObject({ type: 'record', data: { recordKind: 'vulnerability', recordId: vulnerability.id } });

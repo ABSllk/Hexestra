@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { EmptyState } from '@/components/shared';
-import { useI18n } from '@/i18n';
+import { useAppPreferences, useI18n } from '@/i18n';
 import { useTabStore } from '@/stores';
 import { TabBar } from './TabBar';
 import { TerminalTab } from './tabs/TerminalTab';
@@ -13,6 +13,7 @@ import { TrafficDetailTab } from './tabs/TrafficDetailTab';
 import { TrafficReplayTab } from './tabs/TrafficReplayTab';
 import { WorkflowTab } from './tabs/WorkflowTab';
 import { KnowledgeRefineryTab } from './tabs/KnowledgeRefineryTab';
+import { formatShortcutBinding, resolveShortcutBinding } from '@electron/contracts/shortcuts';
 
 const EditorTab = lazy(() =>
   import('./tabs/EditorTab').then((module) => ({ default: module.EditorTab })),
@@ -20,9 +21,14 @@ const EditorTab = lazy(() =>
 
 export function TabContainer() {
   const { t } = useI18n();
+  const { settings, platform } = useAppPreferences();
   const tabs = useTabStore((s) => s.tabs);
   const activeTabId = useTabStore((s) => s.activeTabId);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const newTerminalShortcut = formatShortcutBinding(
+    resolveShortcutBinding(settings.shortcutOverrides, 'workspace.newTerminal'),
+    platform,
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -33,7 +39,7 @@ export function TabContainer() {
             icon="layers"
             title={t('tabs.emptyTitle')}
             description={t('tabs.emptyHint')}
-            action={<kbd className="rounded-md border border-border-subtle bg-raised px-2 py-1 font-mono text-[11px] text-text-secondary">Ctrl+T</kbd>}
+            action={newTerminalShortcut ? <kbd className="rounded-md border border-border-subtle bg-raised px-2 py-1 font-mono text-[11px] text-text-secondary">{newTerminalShortcut}</kbd> : undefined}
           />
         )}
 

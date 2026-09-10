@@ -36,6 +36,7 @@ describe('TargetsTab asset inventory', () => {
     fireEvent.click(screen.getByRole('button', { name: /api\.example\.com/i }));
     expect(useNetMapStore.getState().selectedNodeId).toBe(asset.id);
     expect(screen.getAllByText('api.example.com').length).toBeGreaterThan(1);
+    expect(screen.getAllByText('api.example.com').every((element) => element.hasAttribute('data-presentation-sensitive'))).toBe(true);
     expect(screen.getByText('nginx, React')).toBeInTheDocument();
   });
 

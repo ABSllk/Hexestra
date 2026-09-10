@@ -80,6 +80,9 @@ describe('TrafficSidebar', () => {
     renderSidebar();
 
     const flowButton = await screen.findByRole('button', { name: 'Open GET https://example.test/api' });
+    expect(screen.getByTitle('https://example.test/api')).toHaveAttribute('data-presentation-sensitive');
+    expect(screen.getByText('GET')).not.toHaveAttribute('data-presentation-sensitive');
+    expect(screen.getByText('200')).not.toHaveAttribute('data-presentation-sensitive');
     expect(mocks.invoke).not.toHaveBeenCalledWith(TRAFFIC_IPC.READ, expect.anything(), expect.anything());
 
     fireEvent.click(flowButton);

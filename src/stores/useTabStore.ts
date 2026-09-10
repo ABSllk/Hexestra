@@ -134,7 +134,7 @@ export function serializeProjectWorkspace(state: Pick<TabStore, 'tabs' | 'active
   };
 }
 
-export type SettingsPage = 'general' | 'connection' | 'traffic' | 'proxy' | 'burp' | 'skills' | 'mcp' | 'instructions' | 'tools';
+export type SettingsPage = 'general' | 'shortcuts' | 'connection' | 'traffic' | 'proxy' | 'burp' | 'skills' | 'mcp' | 'instructions' | 'tools';
 
 export function openSettingsTab(page: SettingsPage = 'general') {
   const store = useTabStore.getState();

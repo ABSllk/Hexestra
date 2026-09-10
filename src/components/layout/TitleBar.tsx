@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/shared';
 import { useSessionStore } from '@/stores';
 import { openSettingsTab } from '@/stores/useTabStore';
-import { useI18n } from '@/i18n';
+import { useAppPreferences, useI18n } from '@/i18n';
 import type { PlatformCapabilities } from '@electron/contracts/platform';
+import { formatShortcutBinding, resolveShortcutBinding, type ShortcutCommandId } from '@electron/contracts/shortcuts';
 
 const hexestraMark = new URL('../../assets/branding/hexestra-mark.svg', import.meta.url).href;
 
 export function TitleBar() {
   const { t } = useI18n();
+  const { settings } = useAppPreferences();
   const project = useSessionStore((state) => state.currentSession);
   const openProjectFolder = useSessionStore((state) => state.openProjectFolder);
   const createProjectFolder = useSessionStore((state) => state.createProjectFolder);
@@ -45,6 +47,10 @@ export function TitleBar() {
     const result = await window.hexestra.invoke<boolean | void>(channel);
     if (typeof result === 'boolean') setMaximized(result);
   };
+  const shortcut = (id: ShortcutCommandId) => {
+    const platform = capabilities?.platform ?? 'win32';
+    return formatShortcutBinding(resolveShortcutBinding(settings.shortcutOverrides, id), platform);
+  };
 
   return <header
     className={`relative z-[100] flex h-9 shrink-0 select-none items-center border-b border-border-subtle bg-canvas text-text-muted ${capabilities?.usesNativeTitleBar ? 'pl-20' : ''}`}
@@ -58,15 +64,15 @@ export function TitleBar() {
       <button aria-expanded={fileMenuOpen} onClick={() => setFileMenuOpen((open) => !open)} className={`h-7 rounded-md px-2.5 text-[11px] transition-colors ${fileMenuOpen ? 'bg-raised text-text-primary' : 'hover:bg-raised/75 hover:text-text-secondary'}`}>{t('menu.file')}</button>
       <button onClick={() => openSettingsTab()} className="h-7 rounded-md px-2.5 text-[11px] transition-colors hover:bg-raised/75 hover:text-text-secondary">{t('common.settings')}</button>
       {fileMenuOpen && <div role="menu" className="ui-popover absolute left-10 top-8 w-52 p-1.5">
-        <MenuItem label={t('menu.openFolder')} shortcut="Ctrl+O" onClick={() => void runMenuAction(openProjectFolder, setFileMenuOpen)} />
-        <MenuItem label={t('menu.newProjectFolder')} onClick={() => void runMenuAction(createProjectFolder, setFileMenuOpen)} />
+        <MenuItem label={t('menu.openFolder')} shortcut={shortcut('project.openFolder')} onClick={() => void runMenuAction(openProjectFolder, setFileMenuOpen)} />
+        <MenuItem label={t('menu.newProjectFolder')} shortcut={shortcut('project.createFolder')} onClick={() => void runMenuAction(createProjectFolder, setFileMenuOpen)} />
         <div className="my-1 border-t border-border-subtle" />
         <MenuItem label={t('menu.exit')} onClick={() => { setFileMenuOpen(false); void windowAction('app:window:close'); }} />
       </div>}
     </div>
     <div className="pointer-events-none absolute left-1/2 flex max-w-[42vw] -translate-x-1/2 items-center gap-2 truncate font-mono text-[11px] tracking-wide">
       <span className="text-text-secondary">HEXESTRA</span>
-      {project && <><span className="text-text-muted">/</span><span className="truncate text-text-muted">{project.name}</span></>}
+      {project && <><span className="text-text-muted">/</span><span data-presentation-sensitive className="truncate text-text-muted">{project.name}</span></>}
     </div>
     {!capabilities?.usesNativeTitleBar && <div className="ml-auto flex h-full items-stretch" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <WindowButton label={t('window.minimize')} icon="window-minimize" onClick={() => void windowAction('app:window:minimize')} />

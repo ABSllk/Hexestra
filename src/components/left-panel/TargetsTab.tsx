@@ -44,12 +44,12 @@ export function TargetsTab() {
             }`}
           >
             <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5">
-              <span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span>
+              <span data-presentation-sensitive className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span>
               <StatusBadge status={node.status} className="shrink-0" />
             </div>
             <div className="flex min-w-0 items-center gap-2 text-2xs text-text-muted">
               <span className="shrink-0 uppercase text-accent-teal">{node.type}</span>
-              <span className="min-w-0 flex-1 truncate">
+              <span data-presentation-sensitive className="min-w-0 flex-1 truncate">
                 {target?.ip ?? assetPrimaryValue(asset) ?? node.key ?? node.label}
               </span>
               {node.portCount > 0 && <span className="shrink-0">{node.portCount} ports</span>}
@@ -107,18 +107,18 @@ function NodeDetailPanel({ nodeId }: { nodeId: string }) {
               {openPorts.map((port) => (
                 <div key={port.id} className="rounded border border-border-subtle bg-panel/40 p-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-semibold text-accent-teal">{port.endpoint}</span>
+                    <span data-presentation-sensitive className="font-mono font-semibold text-accent-teal">{port.endpoint}</span>
                     <span className="font-mono text-[11px] uppercase tracking-wider text-accent-green">
                       {port.state}
                     </span>
                   </div>
                   <div className="mt-1 grid grid-cols-[48px_1fr] gap-x-2 leading-relaxed">
                     <span className="text-text-muted">Service</span>
-                    <span className="break-words font-mono text-text-primary">{port.service}</span>
+                    <span data-presentation-sensitive className="break-words font-mono text-text-primary">{port.service}</span>
                     {port.serviceDetail && (
                       <>
                         <span className="text-text-muted">Version</span>
-                        <span className="break-words font-mono text-text-secondary">
+                        <span data-presentation-sensitive className="break-words font-mono text-text-secondary">
                           {port.serviceDetail}
                         </span>
                       </>
@@ -178,6 +178,7 @@ function DetailRow({
     <div>
       <span className="text-text-muted">{label}: </span>
       <span
+        data-presentation-sensitive
         className={`${mono ? 'font-mono' : 'capitalize'} ${
           danger ? 'text-severity-high' : 'text-text-primary'
         }`}

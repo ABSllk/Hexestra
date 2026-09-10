@@ -8,11 +8,20 @@ import {
   type AppSettingsPatch,
   type AppThemePreference,
 } from '../contracts/app-settings';
+import { assertShortcutOverrides, normalizeShortcutOverrides, parseShortcutOverrides } from '../contracts/shortcuts';
 
-const DEFAULT_SETTINGS: AppSettings = { version: 4, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null };
+const DEFAULT_SETTINGS: AppSettings = {
+  version: 5,
+  language: 'en',
+  theme: 'system',
+  mitmdumpPath: null,
+  mihomoPath: null,
+  shortcutOverrides: {},
+};
 
 export class AppSettingsService {
   private cached: AppSettings | null = null;
+  private readonly listeners = new Set<(settings: AppSettings) => void>();
 
   constructor() {
     ipcMain.handle(APP_SETTINGS_IPC.GET, () => this.get());
@@ -20,7 +29,7 @@ export class AppSettingsService {
   }
 
   get(): AppSettings {
-    if (this.cached) return { ...this.cached };
+    if (this.cached) return cloneSettings(this.cached);
     try {
       const parsed = JSON.parse(fs.readFileSync(this.settingsPath(), 'utf8')) as unknown;
       this.cached = normalizeAppSettings(parsed);
@@ -39,7 +48,7 @@ export class AppSettingsService {
         // A read-only profile should still be usable for this session.
       }
     }
-    return { ...this.cached };
+    return cloneSettings(this.cached);
   }
 
   applyNativeTheme(): AppSettings {
@@ -56,15 +65,28 @@ export class AppSettingsService {
     return settings;
   }
 
+  subscribe(listener: (settings: AppSettings) => void) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
   update(value: unknown): AppSettings {
     const patch = parsePatch(value);
-    const next: AppSettings = { ...this.get(), ...patch, version: 4 };
+    const next: AppSettings = { ...this.get(), ...patch, version: 5 };
+    assertShortcutOverrides(next.shortcutOverrides, process.platform);
     this.persist(next);
     this.cached = next;
     nativeTheme.themeSource = next.theme;
     this.updateWindowBackgrounds();
     this.broadcast(next);
-    return { ...next };
+    for (const listener of this.listeners) {
+      try {
+        listener(cloneSettings(next));
+      } catch (error) {
+        console.error('[Settings] Change listener failed:', error);
+      }
+    }
+    return cloneSettings(next);
   }
 
   private settingsPath() {
@@ -104,22 +126,23 @@ export class AppSettingsService {
 
 export function normalizeAppSettings(value: unknown): AppSettings {
   if (!value || typeof value !== 'object') return { ...DEFAULT_SETTINGS };
-  const record = value as { language?: unknown; theme?: unknown; mitmdumpPath?: unknown; mihomoPath?: unknown };
+  const record = value as { language?: unknown; theme?: unknown; mitmdumpPath?: unknown; mihomoPath?: unknown; shortcutOverrides?: unknown };
   const mitmdumpPath = typeof record.mitmdumpPath === 'string' && record.mitmdumpPath.trim()
     ? record.mitmdumpPath.trim().slice(0, 2_000)
     : null;
   return {
-    version: 4,
+    version: 5,
     language: isAppLanguage(record.language) ? record.language : 'en',
     theme: isAppThemePreference(record.theme) ? record.theme : 'system',
     mitmdumpPath,
     mihomoPath: normalizeExecutablePath(record.mihomoPath),
+    shortcutOverrides: normalizeShortcutOverrides(record.shortcutOverrides),
   };
 }
 
 function parsePatch(value: unknown): AppSettingsPatch {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid app settings');
-  const record = value as { language?: unknown; theme?: unknown; mitmdumpPath?: unknown; mihomoPath?: unknown };
+  const record = value as { language?: unknown; theme?: unknown; mitmdumpPath?: unknown; mihomoPath?: unknown; shortcutOverrides?: unknown };
   const patch: AppSettingsPatch = {};
   if (record.language !== undefined) {
     if (!isAppLanguage(record.language)) throw new Error('Unsupported interface language');
@@ -143,6 +166,9 @@ function parsePatch(value: unknown): AppSettingsPatch {
     }
     patch.mihomoPath = normalizeExecutablePath(record.mihomoPath);
   }
+  if (record.shortcutOverrides !== undefined) {
+    patch.shortcutOverrides = parseShortcutOverrides(record.shortcutOverrides);
+  }
   return patch;
 }
 
@@ -156,6 +182,10 @@ function isAppLanguage(value: unknown): value is AppLanguage {
 
 function isAppThemePreference(value: unknown): value is AppThemePreference {
   return value === 'system' || value === 'dark' || value === 'light';
+}
+
+function cloneSettings(settings: AppSettings): AppSettings {
+  return { ...settings, shortcutOverrides: { ...settings.shortcutOverrides } };
 }
 
 export const appSettingsService = new AppSettingsService();

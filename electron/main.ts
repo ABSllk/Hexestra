@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme } from 'electron';
 import path from 'path';
-import { createApplicationMenuTemplate, PROJECT_MENU_EVENTS } from './app-menu';
+import { createApplicationMenuTemplate } from './app-menu';
 
 // Services — imported for side effects (IPC handler registration)
 import { terminalService } from './services/terminal.service';
@@ -14,6 +14,7 @@ import { shellService } from './services/shell.service';
 import { appSettingsService } from './services/app-settings.service';
 import { dialogOverlayService } from './services/dialog-overlay.service';
 import { getPlatformCapabilities } from './contracts/platform';
+import { SHORTCUT_COMMAND_EVENT, type ShortcutCommandId } from './contracts/shortcuts';
 import { mitmproxyRuntimeService } from './services/mitmproxy-runtime.service';
 import { egressProxyService } from './services/egress-proxy.service';
 import { workflowService } from './services/workflow.service';
@@ -39,19 +40,18 @@ function getAppIconPath() {
     : path.join(app.getAppPath(), 'src', 'assets', 'branding', 'hexestra-mark.png');
 }
 
-function sendProjectMenuEvent(channel: typeof PROJECT_MENU_EVENTS[keyof typeof PROJECT_MENU_EVENTS]) {
+function sendShortcutCommand(commandId: ShortcutCommandId) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
-  mainWindow.webContents.send(channel);
+  mainWindow.webContents.send(SHORTCUT_COMMAND_EVENT, commandId);
 }
 
 function installApplicationMenu() {
   const template = createApplicationMenuTemplate({
-    openFolder: () => sendProjectMenuEvent(PROJECT_MENU_EVENTS.OPEN_FOLDER),
-    createProjectFolder: () => sendProjectMenuEvent(PROJECT_MENU_EVENTS.CREATE_FOLDER),
-  });
+    runShortcutCommand: sendShortcutCommand,
+  }, appSettingsService.get().shortcutOverrides);
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
@@ -113,6 +113,7 @@ app.whenReady().then(() => {
   console.log('[Hexestra] App ready. Services initialized.');
   if (process.platform === 'win32') app.setAppUserModelId('com.hexestra.app');
   appSettingsService.applyNativeTheme();
+  appSettingsService.subscribe(() => installApplicationMenu());
   nativeTheme.on('updated', () => appSettingsService.syncNativeTheme());
   void agentService.initialize();
   installApplicationMenu();

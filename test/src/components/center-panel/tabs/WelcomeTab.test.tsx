@@ -23,10 +23,12 @@ const project: Session = {
 describe('WelcomeTab folder projects', () => {
   const invoke = vi.fn();
   let theme: 'dark' | 'light' = 'dark';
+  let shortcutOverrides: Record<string, string | null> = {};
 
   beforeEach(() => {
     invoke.mockReset();
     theme = 'dark';
+    shortcutOverrides = {};
     window.localStorage.clear();
     useSessionStore.setState({
       sessions: [],
@@ -43,7 +45,8 @@ describe('WelcomeTab folder projects', () => {
     });
     useTabStore.getState().resetProject();
     invoke.mockImplementation((channel: string) => {
-      if (channel === APP_SETTINGS_IPC.GET) return Promise.resolve({ version: 3, language: 'en', theme, mitmdumpPath: null });
+      if (channel === APP_SETTINGS_IPC.GET) return Promise.resolve({ version: 5, language: 'en', theme, mitmdumpPath: null, mihomoPath: null, shortcutOverrides });
+      if (channel === 'app:getCapabilities') return Promise.resolve({ platform: 'win32' });
       if (channel === 'project:list-recent') return Promise.resolve([project]);
       if (channel === 'project:open-folder') return Promise.resolve(project);
       if (channel === 'project:remove-recent') return Promise.resolve();
@@ -95,5 +98,11 @@ describe('WelcomeTab folder projects', () => {
       expect(invoke).toHaveBeenCalledWith('project:remove-recent', project.id);
     });
     expect(useSessionStore.getState().sessions).toEqual([]);
+  });
+
+  it('renders the configured New Terminal shortcut instead of a hard-coded hint', async () => {
+    shortcutOverrides = { 'workspace.newTerminal': 'Mod+Alt+T' };
+    render(<AppPreferencesProvider><WelcomeTab /></AppPreferencesProvider>);
+    expect(await screen.findByText('Ctrl+Alt+T')).toBeInTheDocument();
   });
 });

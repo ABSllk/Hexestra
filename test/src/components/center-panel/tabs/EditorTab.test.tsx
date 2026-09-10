@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSessionStore, useTabStore } from '@/stores';
 import { SHELL_IPC } from '@electron/contracts/shell';
+import { APP_SETTINGS_IPC } from '@electron/contracts/app-settings';
+import { I18nProvider } from '@/i18n';
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 
@@ -121,5 +123,34 @@ describe('EditorTab', () => {
     expect(await screen.findByDisplayValue('unsaved buffer')).toBeInTheDocument();
     expect(await screen.findByText(/ssh session disconnected/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save file' })).toBeDisabled();
+  });
+
+  it('uses the configured editor save shortcut and leaves the old binding unused', async () => {
+    mocks.invoke.mockImplementation((channel: string) => {
+      if (channel === APP_SETTINGS_IPC.GET) return Promise.resolve({
+        version: 5,
+        language: 'en',
+        theme: 'system',
+        mitmdumpPath: null,
+        mihomoPath: null,
+        shortcutOverrides: { 'editor.save': 'Mod+Alt+S' },
+      });
+      if (channel === 'app:getCapabilities') return Promise.resolve({ platform: 'win32' });
+      if (channel === 'files:read') return Promise.resolve({ path: 'notes.txt', content: 'before', modifiedAt: 'now' });
+      if (channel === 'files:write') return Promise.resolve({ path: 'notes.txt', content: 'after', modifiedAt: 'later' });
+      return Promise.resolve(undefined);
+    });
+    useTabStore.setState({
+      tabs: [{ id: 'editor-shortcut', type: 'editor', title: 'notes.txt', closable: true, data: { filePath: 'notes.txt', sessionId: 'project-1' } }],
+      activeTabId: 'editor-shortcut', nextTabNumber: 2,
+    });
+
+    render(<I18nProvider><EditorTab tabId="editor-shortcut" /></I18nProvider>);
+    const editor = await screen.findByLabelText('Source editor');
+    fireEvent.change(editor, { target: { value: 'after' } });
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    expect(mocks.invoke.mock.calls.some(([channel]) => channel === 'files:write')).toBe(false);
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(mocks.invoke.mock.calls.some(([channel]) => channel === 'files:write')).toBe(true));
   });
 });

@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+[data-presentation-sensitive] {
+  transition: filter var(--motion-fast) ease;
+}
+
+[data-presentation-mode='true'] [data-presentation-sensitive] {
+  filter: blur(5px);
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-presentation-sensitive] {
+    transition: none;
+  }
+}
+
 :root {
   color-scheme: dark;
   --font-ui: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI Variable", "Segoe UI", sans-serif;

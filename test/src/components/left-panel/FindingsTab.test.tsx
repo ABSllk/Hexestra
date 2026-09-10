@@ -15,6 +15,8 @@ describe('FindingsTab', () => {
 
   it('opens the linked finding as a center workspace tab', () => {
     render(<FindingsTab />);
+    expect(screen.getByText('Admin interface exposed')).not.toHaveAttribute('data-presentation-sensitive');
+    expect(screen.getByText('192.0.2.10')).toHaveAttribute('data-presentation-sensitive');
     fireEvent.click(screen.getByText('Admin interface exposed'));
     expect(useTabStore.getState().activeTab()).toMatchObject({
       type: 'record',

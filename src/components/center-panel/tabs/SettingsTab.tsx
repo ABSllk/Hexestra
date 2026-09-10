@@ -19,6 +19,7 @@ import { McpSettings } from './McpSettings';
 import { ProxySettings } from './ProxySettings';
 import { AgentInstructionsSettings } from './AgentInstructionsSettings';
 import { ToolCatalogSettings } from './ToolCatalogSettings';
+import { ShortcutsSettings } from './ShortcutsSettings';
 import { useAppPreferences, useI18n } from '@/i18n';
 
 const SOURCES: Array<{ id: ClaudeSettingSource; label: string; detail: string }> = [
@@ -48,6 +49,7 @@ export function SettingsTab() {
     <div className="flex h-full min-h-0 flex-col bg-panel">
       <nav aria-label={t('common.settings')} className="flex h-10 shrink-0 items-end gap-1 overflow-x-auto border-b border-border-subtle bg-canvas/40 px-5">
         <SettingsPageButton active={page === 'general'} icon="settings" label={t('settings.general')} onClick={() => selectPage('general')} />
+        <SettingsPageButton active={page === 'shortcuts'} icon="code" label={t('settings.shortcuts')} onClick={() => selectPage('shortcuts')} />
         <SettingsPageButton active={page === 'connection'} icon="terminal" label={t('settings.connection')} onClick={() => selectPage('connection')} />
         <SettingsPageButton active={page === 'traffic'} icon="activity" label={t('settings.trafficRuntime')} onClick={() => selectPage('traffic')} />
         <SettingsPageButton active={page === 'proxy'} icon="network" label={t('settings.proxy')} onClick={() => selectPage('proxy')} />
@@ -59,6 +61,7 @@ export function SettingsTab() {
       </nav>
       <div className="min-h-0 flex-1">
         {page === 'general' && <GeneralSettings />}
+        {page === 'shortcuts' && <ShortcutsSettings />}
         {page === 'connection' && <ConnectionSettings />}
         {page === 'traffic' && <TrafficRuntimeSettings />}
         {page === 'proxy' && <ProxySettings />}
@@ -426,7 +429,7 @@ function GeneralSettings() {
   );
 }
 
-function SettingsPageButton({ active, icon, label, onClick }: { active: boolean; icon: 'settings' | 'terminal' | 'activity' | 'network' | 'sparkles' | 'server' | 'file' | 'shield'; label: string; onClick: () => void }) {
+function SettingsPageButton({ active, icon, label, onClick }: { active: boolean; icon: 'settings' | 'terminal' | 'activity' | 'network' | 'sparkles' | 'server' | 'file' | 'shield' | 'code'; label: string; onClick: () => void }) {
   return (
     <button
       aria-pressed={active}
@@ -446,7 +449,7 @@ function SettingsPageButton({ active, icon, label, onClick }: { active: boolean;
 }
 
 function isSettingsPage(value: unknown): value is SettingsPage {
-  return value === 'general' || value === 'connection' || value === 'traffic' || value === 'proxy' || value === 'burp' || value === 'skills' || value === 'mcp' || value === 'instructions' || value === 'tools';
+  return value === 'general' || value === 'shortcuts' || value === 'connection' || value === 'traffic' || value === 'proxy' || value === 'burp' || value === 'skills' || value === 'mcp' || value === 'instructions' || value === 'tools';
 }
 
 function normalizeSettingsPayload(value: AgentSettingsContainer | AgentConnectionSettings): AgentSettingsContainer {

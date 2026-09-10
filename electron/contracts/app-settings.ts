@@ -1,3 +1,5 @@
+import type { ShortcutOverrides } from './shortcuts';
+
 export const APP_SETTINGS_IPC = {
   GET: 'app:settings:get',
   UPDATE: 'app:settings:update',
@@ -8,11 +10,12 @@ export type AppLanguage = 'en' | 'zh-CN';
 export type AppThemePreference = 'system' | 'dark' | 'light';
 
 export interface AppSettings {
-  version: 4;
+  version: 5;
   language: AppLanguage;
   theme: AppThemePreference;
   mitmdumpPath: string | null;
   mihomoPath: string | null;
+  shortcutOverrides: ShortcutOverrides;
 }
 
 export interface AppSettingsPatch {
@@ -20,4 +23,5 @@ export interface AppSettingsPatch {
   theme?: AppThemePreference;
   mitmdumpPath?: string | null;
   mihomoPath?: string | null;
+  shortcutOverrides?: ShortcutOverrides;
 }

@@ -43,6 +43,8 @@ describe('RecordsTab', () => {
   it('browses managed Evidence and selects its linked asset', () => {
     render(<RecordsTab />);
     fireEvent.click(screen.getByRole('button', { name: /Evidence 1/i }));
+    expect(screen.getByText('HTTP response')).not.toHaveAttribute('data-presentation-sensitive');
+    expect(screen.getByText('192.0.2.10 / curl')).toHaveAttribute('data-presentation-sensitive');
     fireEvent.click(screen.getByText('HTTP response'));
     expect(useNetMapStore.getState().selectedNodeId).toBe('host-1');
     expect(useTabStore.getState().activeTab()).toMatchObject({ type: 'record', data: { recordKind: 'evidence', recordId: 'evidence-1' } });

@@ -9,9 +9,8 @@ function submenuOf(item: MenuItemConstructorOptions): MenuItemConstructorOptions
 
 describe('application menu', () => {
   it('exposes the folder project actions in File and delegates to shared callbacks', () => {
-    const openFolder = vi.fn();
-    const createProjectFolder = vi.fn();
-    const menu = createApplicationMenuTemplate({ openFolder, createProjectFolder });
+    const runShortcutCommand = vi.fn();
+    const menu = createApplicationMenuTemplate({ runShortcutCommand }, {}, 'win32');
     const fileMenu = menu.find((item) => item.label === 'File');
 
     expect(fileMenu).toBeDefined();
@@ -25,7 +24,17 @@ describe('application menu', () => {
     (openItem?.click as (() => void) | undefined)?.();
     (createItem?.click as (() => void) | undefined)?.();
 
-    expect(openFolder).toHaveBeenCalledOnce();
-    expect(createProjectFolder).toHaveBeenCalledOnce();
+    expect(runShortcutCommand).toHaveBeenNthCalledWith(1, 'project.openFolder');
+    expect(runShortcutCommand).toHaveBeenNthCalledWith(2, 'project.createFolder');
+  });
+
+  it('uses persisted accelerators and disables cleared commands', () => {
+    const menu = createApplicationMenuTemplate({ runShortcutCommand: vi.fn() }, {
+      'project.openFolder': 'Mod+Alt+O',
+      'workspace.newTerminal': null,
+    }, 'win32');
+    const fileItems = submenuOf(menu.find((item) => item.label === 'File')!);
+    expect(fileItems.find((item) => item.label === 'Open Folder...')?.accelerator).toBe('CmdOrCtrl+Alt+O');
+    expect(fileItems.find((item) => item.label === 'New Terminal')?.accelerator).toBeUndefined();
   });
 });

@@ -25,6 +25,20 @@ describe('RecordDetailTab', () => {
     expect(useSessionStore.getState().upsertFinding).toHaveBeenCalledWith(expect.objectContaining({ id: 'finding-1', kind: 'hypothesis' }));
   });
 
+  it('leaves Evidence detail content outside presentation masking', () => {
+    useTabStore.setState({
+      tabs: [{ id: 'record-evidence', type: 'record', title: 'Raw nmap output', closable: true, data: { recordKind: 'evidence', recordId: 'evidence-1' } }],
+      activeTabId: 'record-evidence',
+      nextTabNumber: 2,
+    });
+
+    render(<RecordDetailTab tabId="record-evidence" />);
+
+    expect(screen.getByRole('heading', { name: 'Raw nmap output' })).not.toHaveAttribute('data-presentation-sensitive');
+    expect(screen.getByText(/api\.example\.com \/ nmap/)).not.toHaveAttribute('data-presentation-sensitive');
+    expect(screen.getByText('22/tcp open ssh')).not.toHaveAttribute('data-presentation-sensitive');
+  });
+
   it('shows linked record titles and opens them as center tabs', () => {
     render(<RecordDetailTab tabId="record-1" />);
     expect(screen.queryByText('evidence-1')).not.toBeInTheDocument();

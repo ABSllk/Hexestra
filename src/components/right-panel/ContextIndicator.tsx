@@ -31,7 +31,7 @@ export function ContextIndicator() {
             className="max-w-full min-w-0 truncate rounded-md border border-accent-blue/25 bg-accent-blue/10 px-2 py-1 text-[11px] text-accent-blue"
             title={`${relationshipCount} asset relationship${relationshipCount === 1 ? '' : 's'} shared automatically`}
           >
-            {selectedNode.label} · {relationshipCount}
+            <span data-presentation-sensitive>{selectedNode.label} · {relationshipCount}</span>
           </span>
         )}
         {contextTabs.map((tab) => (
@@ -43,7 +43,7 @@ export function ContextIndicator() {
               : 'max-w-full min-w-0 truncate rounded-md border border-border-subtle px-2 py-1 text-[11px] text-text-muted hover:bg-raised/35 hover:text-text-secondary'}
             title={tab.isShared ? 'Click to hide from AI' : 'Click to share with AI'}
           >
-            {tab.title}
+            <span data-presentation-sensitive>{tab.title}</span>
           </button>
         ))}
       </div>

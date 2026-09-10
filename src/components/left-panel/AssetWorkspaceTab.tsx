@@ -155,9 +155,9 @@ export function AssetWorkspaceTab() {
               }}
               className={`ui-hover-row mx-1.5 my-0.5 w-[calc(100%-0.75rem)] px-2.5 py-2 text-left ${selectedNodeId === node.id ? '!border-accent-blue/30 !bg-accent-blue/10 shadow-sm shadow-black/10' : ''}`}
             >
-              <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5 select-none"><span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><span className="flex shrink-0 items-center gap-1.5">{node.scopeAnnotation && <ScopeAnnotationBadge annotation={node.scopeAnnotation} />}<StatusBadge status={node.status} /></span></div>
-              <div className="flex min-w-0 items-center gap-2 text-[11px] text-text-muted select-none"><span className="shrink-0 uppercase text-accent-teal select-none">{node.type}</span><span className="min-w-0 flex-1 truncate">{assetPrimaryValue(node, target, asset)}</span>{node.portCount > 0 && <span className="shrink-0">{node.portCount} ports</span>}</div>
-              {asset?.type === 'identity' && plaintextCredentials(asset).length > 0 && <div className="mt-1.5 space-y-0.5 rounded bg-raised/55 px-2 py-1.5 font-mono text-[11px] text-text-primary">
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5 select-none"><span data-presentation-sensitive className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><span className="flex shrink-0 items-center gap-1.5">{node.scopeAnnotation && <ScopeAnnotationBadge annotation={node.scopeAnnotation} />}<StatusBadge status={node.status} /></span></div>
+              <div className="flex min-w-0 items-center gap-2 text-[11px] text-text-muted select-none"><span className="shrink-0 uppercase text-accent-teal select-none">{node.type}</span><span data-presentation-sensitive className="min-w-0 flex-1 truncate">{assetPrimaryValue(node, target, asset)}</span>{node.portCount > 0 && <span className="shrink-0">{node.portCount} ports</span>}</div>
+              {asset?.type === 'identity' && plaintextCredentials(asset).length > 0 && <div data-presentation-sensitive className="mt-1.5 space-y-0.5 rounded bg-raised/55 px-2 py-1.5 font-mono text-[11px] text-text-primary">
                 {plaintextCredentials(asset).map(([kind, value]) => <div key={kind} className="break-all text-text-primary">{kind}: {value}</div>)}
               </div>}
               {updatedAt && <div className="mt-1 font-mono text-[11px] text-text-muted/70 select-none">Seen {formatTime(updatedAt)}</div>}
@@ -196,8 +196,8 @@ function ChangesPanel() {
     {runs.length > 0 && <div className="border-b border-border-subtle/60 bg-panel/20 px-3 py-2"><div className="mb-1 text-[11px] uppercase tracking-wider text-text-muted">Recent scans</div>{runs.slice(0, 6).map((run) => <div key={run.id} className="flex min-w-0 items-center justify-between gap-2 py-0.5 font-mono text-[11px]"><span className="min-w-0 truncate uppercase text-text-secondary">{run.tool}</span><span className="shrink-0 text-text-muted">{run.changeCount} changes · {formatTime(run.completedAt)}</span></div>)}</div>}
     {changes.length === 0 ? <div className="p-4 text-center text-2xs text-text-muted">No material changes observed yet.</div> : changes.map((change) => <div key={change.id} className="border-b border-border-subtle/50 px-3 py-2">
       <div className="mb-1 flex items-center gap-2"><span className={`h-1.5 w-1.5 rounded-full ${change.kind === 'endpoint_changed' ? 'bg-severity-medium' : 'bg-accent-green'}`} /><span className="font-mono text-[11px] uppercase text-accent-teal">{change.kind.replaceAll('_', ' ')}</span></div>
-      <div className="text-2xs leading-relaxed text-text-primary">{change.label}</div>
-      {(change.before || change.after) && <div className="mt-1 truncate font-mono text-[11px] text-text-muted">{change.before ? `${change.before} → ` : ''}{change.after}</div>}
+      <div data-presentation-sensitive className="text-2xs leading-relaxed text-text-primary">{change.label}</div>
+      {(change.before || change.after) && <div data-presentation-sensitive className="mt-1 truncate font-mono text-[11px] text-text-muted">{change.before ? `${change.before} → ` : ''}{change.after}</div>}
       <div className="mt-1 font-mono text-[11px] text-text-muted/70">{formatTime(change.observedAt)}</div>
     </div>)}
   </div>;
@@ -234,7 +234,7 @@ function ScopePanel() {
 }
 
 function ScopeField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
-  return <label className="mb-3 block"><span className="mb-1 block text-2xs font-medium text-text-secondary">{label}</span><textarea aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={5} className="w-full resize-y rounded border border-border-subtle bg-panel p-2 font-mono text-2xs text-text-primary outline-none placeholder:text-text-muted/60 focus:border-accent-blue/50" /></label>;
+  return <label className="mb-3 block"><span className="mb-1 block text-2xs font-medium text-text-secondary">{label}</span><textarea data-presentation-sensitive aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={5} className="w-full resize-y rounded border border-border-subtle bg-panel p-2 font-mono text-2xs text-text-primary outline-none placeholder:text-text-muted/60 focus:border-accent-blue/50" /></label>;
 }
 
 function ScopeAnnotationBadge({ annotation }: { annotation: 'authorized' | 'excluded' }) {

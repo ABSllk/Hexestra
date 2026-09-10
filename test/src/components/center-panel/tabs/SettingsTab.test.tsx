@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SettingsTab } from '@/components/center-panel/tabs/SettingsTab';
 import { I18nProvider } from '@/i18n';
 import { APP_SETTINGS_IPC } from '@electron/contracts/app-settings';
+import type { ShortcutOverrides } from '@electron/contracts/shortcuts';
 
 const settings = {
   version: 2 as const,
@@ -19,14 +20,14 @@ const settings = {
 
 describe('SettingsTab', () => {
   const invoke = vi.fn();
-  let appSettings: { version: number; language: string; theme: 'system' | 'dark' | 'light'; mitmdumpPath: string | null } = { version: 3, language: 'en', theme: 'system', mitmdumpPath: null };
+  let appSettings: { version: number; language: string; theme: 'system' | 'dark' | 'light'; mitmdumpPath: string | null; mihomoPath: string | null; shortcutOverrides: ShortcutOverrides } = { version: 5, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null, shortcutOverrides: {} };
   let rejectThemeUpdate = false;
 
   beforeEach(() => {
     invoke.mockReset();
-    appSettings = { version: 3, language: 'en', theme: 'system', mitmdumpPath: null };
+    appSettings = { version: 5, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null, shortcutOverrides: {} };
     rejectThemeUpdate = false;
-    invoke.mockImplementation((channel: string, patch?: { language?: string; theme?: 'system' | 'dark' | 'light' }) => {
+    invoke.mockImplementation((channel: string, patch?: { language?: string; theme?: 'system' | 'dark' | 'light'; shortcutOverrides?: ShortcutOverrides }) => {
       if (channel === APP_SETTINGS_IPC.GET) return Promise.resolve({ ...appSettings });
       if (channel === APP_SETTINGS_IPC.UPDATE) {
         if (patch?.theme && rejectThemeUpdate) return Promise.reject(new Error('Unable to save theme'));
@@ -119,5 +120,38 @@ describe('SettingsTab', () => {
 
     expect(await screen.findByText(/Unable to save theme/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('records, rejects conflicting, clears, and resets shortcut overrides', async () => {
+    render(<I18nProvider><SettingsTab /></I18nProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Shortcuts' }));
+
+    const presentation = await screen.findByRole('button', { name: /Toggle presentation mode: Ctrl\+Shift\+H/ });
+    fireEvent.click(presentation);
+    fireEvent.keyDown(presentation, { key: 'p', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith(APP_SETTINGS_IPC.UPDATE, {
+      shortcutOverrides: { 'presentation.toggle': 'Mod+Shift+P' },
+    }));
+    expect(await screen.findByRole('button', { name: /Toggle presentation mode: Ctrl\+Shift\+P/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(appSettings.shortcutOverrides).toEqual({}));
+    const defaultPresentation = await screen.findByRole('button', { name: /Toggle presentation mode: Ctrl\+Shift\+H/ });
+    fireEvent.click(defaultPresentation);
+    fireEvent.keyDown(defaultPresentation, { key: 'p', ctrlKey: true, shiftKey: true });
+    await screen.findByRole('button', { name: /Toggle presentation mode: Ctrl\+Shift\+P/ });
+
+    const remapped = screen.getByRole('button', { name: /Toggle presentation mode: Ctrl\+Shift\+P/ });
+    fireEvent.click(remapped);
+    fireEvent.keyDown(remapped, { key: 't', ctrlKey: true });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Already assigned to New terminal.');
+
+    fireEvent.keyDown(remapped, { key: 'Backspace' });
+    await waitFor(() => expect(appSettings.shortcutOverrides['presentation.toggle']).toBeNull());
+    expect(await screen.findByRole('button', { name: /Toggle presentation mode: Unassigned/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset all' }));
+    await waitFor(() => expect(appSettings.shortcutOverrides).toEqual({}));
+    expect(await screen.findByRole('button', { name: /Toggle presentation mode: Ctrl\+Shift\+H/ })).toBeInTheDocument();
   });
 });
