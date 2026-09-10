@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { execFile } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { app, BrowserWindow, ipcMain } from 'electron';
@@ -7,6 +8,7 @@ const require = createRequire(import.meta.url);
 const projectRoot = path.resolve(import.meta.dirname, '..');
 let window;
 let terminal;
+let terminalExited = false;
 let pty;
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
@@ -49,6 +51,40 @@ const withTimeout = (promise, milliseconds, label) => Promise.race([
   new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${milliseconds}ms`)), milliseconds)),
 ]);
 
+const terminateTerminal = async () => {
+  if (!terminal || terminalExited) return;
+  if (process.platform !== 'win32') {
+    try {
+      terminal.kill();
+    } catch {
+      try {
+        process.kill(terminal.pid);
+      } catch {
+        // The shell may already have exited between timeout and cleanup.
+      }
+    }
+    return;
+  }
+
+  await new Promise((resolve) => {
+    execFile(
+      'taskkill.exe',
+      ['/pid', String(terminal.pid), '/t', '/f'],
+      { windowsHide: true },
+      (error) => {
+        if (error) {
+          try {
+            process.kill(terminal.pid);
+          } catch {
+            // The shell may already have exited between timeout and cleanup.
+          }
+        }
+        resolve();
+      },
+    );
+  });
+};
+
 const run = async () => {
   try {
   console.log(`Starting Electron smoke on ${process.platform}/${process.arch}`);
@@ -74,10 +110,19 @@ const run = async () => {
     const timer = setTimeout(() => reject(new Error('node-pty startup smoke timed out')), 5_000);
     terminal.onData((chunk) => {
       value += chunk;
-      if (value.includes('HEXESTRA_PTY_OK')) { clearTimeout(timer); resolve(value); }
     });
     terminal.onExit(({ exitCode }) => {
-      if (!value.includes('HEXESTRA_PTY_OK')) reject(new Error(`node-pty exited before sentinel (${exitCode})`));
+      terminalExited = true;
+      clearTimeout(timer);
+      if (!value.includes('HEXESTRA_PTY_OK')) {
+        reject(new Error(`node-pty exited before sentinel (${exitCode})`));
+        return;
+      }
+      if (exitCode !== 0) {
+        reject(new Error(`node-pty exited with code ${exitCode}`));
+        return;
+      }
+      resolve(value);
     });
   });
   console.log(`HEXESTRA_STARTUP_SMOKE_OK ${process.platform}/${process.arch} ${String(output).trim()}`);
@@ -86,10 +131,9 @@ const run = async () => {
     console.error(error);
     process.exitCode = 1;
   } finally {
-    try { terminal?.kill(); } catch { /* already stopped */ }
+    await terminateTerminal();
     if (window && !window.isDestroyed()) window.destroy();
-    if (app.isReady()) app.quit();
-    else app.exit(1);
+    app.exit(process.exitCode ?? 0);
   }
 };
 
