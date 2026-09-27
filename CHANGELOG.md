@@ -12,8 +12,8 @@
   Routed Codex project tools through Hexestra's permission-checked MCP bridge, synced project Skills to `.agents/skills`, and added runtime and bridge diagnostics in Settings.
 - 新增 Claude Code 与 Codex 的可用模型列表及模型支持的推理强度选择；演示模式现可通过可配置快捷键模糊项目敏感信息。
   Added runtime model catalogs and supported reasoning-effort choices for Claude Code and Codex, plus a configurable presentation-mode shortcut that obscures sensitive project details.
-- Codex 输入框补全 Hexestra 已接入的斜杠命令；输入 `$` 时从 App Server 读取可用 Skills，并在技能变化后刷新候选。
-  Added completion for Codex commands supported by Hexestra and live Skill suggestions from App Server, refreshed when Skills change.
+- Codex 输入框的斜杠菜单合并已接入命令与可用 Skills，并在技能变化后刷新候选。
+  Merged supported Codex commands and live Skills into the slash menu, refreshing suggestions when Skills change.
 
 ### Changed / 变更
 

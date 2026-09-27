@@ -548,7 +548,7 @@ Skill 提供“应该怎样做”的方法、步骤和专业说明。Hexestra �
 | `/help` | 查看运行时帮助 |
 | `/status` | 查看运行状态 |
 
-Claude 会话还会显示 Claude Code 发现的命令和已启用技能命令；Claude 原生斜杠命令会直接交给 Claude Code。Codex 会话输入 `/` 可补全 Hexestra 已接入的操作；`/model`、`/permissions`、`/skills`、`/mcp` 和 `/new` 会打开对应界面。输入 `$` 可补全所选 Codex 运行环境中已启用的技能。仅适用于 Codex 终端界面的命令不会出现在 Hexestra 中，`/cost` 也不可用。
+Claude 会话还会显示 Claude Code 发现的命令和已启用技能命令；Claude 原生斜杠命令会直接交给 Claude Code。Codex 会话输入 `/` 可查看 Hexestra 已接入的操作与标有“Skill”的可用技能；`/model`、`/permissions`、`/mcp` 和 `/new` 会打开对应界面。选择技能后，Hexestra 会用 Codex 的 `$skill-name` 标记发送。仅适用于 Codex 终端界面的命令不会出现在 Hexestra 中，`/cost` 也不可用。
 
 ### 7.4 权限模式与自主级别
 

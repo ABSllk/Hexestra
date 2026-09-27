@@ -206,13 +206,14 @@ describe('ChatInput composer', () => {
     const composer = screen.getByRole('combobox');
 
     fireEvent.change(composer, { target: { value: '/' } });
-    for (const name of ['/distill', '/compact', '/context', '/help', '/status', '/model', '/permissions', '/skills', '/mcp', '/new']) {
+    for (const name of ['/distill', '/compact', '/context', '/help', '/status', '/model', '/permissions', '/mcp', '/new']) {
       expect(screen.getByRole('option', { name: new RegExp(name) })).toBeInTheDocument();
     }
     expect(screen.getByRole('option', { name: /\/context/ })).toHaveTextContent('Summarize the project and focused task.');
     expect(screen.queryByRole('option', { name: /\/cost/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /\/doctor/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: /\/recon-helper/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: /\/recon-helper.*Skill/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /\/skills/ })).not.toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalledWith('agent:commands:list', expect.anything());
 
     fireEvent.change(composer, { target: { value: '/sta' } });
@@ -232,25 +233,38 @@ describe('ChatInput composer', () => {
     expect(screen.getByRole('option', { name: /\/context/ })).toHaveTextContent('总结项目与当前任务。');
   });
 
-  it('loads Codex Skill completion from the selected runtime when $ is entered', async () => {
+  it('lists live Codex Skills in slash completion and sends the native Skill marker', async () => {
     useChatStore.setState((state) => ({ agentStatus: { ...state.agentStatus, backendId: 'codex' } }));
     render(<ChatInput />);
     const composer = screen.getByRole('combobox');
 
-    fireEvent.change(composer, { target: { value: '$rec' } });
+    fireEvent.change(composer, { target: { value: '/rec' } });
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('codex:skills:list', null));
-    expect(await screen.findByRole('option', { name: /\$recon-helper/ })).toHaveTextContent('Run the Codex recon workflow');
+    expect(await screen.findByRole('option', { name: /\/recon-helper.*Skill/ })).toHaveTextContent('Run the Codex recon workflow');
     codexSkills = [{ name: 'recon-updated', description: 'Updated by Codex' }];
     eventHandlers.get('codex:skills-changed')?.();
-    const option = await screen.findByRole('option', { name: /\$recon-updated/ });
+    const option = await screen.findByRole('option', { name: /\/recon-updated.*Skill/ });
     expect(option).toHaveTextContent('Updated by Codex');
-    expect(screen.queryByRole('option', { name: /\$recon-helper/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /\/recon-helper/ })).not.toBeInTheDocument();
     fireEvent.click(option);
-    expect(screen.getByRole('button', { name: 'Edit command $recon-updated' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit command /recon-updated' })).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Inspect the target' } });
     fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
     await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('$recon-updated Inspect the target', []));
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '$rec' } });
+    expect(screen.queryByRole('listbox', { name: 'Command suggestions' })).not.toBeInTheDocument();
+  });
+
+  it('recognizes a typed Codex Skill with arguments after runtime discovery', async () => {
+    useChatStore.setState((state) => ({ agentStatus: { ...state.agentStatus, backendId: 'codex' } }));
+    render(<ChatInput />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '/recon-helper Inspect the target' } });
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('codex:skills:list', null));
+    expect(await screen.findByRole('button', { name: 'Edit command /recon-helper' })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('$recon-helper Inspect the target', []));
   });
 
   it('routes Codex picker commands to Hexestra controls instead of the Agent turn', async () => {
@@ -267,11 +281,6 @@ describe('ChatInput composer', () => {
     fireEvent.keyDown(composer, { key: 'Enter' });
     expect(screen.getByLabelText('Permission mode')).toBeInTheDocument();
     expect(sendMessage).not.toHaveBeenCalled();
-
-    fireEvent.change(composer, { target: { value: '/skills' } });
-    fireEvent.keyDown(composer, { key: 'Enter' });
-    expect(composer).toHaveValue('$');
-    expect(await screen.findByRole('option', { name: /\$recon-helper/ })).toBeInTheDocument();
 
     fireEvent.change(composer, { target: { value: '/new' } });
     fireEvent.keyDown(composer, { key: 'Enter' });

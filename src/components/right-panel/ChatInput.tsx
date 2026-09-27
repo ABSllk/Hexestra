@@ -61,18 +61,17 @@ export function ChatInput() {
   const modelBackendId = isCodex ? 'codex' : 'claude';
   const modelCatalog = useAgentModels(modelBackendId, openMenu === 'model', activeProjectId);
   const commands = isCodex
-    ? [...codexCommandCatalog(t), ...codexSkillCommands]
+    ? codexCommandCatalog(t, codexSkillCommands)
     : commandCatalog(t, runtimeCommands, skillCommands);
   const activeCommand = commandForText(text, commands);
-  const commandQuery = activeCommand ? null : completionQuery(text, isCodex);
+  const commandQuery = activeCommand ? null : completionQuery(text);
   const commandSuggestions = commandQuery === null
     ? []
     : commands.filter((command) => command.name.toLowerCase().startsWith(commandQuery.toLowerCase()));
   const showCommandSuggestions = commandSuggestions.length > 0
     && dismissedCommandQuery !== commandQuery;
   const visibleText = activeCommand ? commandArguments(text, activeCommand.name) : text;
-  const isCodexSkillQuery = isCodex
-    && (commandQuery?.startsWith('$') === true || activeCommand?.name.startsWith('$') === true);
+  const isCodexSkillQuery = isCodex && text.trimStart().startsWith('/');
 
   useEffect(() => {
     if (!window.hexestra) return;
@@ -151,7 +150,7 @@ export function ChatInput() {
         .then((skills) => {
           if (!active || request !== revision) return;
           setCodexSkillCommands(skills.map((skill) => ({
-            name: `$${skill.name}`,
+            name: `/${skill.name}`,
             description: skill.description,
             argumentHint: '',
             source: 'skill' as const,
@@ -190,11 +189,10 @@ export function ChatInput() {
     if (!text.trim() && attachments.length === 0 && contextRefs.length === 0) return;
     const content = text.trim() || 'Analyze the attached material in the context of this penetration-testing project.';
     if (isCodex) {
-      if (content === '/model' || content === '/permissions' || content === '/skills' || content === '/mcp' || content === '/new') {
+      if (content === '/model' || content === '/permissions' || content === '/mcp' || content === '/new') {
         setComposerError(null);
         if (content === '/model') { setText(''); setOpenMenu('model'); }
         if (content === '/permissions') { setText(''); setOpenMenu('mode'); }
-        if (content === '/skills') { setText('$'); setOpenMenu(null); }
         if (content === '/mcp') { setText(''); setOpenMenu(null); openSettingsTab('connection'); }
         if (content === '/new' && await newConversation('codex')) { setAttachments([]); setOpenMenu(null); }
         textareaRef.current?.focus();
@@ -210,12 +208,14 @@ export function ChatInput() {
     setOpenMenu(null);
     setComposerError(null);
     try {
-      await sendMessage(content, outgoingAttachments);
+      const outgoingContent = isCodex && activeCommand?.source === 'skill'
+        ? `$${content.slice(1)}` : content;
+      await sendMessage(outgoingContent, outgoingAttachments);
     } catch {
       // The store owns request errors; preserve only composer-specific errors here.
     }
     textareaRef.current?.focus();
-  }, [attachments, contextRefs.length, isCodex, newConversation, sendMessage, text]);
+  }, [activeCommand, attachments, contextRefs.length, isCodex, newConversation, sendMessage, text]);
 
   const pickAttachments = async (picker: AgentAttachmentPicker) => {
     if (!window.hexestra) return;
@@ -589,8 +589,8 @@ function commandCatalog(
   return [...byName.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function codexCommandCatalog(t: ReturnType<typeof useI18n>['t']): ComposerCommand[] {
-  return [
+function codexCommandCatalog(t: ReturnType<typeof useI18n>['t'], skills: ComposerCommand[]): ComposerCommand[] {
+  const commands: ComposerCommand[] = [
     { name: '/distill', description: t('agent.commandDistill'), argumentHint: '', source: 'app' },
     { name: '/compact', description: t('agent.codexCommandCompact'), argumentHint: '', source: 'app' },
     { name: '/context', description: t('agent.codexCommandContext'), argumentHint: '', source: 'app' },
@@ -598,10 +598,12 @@ function codexCommandCatalog(t: ReturnType<typeof useI18n>['t']): ComposerComman
     { name: '/status', description: t('agent.codexCommandStatus'), argumentHint: '', source: 'app' },
     { name: '/model', description: t('agent.codexCommandModel'), argumentHint: '', source: 'app' },
     { name: '/permissions', description: t('agent.codexCommandPermissions'), argumentHint: '', source: 'app' },
-    { name: '/skills', description: t('agent.codexCommandSkills'), argumentHint: '', source: 'app' },
     { name: '/mcp', description: t('agent.codexCommandMcp'), argumentHint: '', source: 'app' },
     { name: '/new', description: t('agent.codexCommandNew'), argumentHint: '', source: 'app' },
   ];
+  const byName = new Map(commands.map((command) => [command.name, command]));
+  for (const skill of skills) if (!byName.has(skill.name)) byName.set(skill.name, skill);
+  return [...byName.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function expandRuntimeCommands(commands: AgentSlashCommandDescriptor[]): ComposerCommand[] {
@@ -626,8 +628,8 @@ function expandRuntimeCommands(commands: AgentSlashCommandDescriptor[]): Compose
   return [...expanded.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function completionQuery(content: string, includeSkills: boolean) {
-  const match = content.match(includeSkills ? /^([/$])([^\s]*)$/ : /^(\/)([^\s]*)$/);
+function completionQuery(content: string) {
+  const match = content.match(/^(\/)([^\s]*)$/);
   return match ? `${match[1]}${match[2]}` : null;
 }
 
@@ -641,6 +643,6 @@ function commandArguments(content: string, commandName: string) {
 }
 
 function replaceCommandToken(content: string, commandName: string) {
-  const remainder = content.trimStart().replace(/^[/$][^\s]*/, '').replace(/^\s+/, '');
+  const remainder = content.trimStart().replace(/^\/[^\s]*/, '').replace(/^\s+/, '');
   return `${commandName}${remainder ? ` ${remainder}` : ''}`;
 }
