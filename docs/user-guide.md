@@ -22,14 +22,14 @@ A project usually maps to one client, one authorization, or one isolated lab. Do
 
 Open **Settings > Connection**:
 
-1. Choose the Native environment or Windows Subsystem for Linux (WSL).
-2. Select or auto-detect the Claude Code executable.
-3. Choose the model and config sources.
-4. Click Test Connection, and save on success.
+1. Select Claude Code or Codex, then choose the Native or WSL environment.
+2. Select or auto-detect that backend's executable.
+3. Choose an available model and supported reasoning effort.
+4. Check the connection and save.
 
-Claude Code must already be installed in the chosen environment. If the connection fails, first run `claude --version` in that same environment.
+The selected CLI must already be installed and signed in within that environment. If the connection fails, run `claude --version` or `codex --version` there and check the executable path in Settings.
 
-Hexestra connects to this local Claude Code. You can keep your usual Claude Code habits — there's no separate agent command language to learn.
+Choose the backend when creating a conversation. Existing conversations retain their backend, and forks inherit it.
 
 ### 1.3 Set the testing scope
 
@@ -82,9 +82,9 @@ Hexestra automatically supplies the project, scope, selected objects, and built-
 
 ## 2. Understanding Hexestra
 
-Hexestra is a human-and-agent collaborative penetration-testing IDE built on a local Claude Code. The operator and the agent share the project, browser, terminals, HTTP traffic, asset graph, tasks, evidence, and reports.
+Hexestra is a human-and-agent collaborative penetration-testing IDE using a locally installed Claude Code or Codex CLI. The operator and the agent share the project, browser, terminals, HTTP traffic, asset graph, tasks, evidence, and reports.
 
-You use the agent the same way you use Claude Code. Hexestra adds project context, a shared operating surface, permission controls, and persistent records on top. Other agent backends may be supported in the future, but this version only supports Claude Code.
+Hexestra adds project context, a shared operating surface, permission controls, and persistent records around the selected backend. Claude-specific commands remain available in Claude conversations; Codex uses its supported commands and Hexestra equivalents.
 
 Hexestra organizes a test as a project:
 
@@ -202,11 +202,13 @@ A conversation can branch to preserve different reasoning paths, but files, asse
 ### 3.1 Requirements
 
 - Windows x64, Linux x64 (Ubuntu 24.04 as the reference), or macOS;
-- Claude Code installed in the Native or WSL environment the agent uses;
+- Claude Code or Codex CLI installed in the Native or WSL environment the agent uses;
 - mitmproxy/mitmdump for traffic capture when running from source; it's bundled in releases;
 - Burp Suite, JDK 17, and Mihomo are all optional.
 
-### 3.2 Install Claude Code
+### 3.2 Install an agent CLI
+
+For Claude Code:
 
 ```bash
 npm install -g @anthropic-ai/claude-code
@@ -222,6 +224,8 @@ claude auth status
 
 For an Anthropic-compatible provider, set the base URL, token, and model variables in the same environment you launch Hexestra from. Never put keys in a project or repository.
 
+For Codex, install and sign in with its CLI in the selected environment, then verify `codex --version`. Hexestra uses that existing sign-in; set the executable path in **Settings > Connection** if the CLI is not on `PATH`. The Codex desktop app alone is not the executable Hexestra launches.
+
 ### 3.3 Run from source
 
 ```bash
@@ -233,13 +237,13 @@ npm run electron:dev
 
 Open **Settings > Connection**:
 
-1. Choose Native or WSL.
+1. Select the backend and choose Native or WSL.
 2. In WSL mode, pick the distribution; the Windows reference default is `Ubuntu-24.04`.
-3. In Native mode, Claude can be auto-discovered or you can pick the path manually.
-4. Choose the default model and Claude config sources (user, project, local).
-5. Test the connection and save.
+3. Check the detected CLI or enter its path manually.
+4. Choose an available model and supported reasoning effort. Claude also supports config sources (user, project, local).
+5. Check the connection and save.
 
-You can't switch connection or model while a request is running. Hexestra currently connects to a locally installed Claude Code; other agent backends may be added later.
+Finish the active request before changing its connection or model. A new conversation can select another backend without converting existing conversations.
 
 ### 3.5 Project menu
 
@@ -504,7 +508,7 @@ To judge whether work is done, look at step status, result summary, success crit
 
 ### 7.1 Conversation
 
-Use the agent panel on the right like Claude Code inside the project — just say what you want. For example:
+Use the agent panel on the right to describe what you want. For example:
 
 - `Analyze this request.`
 - `Continue the current task.`
@@ -544,7 +548,7 @@ Text, code, PDF, local file paths, and PNG/JPEG/GIF/WebP images are supported:
 | `/help` | View runtime help |
 | `/status` | View runtime status |
 
-The UI also shows commands discovered from Claude Code and enabled-skill commands. A native slash command is passed to Claude Code as-is and does not automatically get the normal project context and attachments attached.
+Claude conversations also show commands discovered from Claude Code and enabled-skill commands. Native Claude slash commands pass through to Claude Code. Codex exposes supported commands and Hexestra equivalents; `/cost` is unavailable there.
 
 ### 7.4 Permission modes and autonomy level
 
@@ -564,7 +568,7 @@ When the agent needs a business judgment, it shows a question card; pick an exis
 
 ### 7.6 In-flight input, stop, and queue
 
-You can still send messages while the agent is working. A new message first shows as queued; once Claude Code consumes it, the queued marker disappears.
+You can still send messages while the agent is working. A new message first shows as queued; once the selected backend consumes it, the queued marker disappears.
 
 - multiple inputs may be merged;
 - one input is not guaranteed to map to one reply;
@@ -942,7 +946,7 @@ A definition may contain environment variables, headers, and credentials. Avoid 
 | Page | Function |
 | --- | --- |
 | General | English/简体中文; system/dark/light theme |
-| Connection | Native/WSL, distribution, Claude path, model, config sources, test/save/reset |
+| Connection | Claude/Codex, Native/WSL, CLI paths, model and reasoning effort, diagnostics, save/reset; Claude config sources |
 | Traffic Runtime | Detect mitmdump status, path, version, source; re-detect, select, or auto-reset |
 | Proxy | Mihomo runtime, nodes, chains, egress enforcement, test, and status |
 | Burp | Bridge port/token, MCP SSE, save, connect, and status |

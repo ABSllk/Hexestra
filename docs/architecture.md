@@ -16,7 +16,7 @@ flowchart LR
     P["Preload Bridge<br/>explicit IPC allowlist"]
     M["Electron Main Process<br/>services, validation, lifecycle"]
     D["Folder project<br/>Markdown · JSON · SQLite · JSONL"]
-    X["External runtimes<br/>Claude Code · mitmdump · Mihomo · Shell"]
+    X["External runtimes<br/>Claude Code · Codex · mitmdump · Mihomo · Shell"]
     B["Managed Browser<br/>WebContentsView · project Session"]
 
     R -->|invoke / send| P

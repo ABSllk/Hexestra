@@ -2,6 +2,31 @@
 
 ## Unreleased / 未发布
 
+## [0.8.0] - 2026-09-27
+
+### Added / 新增
+
+- 新增 Codex App Server 后端，可在新建会话时选择 Claude Code 或 Codex；历史会话保留原后端，分支继承源会话后端。Codex 支持本机和 WSL 运行，并复用已安装 CLI 的登录状态。
+  Added a Codex App Server backend selectable for new conversations. Existing conversations retain their backend, forks inherit it, and Codex uses the installed CLI and its sign-in state in Native or WSL mode.
+- Codex 通过 Hexestra 管理的 MCP 桥接使用项目工具和权限检查；项目 Skills 同步到 `.agents/skills`，设置页提供运行时与桥接诊断。
+  Routed Codex project tools through Hexestra's permission-checked MCP bridge, synced project Skills to `.agents/skills`, and added runtime and bridge diagnostics in Settings.
+- 新增 Claude Code 与 Codex 的可用模型列表及模型支持的推理强度选择；演示模式现可通过可配置快捷键模糊项目敏感信息。
+  Added runtime model catalogs and supported reasoning-effort choices for Claude Code and Codex, plus a configurable presentation-mode shortcut that obscures sensitive project details.
+
+### Changed / 变更
+
+- 将自主程度作为模型的行动提示，与工具权限模式分开；压缩聊天侧栏布局，并统一模型、权限等弹层的样式和中文文案。
+  Made autonomy a guidance setting separate from tool permissions, compacted the chat sidebar, and aligned model and permission menus with localized copy.
+- 升级到 Tailwind CSS 4，并加强 Windows 桌面启动检查。
+  Upgraded to Tailwind CSS 4 and strengthened the Windows desktop startup smoke check.
+
+### Fixed / 修复
+
+- 修复 Codex 任务中多段文字被后续输出覆盖的问题，并让项目内 Markdown 文件链接在 Hexestra 编辑器标签页打开。
+  Preserved multiple Codex text messages across a turn and opened project Markdown links in Hexestra editor tabs.
+- 找不到 Codex CLI 时显示可排查的错误说明，而不再直接显示 `spawn codex ENOENT`。
+  Replaced raw `spawn codex ENOENT` failures with actionable Codex CLI diagnostics.
+
 ## [0.7.0] - 2026-08-28
 
 ### Added / 新增

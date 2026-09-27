@@ -20,7 +20,7 @@ flowchart LR
     P["Preload Bridge<br/>显式 IPC 白名单"]
     M["Electron Main Process<br/>服务、校验与生命周期"]
     D["文件夹项目<br/>Markdown · JSON · SQLite · JSONL"]
-    X["外部运行时<br/>Claude Code · mitmdump · Mihomo · Shell"]
+    X["外部运行时<br/>Claude Code · Codex · mitmdump · Mihomo · Shell"]
     B["受管 Browser<br/>WebContentsView · 项目 Session"]
 
     R -->|invoke / send| P

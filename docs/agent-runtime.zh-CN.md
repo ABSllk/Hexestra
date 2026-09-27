@@ -23,8 +23,8 @@ Shell、任务和结构化记录能力声明为受管工具。
 | `AgentInteractionHandler` | 处理工具授权和 Agent 向操作员提出的问题 |
 | `AgentHistoryRepository` | 按 Branch 保存消息、活动、Subagent 记录和 live recovery 状态 |
 
-当前默认后端是 Claude，但 `AgentService` 不消费 Claude SDK message。SDK 解析、streaming query、
-session 恢复和 provider-specific command discovery 留在 Claude adapter 内；协调器只消费统一事件。
+现有设置的默认后端仍是 Claude，但 `AgentService` 不消费后端专属消息。Claude adapter 负责 SDK 消息和
+streaming query；Codex adapter 负责 App Server 事件、thread 恢复和 Hexestra MCP 工具桥接。两者都向协调器输出统一事件。
 
 ## 身份与生命周期
 

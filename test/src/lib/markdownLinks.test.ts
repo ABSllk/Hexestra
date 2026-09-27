@@ -17,6 +17,6 @@ describe('Markdown link routing', () => {
   it('routes web links separately and rejects unsupported schemes', () => {
     expect(resolveMarkdownLink('https://example.com/docs', root)).toEqual({ kind: 'web', url: 'https://example.com/docs' });
     expect(resolveMarkdownLink('javascript:alert(1)', root)).toBeNull();
-    expect(resolveMarkdownLink('mailto:test@example.com', root)).toBeNull();
+    expect(resolveMarkdownLink('mailto:recipient', root)).toBeNull();
   });
 });

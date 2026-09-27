@@ -20,7 +20,7 @@ This document explains how a single Agent turn builds context, executes tools, p
 | `AgentInteractionHandler` | Handles tool authorization and questions the Agent asks the operator |
 | `AgentHistoryRepository` | Persists per-branch messages, activities, Subagent records, and live-recovery state |
 
-The default backend is currently Claude, but `AgentService` does not consume Claude SDK messages. SDK parsing, the streaming query, session recovery, and provider-specific command discovery stay inside the Claude adapter; the coordinator only consumes unified events.
+The default backend remains Claude for existing settings, but `AgentService` does not consume provider-specific messages. The Claude adapter owns SDK parsing and its streaming query; the Codex adapter owns App Server events, thread recovery, and the Hexestra MCP tool bridge. Both emit unified events to the coordinator.
 
 ## Identity and lifecycle
 

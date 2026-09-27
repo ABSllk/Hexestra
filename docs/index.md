@@ -4,7 +4,7 @@
 
 ## User documentation
 
-The [full user guide](user-guide.md) is the primary entry point. Hexestra currently connects to a locally installed Claude Code, so you can keep your Claude Code habits and issue short commands directly. The guide opens with a quick start, then covers projects, scope, and assets, and goes on to:
+The [full user guide](user-guide.md) is the primary entry point. Hexestra connects to a locally installed Claude Code or Codex CLI; select the backend when creating a conversation. The guide opens with a quick start, then covers projects, scope, and assets, and goes on to:
 
 - installation, agent connection, projects, and workspaces;
 - scope, assets, target views, and the network map;

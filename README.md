@@ -24,8 +24,8 @@ An AI-native penetration testing IDE where human operators and AI share the same
 Hexestra brings the fragmented parts of a penetration test into one project. Scope labels give the Agent semantic asset context, while the operator can inspect, guide, approve, interrupt, or take over at any time.
 
 - **One shared operational surface:** human and AI work with the same browser, terminal sessions, captured traffic, tasks, assets, and evidence.
-- **Controlled autonomy:** choose ASK, AUTO, or BYPASS while preserving Rules of Engagement and technical safety boundaries; Scope labels remain advisory.
-- **Keep the tools you know:** continue using Claude Code, Burp Suite, PowerShell, WSL, SSH, and their existing configurations instead of learning a closed replacement.
+- **Controlled execution:** choose a permission mode (ASK, AUTO, or BYPASS) and a separate autonomy level while preserving Rules of Engagement and technical safety boundaries; Scope labels remain advisory.
+- **Keep the tools you know:** use Claude Code or Codex alongside Burp Suite, PowerShell, WSL, SSH, and their existing configurations.
 - **Durable engagement state:** reopen a project folder to restore Scope, tasks, NetMap, evidence, findings, reports, workspace tabs, permissions, and conversation branches.
 
 ## Screenshots
@@ -59,6 +59,7 @@ These screenshots use the fictional Northstar Demo Lab, reserved `example.test` 
 - Graph-guided testing through typed assets, relationships, provenance, and active objectives in NetMap
 - Structured progression from raw output to Evidence, Finding, Vulnerability, and Report
 - Non-destructive conversation branches that preserve the original reasoning path and canonical project state
+- Claude Code or Codex conversations with shared Hexestra project tools, approvals, and records
 - Optional Burp Bridge and Burp MCP integration without replacing the normal Burp workflow
 - Optional per-project Mihomo multi-hop egress with encrypted nodes and fail-closed managed routing
 
@@ -69,12 +70,16 @@ These screenshots use the fictional Northstar Demo Lab, reserved `example.test` 
 - Node.js 24 and npm
 - Windows x64, Linux x64 (Ubuntu 24.04 baseline), macOS Intel, or macOS Apple Silicon
 - Standard Electron desktop libraries; Ubuntu needs the usual X11/GTK runtime libraries
-- Claude Code installed separately on the host for the selected Native or WSL runtime; Hexestra does not bundle or install it
+- Claude Code or Codex CLI installed separately in the selected Native or WSL runtime; Hexestra does not bundle either CLI
 - mitmproxy is bundled in packaged builds; source runs may provide it separately
 - Optional Burp Suite and JDK 17 for the Bridge
 - Optional user-provided [Mihomo](https://github.com/MetaCubeX/mihomo/releases) for project-level multi-hop egress (v1.19.29 is tested and recommended, but not required)
 
-### Install Claude Code
+### Install an Agent runtime
+
+Choose Claude Code or Codex when creating a conversation. Existing conversations keep their selected backend.
+
+#### Claude Code
 
 Run these commands in the Native or WSL environment selected under **Settings > Connection**:
 
@@ -89,6 +94,16 @@ To use an Anthropic account:
 claude auth login
 claude auth status
 ```
+
+#### Codex
+
+Install and sign in with the Codex CLI in the Native or WSL environment selected under **Settings > Connection**, then verify it there:
+
+```bash
+codex --version
+```
+
+Hexestra starts the installed CLI's App Server and reuses its sign-in. If the Codex desktop app is installed but `codex` is not on that environment's `PATH`, set the CLI executable path in Hexestra's Codex connection settings.
 
 ### Configure a third-party API
 

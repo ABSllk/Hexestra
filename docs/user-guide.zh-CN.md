@@ -22,14 +22,14 @@
 
 打开 **设置 > 连接（Settings > Connection）**：
 
-1. 选择本机环境（Native）或 Windows 的 Linux 子系统（WSL）。
-2. 选择或自动检测 Claude Code 可执行文件。
-3. 选择模型和配置来源。
-4. 点击测试连接，成功后保存。
+1. 选择 Claude Code 或 Codex，再选择本机（Native）或 WSL 环境。
+2. 选择或自动检测对应的 CLI 可执行文件。
+3. 选择可用模型和该模型支持的推理强度。
+4. 检查连接并保存。
 
-Claude Code 需要预先安装在所选环境中。连接失败时先在同一环境执行 `claude --version`。
+所选 CLI 需要预先安装并登录。连接失败时，在相同环境运行 `claude --version` 或 `codex --version`，并检查设置中的可执行文件路径。
 
-Hexestra 连接的就是这份本地 Claude Code。你可以沿用平时使用 Claude Code 的习惯，不需要学习另一套智能体命令方式。
+新建会话时选择后端；已有会话保持原后端，分支继承源会话后端。
 
 ### 1.3 设置测试范围
 
@@ -82,9 +82,9 @@ Hexestra 会自动提供项目、范围、选中对象和内置规则；询问�
 
 ## 2. 认识 Hexestra
 
-Hexestra 是一款基于本地 Claude Code 的人工与智能体协作渗透测试集成环境。操作员和智能体共用项目、浏览器、终端、HTTP 流量、资产图、任务、证据和报告。
+Hexestra 是一款使用本地 Claude Code 或 Codex CLI 的人工与智能体协作渗透测试集成环境。操作员和智能体共用项目、浏览器、终端、HTTP 流量、资产图、任务、证据和报告。
 
-智能体的使用方式与 Claude Code 一致。Hexestra 在其上补充项目上下文、共享操作面、权限控制和持久化记录。未来可能接入其他智能体后端，但当前版本只支持 Claude Code。
+Hexestra 为所选后端补充项目上下文、共享操作面、权限控制和持久化记录。Claude 专属命令只在 Claude 会话中使用；Codex 使用其支持的命令及 Hexestra 提供的等效入口。
 
 Hexestra 以项目组织一次测试：
 
@@ -202,11 +202,13 @@ ATT&CK 战术
 ### 3.1 环境要求
 
 - Windows x64、Linux x64（以 Ubuntu 24.04 为基准）或 macOS；
-- 在智能体使用的本机或 WSL 环境中安装 Claude Code；
+- 在智能体使用的本机或 WSL 环境中安装 Claude Code 或 Codex CLI；
 - 从源码运行流量捕获时，需要 mitmproxy/mitmdump；发行版已内置；
 - Burp Suite、JDK 17 和 Mihomo 均为可选项。
 
-### 3.2 安装 Claude Code
+### 3.2 安装智能体 CLI
+
+使用 Claude Code 时：
 
 ```bash
 npm install -g @anthropic-ai/claude-code
@@ -222,6 +224,8 @@ claude auth status
 
 使用兼容 Anthropic 接口的服务商时，在启动 Hexestra 的同一环境中配置地址、令牌和模型变量。不要把密钥写进项目或仓库。
 
+使用 Codex 时，请在所选环境中安装并登录 Codex CLI，再运行 `codex --version` 验证。如果 CLI 不在 `PATH` 中，可在 **设置 > 连接** 填写可执行文件路径。Hexestra 会复用该 CLI 的登录状态；仅安装 Codex 桌面应用并不等于已配置 Hexestra 所需的 CLI。
+
 ### 3.3 从源码启动
 
 ```bash
@@ -233,13 +237,13 @@ npm run electron:dev
 
 打开 **设置 > 连接（Settings > Connection）**：
 
-1. 选择本机或 WSL。
+1. 选择后端及本机或 WSL 环境。
 2. WSL 模式选择发行版；Windows 默认参考环境是 `Ubuntu-24.04`。
-3. 本机模式可自动发现 Claude，也可手工选择路径。
-4. 选择默认模型和 Claude 配置来源（user、project、local）。
-5. 测试连接并保存。
+3. 检查检测到的 CLI，或手工填写路径。
+4. 选择可用模型和对应的推理强度；Claude 还支持配置来源（user、project、local）。
+5. 检查连接并保存。
 
-处理请求时不能切换连接或模型。Hexestra 当前连接本地安装的 Claude Code；未来可能扩展其他智能体后端。
+正在处理的请求结束后再切换连接或模型。新会话可选择另一后端，已有会话不会被转换。
 
 ### 3.5 项目菜单
 
@@ -504,7 +508,7 @@ Skill 提供“应该怎样做”的方法、步骤和专业说明。Hexestra �
 
 ### 7.1 对话
 
-把右侧智能体当作项目内的 Claude Code 使用，直接说要做什么即可。例如：
+在右侧智能体面板直接说明要做什么即可。例如：
 
 - `分析这个请求。`
 - `继续当前任务。`
@@ -544,7 +548,7 @@ Skill 提供“应该怎样做”的方法、步骤和专业说明。Hexestra �
 | `/help` | 查看运行时帮助 |
 | `/status` | 查看运行状态 |
 
-界面也会显示 Claude Code 发现的命令和已启用技能命令。原生斜杠命令会原样交给 Claude Code，不会自动附加普通项目上下文和附件。
+Claude 会话还会显示 Claude Code 发现的命令和已启用技能命令；Claude 原生斜杠命令会直接交给 Claude Code。Codex 使用其支持的命令与 Hexestra 的等效入口，且不支持 `/cost`。
 
 ### 7.4 权限模式与自主级别
 
@@ -564,7 +568,7 @@ Skill 提供“应该怎样做”的方法、步骤和专业说明。Hexestra �
 
 ### 7.6 运行中输入、停止与队列
 
-智能体工作时仍可发送消息。新消息先显示为排队；被 Claude Code 消费后，排队标记会消失。
+智能体工作时仍可发送消息。新消息先显示为排队；被所选后端消费后，排队标记会消失。
 
 - 多条输入可能被合并；
 - 一条输入不保证对应一条回答；
@@ -942,7 +946,7 @@ Hexestra 不启用 TUN，也不修改系统代理。启用出口强制后采用*
 | 页面 | 功能 |
 | --- | --- |
 | 常规（General） | English/简体中文；系统/深色/浅色主题 |
-| 连接（Connection） | 本机/WSL、发行版、Claude 路径、模型、配置来源、测试/保存/重置 |
+| 连接（Connection） | Claude/Codex、本机/WSL、CLI 路径、模型、推理强度、诊断、保存/重置；Claude 配置来源 |
 | 流量运行环境（Traffic Runtime） | 检测 mitmdump 状态、路径、版本和来源；重新检测、选择或自动重置 |
 | 代理（Proxy） | Mihomo 运行程序、节点、链路、出口强制、测试和状态 |
 | Burp | 桥接端口/令牌、MCP SSE、保存、连接和状态 |

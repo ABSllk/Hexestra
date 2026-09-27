@@ -21,11 +21,11 @@
 
 ## 为什么选择 Hexestra？
 
-Hexestra 连接用户在本机或 WSL 中安装的 Claude Code，并将分散的渗透测试环节整合进同一个项目。你可以沿用 Claude Code 的使用习惯直接下达短指令；项目上下文和内置规则由 Hexestra 补充。操作员可以随时检查、引导、审批、中断或直接接管。
+Hexestra 连接用户在本机或 WSL 中安装的 Claude Code 或 Codex CLI，并将分散的渗透测试环节整合进同一个项目。项目上下文和内置规则由 Hexestra 补充；操作员可以随时检查、引导、审批、中断或直接接管。
 
 - **人与 AI 共用同一操作面：** 双方使用同一个浏览器、终端会话、捕获流量、任务、资产和证据。
-- **可控的高自主执行：** 在 ASK、AUTO 和 BYPASS 之间选择，同时保留 Rules of Engagement 和技术安全边界；Scope 标签只作提示。
-- **本地 Claude Code 驱动：** 沿用熟悉的对话、命令、技能和配置；后续可能考虑支持其他智能体后端。
+- **可控执行：** 分别设置权限模式（询问、自动、跳过审批）和自主程度，同时保留 Rules of Engagement 和技术安全边界；Scope 标签只作提示。
+- **可选本地后端：** 新建会话时选择 Claude Code 或 Codex，沿用各自已安装的运行时和登录状态。
 - **继续使用熟悉的工具：** 保留 Burp Suite、PowerShell、WSL、SSH 及其现有配置，不必重新适应一套封闭替代品。
 - **持久化的项目状态：** 重新打开项目文件夹即可恢复 Scope、任务、NetMap、证据、Finding、报告、工作区、权限偏好和对话分支。
 
@@ -60,6 +60,7 @@ Hexestra 连接用户在本机或 WSL 中安装的 Claude Code，并将分散的
 - 通过 NetMap 中的结构化资产、关系、来源和当前目标进行图驱动测试
 - 将原始输出依次整理为 Evidence、Finding、Vulnerability 和 Report
 - 使用非破坏性对话分支保留原始推理路径，同时共享项目的权威状态
+- Claude Code 与 Codex 会话共用 Hexestra 的项目工具、审批和记录
 - 可选接入 Burp Bridge 和 Burp MCP，不改变原有 Burp 工作流
 - 可选的项目级 Mihomo 多跳出口，节点加密保存并对受控路由执行 fail-closed
 
@@ -70,11 +71,16 @@ Hexestra 连接用户在本机或 WSL 中安装的 Claude Code，并将分散的
 - Node.js 24 和 npm
 - Windows x64、Linux x64（以 Ubuntu 24.04 为基准）、macOS Intel 或 macOS Apple Silicon
 - 当前平台的标准 Electron 桌面运行库；Ubuntu 需要常见的 X11/GTK 运行库
+- 在所选本机或 WSL 环境中单独安装 Claude Code 或 Codex CLI；Hexestra 不内置这两个 CLI
 - 打包版已内置 mitmproxy；从源码运行时可单独提供
 - 可选的 Burp Suite；构建 Bridge 需要 JDK 17
 - 可选的用户提供 [Mihomo](https://github.com/MetaCubeX/mihomo/releases)，用于项目级多跳出口（v1.19.29 是已测试的推荐版本）
 
-### 安装 Claude Code
+### 安装智能体运行时
+
+新建会话时可选择 Claude Code 或 Codex；已有会话继续使用原后端。
+
+#### Claude Code
 
 在 **Settings > Connection（设置 > 连接）** 中选择的 Native 或 WSL 环境内执行：
 
@@ -91,6 +97,16 @@ claude --version
 claude auth login
 claude auth status
 ```
+
+#### Codex
+
+在 **设置 > 连接** 中选定的本机或 WSL 环境内安装并登录 Codex CLI，然后在同一环境验证：
+
+```bash
+codex --version
+```
+
+Hexestra 会启动已安装 CLI 的 App Server，并复用其登录状态。如果只装了 Codex 桌面应用，而所选环境的 `PATH` 中找不到 `codex`，请在 Hexestra 的 Codex 连接设置中填写 CLI 可执行文件路径。
 
 ### 配置第三方 API
 
