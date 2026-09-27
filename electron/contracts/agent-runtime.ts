@@ -10,6 +10,7 @@ export const CLAUDE_BACKEND_ID = 'claude';
 
 export type AgentBackendId = string;
 export type AgentPermissionMode = 'default' | 'auto' | 'bypassPermissions';
+export type AgentReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 export type AgentState =
   | 'loading'
   | 'ready'
@@ -44,6 +45,17 @@ export interface AgentBackendStatus {
   lastError: string | null;
   runtimeMode: string;
   runtimeLabel: string;
+}
+
+export interface AgentModelOption {
+  id: string;
+  displayName: string;
+  description?: string;
+  resolvedModel?: string;
+  supportedReasoningEfforts?: AgentReasoningEffort[];
+  reasoningEffortDescriptions?: Partial<Record<AgentReasoningEffort, string>>;
+  defaultReasoningEffort?: AgentReasoningEffort;
+  isDefault?: boolean;
 }
 
 export interface AgentStatus extends AgentBackendStatus {
@@ -94,6 +106,7 @@ export interface AgentRunInput {
   cwd: string;
   additionalDirectories?: string[];
   model: string | null;
+  reasoningEffort?: AgentReasoningEffort | null;
   permissionMode: AgentPermissionMode;
   runtime: AgentBackendRuntimeState | null;
   resumeAt?: string;
@@ -149,6 +162,7 @@ export interface AgentQueuedInput {
   command?: string;
   queuedAt: string;
   input: AgentRunInput;
+  interactions?: AgentInteractionHandler;
 }
 
 export interface AgentConversationOpenInput extends Omit<AgentRunInput, 'signal'> {
@@ -238,11 +252,13 @@ export interface AgentSubagentSnapshotEvent {
   type: 'subagent_snapshot';
   projectId?: string;
   branchId?: string;
+  inputId?: string;
   run: import('../agent-subagent-contract').SubagentRun;
 }
 
 export interface AgentTurnCompletedEvent {
   type: 'turn_completed';
+  status?: 'complete' | 'error' | 'interrupted';
   projectId?: string;
   branchId?: string;
   inputId?: string;
@@ -278,6 +294,7 @@ export interface AgentAdapter {
   resolveFingerprint?(projectId?: string): Promise<string>;
   status(): AgentBackendStatus;
   listCommands?(input: AgentCommandDiscoveryInput): Promise<AgentSlashCommandDescriptor[]>;
+  listModels?(input: AgentCommandDiscoveryInput): Promise<AgentModelOption[]>;
   runTurn(
     input: AgentRunInput,
     interactions: AgentInteractionHandler,

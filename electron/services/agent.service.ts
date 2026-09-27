@@ -59,6 +59,7 @@ import {
 import { createHexestraAgentTools } from './agent-tools';
 import { isSubagentSpawnTool, isTaskGuardedTool, sanitizeAgentToolInputForDisplay } from './agent-tool-policy';
 import { ClaudeAgentAdapter } from './agent-adapters/claude-agent-adapter';
+import { CodexAgentAdapter } from './agent-adapters/codex-agent-adapter';
 import { KnowledgeRefineryService, refineryInvocation } from './knowledge-refinery.service';
 import { buildAgentDistillPrompt, resolveAgentInputCommand } from './agent-distill';
 import { AgentAdapterRegistry } from './agent-adapters/registry';
@@ -185,6 +186,7 @@ interface QueuedAgentRequest {
 class AgentService {
   private readonly adapterRegistry = new AgentAdapterRegistry();
   private readonly claudeAdapter = new ClaudeAgentAdapter();
+  private readonly codexAdapter = new CodexAgentAdapter();
   private readonly refineryService: KnowledgeRefineryService;
   private chatHistory: PersistedChatMessage[] = [];
   private branches: PersistedConversationBranch[] = [];
@@ -208,12 +210,15 @@ class AgentService {
   private readonly activeRuns = new Map<string, AbortController>();
   private readonly attentionItems = new Map<string, AgentAttentionItem>();
   private readonly conversationHandles = new Map<string, AgentConversationHandle>();
+  private readonly conversationHandleSettings = new Map<string, string>();
   private readonly conversationReaders = new Set<string>();
+  private readonly conversationReaderCompletions = new Map<string, Promise<void>>();
   private readonly runtimeSubagentRuns = new Map<string, Map<string, SubagentRun>>();
   private readonly readerOwnedTurnIds = new Map<string, Set<string>>();
 
   constructor() {
     this.adapterRegistry.register(this.claudeAdapter);
+    this.adapterRegistry.register(this.codexAdapter);
     this.refineryService = new KnowledgeRefineryService({
       analyze: (input) => this.claudeAdapter.distillKnowledge(input),
       isMainAgentBusy: () => this.activeRuns.size > 0,
@@ -224,8 +229,10 @@ class AgentService {
   }
 
   async initialize() {
-    const adapter = this.adapterRegistry.require(CLAUDE_BACKEND_ID);
-    const available = await adapter.initialize();
+    const [claudeAvailable, codexAvailable] = await Promise.all([
+      this.claudeAdapter.initialize(), this.codexAdapter.initialize(),
+    ]);
+    const available = agentSettingsService.getSettings().defaultBackendId === 'codex' ? codexAvailable : claudeAvailable;
     this.setState(available ? 'ready' : 'error');
     return available;
   }
@@ -245,8 +252,21 @@ class AgentService {
       return this.listCommands(sessionId ?? undefined);
     });
 
+    ipcMain.handle('agent:models:list', async (_event, backendId: string, sessionId?: string | null) => {
+      if (backendId !== CLAUDE_BACKEND_ID && backendId !== 'codex') throw new Error('Unknown Agent backend');
+      const adapter = this.adapterRegistry.require(backendId);
+      return adapter.listModels?.(this.discoveryInput(sessionId ?? undefined)) ?? [];
+    });
+
     ipcMain.handle('claude:mcp:status', async (_event, sessionId?: string | null) => {
       return this.claudeAdapter.listMcpServerStatuses(this.discoveryInput(sessionId ?? undefined));
+    });
+    ipcMain.handle('codex:diagnose', async (_event, sessionId?: string) => {
+      const available = await this.codexAdapter.initialize();
+      if (!available) return { ...this.codexAdapter.status(), authenticated: false };
+      try { return await this.codexAdapter.diagnose(sessionId ? sessionService.getSessionPath(sessionId) : undefined); } catch (error) {
+        return { ...this.codexAdapter.status(), lastError: error instanceof Error ? error.message : String(error) };
+      }
     });
 
     ipcMain.handle('restrictions:classify', async (_event, sessionId: string, text: string) => {
@@ -258,7 +278,7 @@ class AgentService {
     ipcMain.handle('agent:attachments:pick', async (_event, picker: AgentAttachmentPicker) => {
       if (picker !== 'files' && picker !== 'images') throw new Error('Invalid attachment picker');
       const result = await dialog.showOpenDialog({
-        title: picker === 'images' ? 'Attach images to Claude' : 'Attach files to Claude',
+        title: picker === 'images' ? 'Attach images to Agent' : 'Attach files to Agent',
         buttonLabel: 'Attach',
         properties: ['openFile', 'multiSelections'],
         filters: ATTACHMENT_DIALOG_FILTERS[picker],
@@ -308,12 +328,14 @@ class AgentService {
 
     ipcMain.handle('agent:clear', async (_event, sessionId?: string) => {
       if (sessionId && sessionId !== this.activeSessionId) await this.activateProject(sessionId);
+      const clearedBackendId = this.branches.find((branch) => branch.id === this.activeBranchId)?.backendId
+        ?? agentSettingsService.getSettings().defaultBackendId;
       await this.stopActiveRequest();
       await this.disposeActiveConversationRuntime();
       this.chatHistory = [];
       this.backendSessionId = null;
       this.connectionFingerprint = null;
-      const mainBranch = createConversationBranch('main', 'Main');
+      const mainBranch = createConversationBranch('main', 'Main', { backendId: clearedBackendId });
       this.branches = [mainBranch];
       this.activeBranchId = mainBranch.id;
       this.subagentRuns = [];
@@ -384,7 +406,9 @@ class AgentService {
       // A live runtime is session-scoped. Foreground activation changes the
       // projection but must not terminate a pinned background conversation.
     }
-    if (previousSessionId && previousSessionId !== sessionId && !this.claudeAdapter.hasPinnedRuntimeForProject(previousSessionId)) {
+    if (previousSessionId && previousSessionId !== sessionId
+      && !this.claudeAdapter.hasPinnedRuntimeForProject(previousSessionId)
+      && !this.codexAdapter.hasPinnedRuntimeForProject(previousSessionId)) {
       shellService.destroyProject(previousSessionId);
     }
     return this.loadProject(sessionId);
@@ -414,12 +438,21 @@ class AgentService {
   private async disposeActiveConversationRuntime() {
     const branch = this.branches.find((candidate) => candidate.id === this.activeBranchId);
     if (!branch) return;
-    if (this.activeSessionId && branch.backendId === CLAUDE_BACKEND_ID
-      && this.claudeAdapter.hasPinnedRuntimeForConversation(this.activeSessionId, branch.id)) {
+    if (this.activeSessionId && (
+      branch.backendId === CLAUDE_BACKEND_ID && this.claudeAdapter.hasPinnedRuntimeForConversation(this.activeSessionId, branch.id)
+      || branch.backendId === 'codex' && this.codexAdapter.hasPinnedRuntimeForConversation(this.activeSessionId, branch.id)
+    )) {
       return;
     }
     const adapter = this.adapterRegistry.get(branch.backendId);
-    await adapter?.disposeConversation?.(this.activeSessionId ?? undefined, branch.id);
+    const runtimeKey = this.runtimeKey(this.activeSessionId ?? undefined, branch.id);
+    const handle = this.conversationHandles.get(runtimeKey);
+    if (handle) {
+      await handle.dispose();
+      await this.conversationReaderCompletions.get(runtimeKey);
+    } else {
+      await adapter?.disposeConversation?.(this.activeSessionId ?? undefined, branch.id);
+    }
   }
 
   private loadProject(sessionId: string) {
@@ -603,7 +636,7 @@ class AgentService {
   private async createConversation(
     sessionId: string,
     conversationId: string,
-    backendId: AgentBackendId = CLAUDE_BACKEND_ID,
+    backendId: AgentBackendId = agentSettingsService.getSettings().defaultBackendId,
   ) {
     if (!/^[a-zA-Z0-9_-]{1,200}$/.test(conversationId)) {
       throw new Error('Invalid conversation identifier');
@@ -705,6 +738,9 @@ class AgentService {
     this.ensureActiveProject(request.session?.id);
     const branch = this.branches.find((candidate) => candidate.id === this.activeBranchId);
     if (!branch) throw new Error('Active conversation branch is missing');
+    if (branch.backendId === 'codex' && request.content.trim().startsWith('/')) {
+      throw new Error('Wait for the current Codex turn before using a Hexestra command.');
+    }
     const projectId = request.session?.id ?? this.activeSessionId ?? undefined;
     const runtimeKey = this.runtimeKey(projectId, branch.id);
     const adapter = this.adapterRegistry.get(branch.backendId);
@@ -739,7 +775,9 @@ class AgentService {
       // A queued input belongs to the next provider turn. It must never inherit
       // the AbortSignal of the currently running (or just-cancelled) turn.
       const input = await this.buildQueuedInput(sender, request, branch, messageId);
-      await handle.enqueue({ id: messageId, source: 'operator', prompt: input.prompt, queuedAt: new Date().toISOString(), input });
+      await handle.enqueue({ id: messageId, source: 'operator', prompt: input.prompt, queuedAt: new Date().toISOString(), input,
+        interactions: this.createInteractionHandler(sender, input.permissionMode,
+          projectId ?? null, branch.id) });
       const queued = this.queuedRequests.get(runtimeKey) ?? [];
       const queuedIndex = queued.findIndex((item) => item.messageId === messageId);
       if (queuedIndex >= 0) queued.splice(queuedIndex, 1);
@@ -756,7 +794,8 @@ class AgentService {
   ): Promise<AgentRunInput> {
     const projectId = request.session?.id ?? this.activeSessionId ?? undefined;
     const sessionPath = projectId ? sessionService.getSessionPath(projectId) : null;
-    const settings = agentSettingsService.getClaudeSettings();
+    const settings = branch.backendId === 'codex'
+      ? agentSettingsService.getCodexSettings() : agentSettingsService.getClaudeSettings();
     const permissionMode = normalizeAgentMode(request.permissionMode);
     const contextRefs = normalizeAgentContextRefs(request.contextRefs, projectId);
     const adapter = this.adapterRegistry.get(branch.backendId);
@@ -764,7 +803,7 @@ class AgentService {
     const dynamicSystemContext = nativeCommand
       ? undefined
       : projectId
-        ? await this.resolveRuntimeDynamicContext(projectId, branch.id, request.selectedTarget?.id)
+        ? await this.resolveRuntimeDynamicContext(projectId, branch.id, request.selectedTarget?.id, request.autonomyLevel)
         : buildAgentDynamicSystemContext({ toolCatalog: this.toolCatalogIndex() });
     return {
       conversationId: branch.id,
@@ -777,17 +816,18 @@ class AgentService {
       systemInstructions: buildSystemInstructions(),
       dynamicSystemContext,
       dynamicSystemContextProvider: !nativeCommand && projectId
-        ? () => this.resolveRuntimeDynamicContext(projectId, branch.id, request.selectedTarget?.id)
+        ? () => this.resolveRuntimeDynamicContext(projectId, branch.id, request.selectedTarget?.id, request.autonomyLevel)
         : undefined,
       signal: new AbortController().signal,
       attachments: request.attachments ?? [],
       cwd: sessionPath && fs.existsSync(sessionPath) ? sessionPath : process.cwd(),
       additionalDirectories: sessionPath && fs.existsSync(sessionPath) ? [sessionPath] : undefined,
       model: settings.model,
+      reasoningEffort: settings.reasoningEffort ?? null,
       permissionMode,
       runtime: branch.runtime,
       fork: false,
-      settingSources: settings.settingSources,
+      settingSources: 'settingSources' in settings ? settings.settingSources : undefined,
       tools: this.createHexestraToolDefinitions(sender, projectId, branch.id, request.selectedTarget?.id, permissionMode),
       projectId,
     };
@@ -818,10 +858,17 @@ class AgentService {
     if (!available) {
       throw new Error(adapter.status().lastError ?? `Agent backend is unavailable: ${adapter.id}`);
     }
-    const { distillInvocation, nativeCommand: command } = resolveAgentInputCommand(
+    const { distillInvocation, nativeCommand } = resolveAgentInputCommand(
       request.content,
       adapter.capabilities.slashCommands,
     );
+    const codexCommand = activeBranch.backendId === 'codex' ? request.content.trim().toLowerCase() : '';
+    const command = nativeCommand ?? (codexCommand === '/compact' ? '/compact' : null);
+    if (codexCommand === '/cost') throw new Error('Codex cost information is unavailable in Hexestra; check your Codex account usage.');
+    if (activeBranch.backendId === 'codex' && /^\/[a-z][\w-]*(?:\s|$)/i.test(request.content.trim())
+      && !distillInvocation && !['/compact', '/help', '/context', '/status'].includes(codexCommand)) {
+      throw new Error('This slash command is not supported in a Codex conversation.');
+    }
     if (command && ((request.attachments?.length ?? 0) > 0 || contextRefs.length > 0)) {
       throw new Error('Slash commands cannot include attachments or staged context');
     }
@@ -831,6 +878,9 @@ class AgentService {
       : undefined;
     const effectiveContent = distillInvocation
       ? buildAgentDistillPrompt(distillInvocation, distillSource)
+      : codexCommand === '/help' ? 'Explain the Hexestra project tools, Skills, and current permission mode available in this conversation.'
+      : codexCommand === '/context' ? 'Summarize the current Hexestra project and focused task context using the available project tools.'
+      : codexCommand === '/status' ? 'Summarize the current Codex conversation state and the Hexestra project status, checking project tools where needed.'
       : request.content;
 
     const currentFingerprint = adapter.resolveFingerprint
@@ -959,7 +1009,6 @@ class AgentService {
     const permissionMode = normalizeAgentMode(request.permissionMode);
     const interactions = this.createInteractionHandler(
       sender,
-      request.autonomyLevel ?? 'medium',
       permissionMode,
       originProjectId,
       originBranchId,
@@ -977,7 +1026,7 @@ class AgentService {
         name: project.name,
         status: project.status,
         opsecLevel: project.opsecLevel,
-        autonomyLevel: project.autonomyLevel,
+        autonomyLevel: request.autonomyLevel ?? project.autonomyLevel,
         scope: project.scope,
       };
       focusedTaskContext = taskContext;
@@ -1005,7 +1054,8 @@ class AgentService {
       permissionMode,
     );
     const queryCwd = sessionPath && fs.existsSync(sessionPath) ? sessionPath : process.cwd();
-    const connectionSettings = agentSettingsService.getClaudeSettings();
+    const connectionSettings = activeBranch.backendId === 'codex'
+      ? agentSettingsService.getCodexSettings() : agentSettingsService.getClaudeSettings();
     const runtime = originBackendSessionId || originConnectionFingerprint
       ? {
           backendId: activeBranch.backendId,
@@ -1025,27 +1075,40 @@ class AgentService {
         systemInstructions: buildSystemInstructions(),
         dynamicSystemContext,
         dynamicSystemContextProvider: !command && originProjectId
-          ? () => this.resolveRuntimeDynamicContext(originProjectId, originBranchId, request.selectedTarget?.id)
+          ? () => this.resolveRuntimeDynamicContext(originProjectId, originBranchId, request.selectedTarget?.id, request.autonomyLevel)
           : undefined,
         signal: runController.signal,
         attachments: request.attachments ?? [],
         cwd: queryCwd,
         additionalDirectories: sessionPath && fs.existsSync(sessionPath) ? [sessionPath] : undefined,
         model: connectionSettings.model,
+        reasoningEffort: connectionSettings.reasoningEffort ?? null,
         permissionMode,
         runtime,
         resumeAt: resumeOptions.resumeAt,
         fork: resumeOptions.fork,
-        settingSources: connectionSettings.settingSources,
+        settingSources: 'settingSources' in connectionSettings ? connectionSettings.settingSources : undefined,
         tools: hexestraTools,
         projectId: request.session?.id,
       };
       if (adapter.openConversation && originProjectId) {
         const runtimeKey = `${originProjectId}\u0000${originBranchId}`;
         let handle = this.conversationHandles.get(runtimeKey);
+        const handleSettings = JSON.stringify([runInput.model, runInput.reasoningEffort]);
+        if (handle && activeBranch.backendId === CLAUDE_BACKEND_ID
+          && this.conversationHandleSettings.get(runtimeKey) !== handleSettings) {
+          const snapshot = handle.snapshot();
+          if (snapshot.active || snapshot.pendingInputs > 0 || snapshot.pendingCrons > 0) {
+            throw new AgentBackendError('Finish the active Claude turn or pending wakeups before changing model or reasoning effort', CLAUDE_BACKEND_ID, 'runtime');
+          }
+          await handle.dispose();
+          await this.conversationReaderCompletions.get(runtimeKey);
+          handle = undefined;
+        }
         if (!handle) {
           handle = await adapter.openConversation(runInput, interactions);
           this.conversationHandles.set(runtimeKey, handle);
+          if (activeBranch.backendId === CLAUDE_BACKEND_ID) this.conversationHandleSettings.set(runtimeKey, handleSettings);
           this.startConversationReader(runtimeKey, handle, sender, originProjectId ?? undefined);
         }
         const readerOwned = this.readerOwnedTurnIds.get(runtimeKey) ?? new Set<string>();
@@ -1130,7 +1193,7 @@ class AgentService {
       if (originProjectId === this.activeSessionId && error instanceof AgentBackendError && error.code === 'authentication') {
         this.authenticated = false;
       }
-      const failureContent = cancelled ? 'Request cancelled.' : formatAgentFailure(message);
+      const failureContent = cancelled ? 'Request cancelled.' : formatAgentFailure(message, activeBranch.backendId);
       if (completionPersisted) {
         if (originProjectId) {
           this.publishAttention({
@@ -1196,7 +1259,9 @@ class AgentService {
           releaseProjectRuntimeLease(originProjectId);
         }
       }
-      if (originProjectId && originProjectId !== this.activeSessionId && !this.claudeAdapter.hasPinnedRuntimeForProject(originProjectId)) {
+      if (originProjectId && originProjectId !== this.activeSessionId
+        && !this.claudeAdapter.hasPinnedRuntimeForProject(originProjectId)
+        && !this.codexAdapter.hasPinnedRuntimeForProject(originProjectId)) {
         shellService.destroyProject(originProjectId);
       }
       const ownedTurns = this.readerOwnedTurnIds.get(runtimeKey);
@@ -1248,7 +1313,7 @@ class AgentService {
     return Boolean(snapshot && (snapshot.active || snapshot.pendingInputs > 0));
   }
 
-  private async resolveRuntimeDynamicContext(projectId: string, branchId: string, selectedTargetId?: string) {
+  private async resolveRuntimeDynamicContext(projectId: string, branchId: string, selectedTargetId?: string, autonomyLevel?: AutonomyLevel) {
     const toolCatalog = this.toolCatalogIndex();
     try {
       const project = await sessionService.loadSession(projectId);
@@ -1261,7 +1326,7 @@ class AgentService {
           name: project.name,
           status: project.status,
           opsecLevel: project.opsecLevel,
-          autonomyLevel: project.autonomyLevel,
+          autonomyLevel: autonomyLevel ?? project.autonomyLevel,
           scope: project.scope,
         },
         taskContext,
@@ -1298,7 +1363,7 @@ class AgentService {
     // The owning turn acquires the first lease. The reader only keeps that
     // lease alive while Claude reports queued inputs or session crons.
     let leaseProjectId: string | null = initialLeaseProjectId ?? null;
-    void (async () => {
+    const reader = (async () => {
       try {
         for await (const event of handle.events()) {
           const projectId = event.projectId;
@@ -1384,7 +1449,7 @@ class AgentService {
               role: 'assistant',
               content: current.content,
               timestamp: new Date().toISOString(),
-              status: 'complete',
+              status: event.status ?? 'complete',
               source: current.source,
               activities: current.activities,
               backendMessageId: event.backendMessageId,
@@ -1395,7 +1460,11 @@ class AgentService {
             }
             history.clearLive(current.branchId);
             if (current.projectId !== this.activeSessionId || current.branchId !== this.activeBranchId) {
-              this.publishAttention({ id: `attention-${current.messageId}`, projectId: current.projectId, branchId: current.branchId, kind: 'completed', title: current.source === 'scheduled' ? 'Scheduled Agent turn completed' : 'Agent continuation completed', createdAt: new Date().toISOString(), read: false });
+              const failed = event.status === 'error';
+              this.publishAttention({ id: `attention-${current.messageId}`, projectId: current.projectId, branchId: current.branchId,
+                kind: failed ? 'failed' : 'completed', title: failed ? 'Codex turn failed'
+                  : current.source === 'scheduled' ? 'Scheduled Agent turn completed' : 'Agent continuation completed',
+                createdAt: new Date().toISOString(), read: false });
             }
             liveTurns.delete(event.inputId!);
             startedInputs.delete(event.inputId!);
@@ -1406,11 +1475,16 @@ class AgentService {
         if (projectId && branchId) this.publishAttention({ id: `attention-runtime-${runtimeKey}`, projectId, branchId, kind: 'failed', title: 'Background Agent runtime failed', detail: toErrorMessage(error), createdAt: new Date().toISOString(), read: false });
       } finally {
         if (leaseProjectId) releaseProjectRuntimeLease(leaseProjectId);
-        if (this.conversationHandles.get(runtimeKey) === handle) this.conversationHandles.delete(runtimeKey);
+        if (this.conversationHandles.get(runtimeKey) === handle) {
+          this.conversationHandles.delete(runtimeKey);
+          this.conversationHandleSettings.delete(runtimeKey);
+        }
         this.runtimeSubagentRuns.delete(runtimeKey);
         this.conversationReaders.delete(runtimeKey);
+        this.conversationReaderCompletions.delete(runtimeKey);
       }
     })();
+    this.conversationReaderCompletions.set(runtimeKey, reader);
   }
 
   private emitCommandsChanged(
@@ -1424,7 +1498,6 @@ class AgentService {
 
   private createInteractionHandler(
     sender: WebContents,
-    autonomyLevel: AutonomyLevel,
     permissionMode: SupportedAgentMode,
     projectId: string | null = this.activeSessionId,
     branchId = this.activeBranchId,
@@ -1460,7 +1533,6 @@ class AgentService {
       const disposition = resolvePermissionDisposition(
         permissionMode,
         request.riskLevel === 'read',
-        autonomyLevel,
       );
       if (disposition === 'allow') {
         return {
@@ -1909,7 +1981,6 @@ class AgentService {
   }
 
   private getStatus(sessionId = this.activeSessionId ?? undefined): AgentStatus {
-    const connectionSettings = agentSettingsService.getClaudeSettings();
     const stored = sessionId && sessionId !== this.activeSessionId
       ? sessionService.getProjectState(sessionId).agent
       : null;
@@ -1943,10 +2014,8 @@ class AgentService {
       historyLength: storedBranch?.history.messageCount ?? this.chatHistory.length,
       lastError: stored?.lastError ?? backendStatus?.lastError ?? this.lastError
         ?? (backend ? null : `Agent backend "${backendId}" is unavailable`),
-      runtimeMode: backendStatus?.runtimeMode ?? connectionSettings.executionMode,
-      runtimeLabel: backendStatus?.runtimeLabel ?? (connectionSettings.executionMode === 'wsl'
-        ? `WSL · ${connectionSettings.wslDistribution}`
-        : 'Native'),
+      runtimeMode: backendStatus?.runtimeMode ?? 'native',
+      runtimeLabel: backendStatus?.runtimeLabel ?? 'Native',
     };
   }
 

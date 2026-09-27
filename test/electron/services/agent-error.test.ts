@@ -18,5 +18,7 @@ describe('agent error presentation', () => {
   it('only adds the login guidance to authentication failures', () => {
     expect(formatAgentFailure('OAuth login required')).toContain('ANTHROPIC_API_KEY');
     expect(formatAgentFailure('network timeout')).toBe('Claude Agent SDK error: network timeout');
+    expect(formatAgentFailure('OAuth login required', 'codex')).toContain('Sign in with the Codex CLI');
+    expect(formatAgentFailure('spawn codex ENOENT', 'codex')).toContain('Settings → Connection → Codex');
   });
 });

@@ -15,6 +15,7 @@ import {
   type AgentAdapter,
   type AgentBackendCapabilities,
   type AgentBackendStatus,
+  type AgentModelOption,
   type AgentCommandDiscoveryInput,
   type AgentConversationHandle,
   type AgentConversationOpenInput,
@@ -245,6 +246,26 @@ export class ClaudeAgentAdapter implements AgentAdapter {
       return await request;
     } finally {
       this.commandRequests.delete(cacheKey);
+    }
+  }
+
+  async listModels(input: AgentCommandDiscoveryInput): Promise<AgentModelOption[]> {
+    const available = await this.initialize(input.projectId);
+    if (!available || !this.sdk) {
+      throw new AgentBackendError(this.lastError ?? 'Claude Agent SDK is unavailable', this.id, 'unavailable');
+    }
+    const discovery = this.createDiscoveryQuery(input);
+    try {
+      const models = await discovery.query.supportedModels();
+      if (discovery.abortController.signal.aborted) {
+        throw new AgentBackendError('Timed out while discovering Claude models', this.id, 'runtime');
+      }
+      return models.filter((model) => model.value && model.displayName)
+        .map((model) => ({ id: model.value, displayName: model.displayName,
+          description: model.description, resolvedModel: model.resolvedModel,
+          supportedReasoningEfforts: model.supportedEffortLevels }));
+    } finally {
+      discovery.close();
     }
   }
 
@@ -632,6 +653,17 @@ export class ClaudeAgentAdapter implements AgentAdapter {
     const key = liveRuntimeKey(input, this.fingerprint());
     const existing = this.liveRuntimes.get(key);
     if (existing && !existing.closing) return existing;
+    // Effort is fixed when an SDK query starts. Retire the prior idle query so
+    // changing model or effort resumes this conversation with the new options.
+    const conversationPrefix = `${input.projectId ?? ''}\u0000${input.conversationId}\u0000`;
+    for (const prior of this.liveRuntimes.values()) {
+      if (prior.key !== key && prior.key.startsWith(conversationPrefix)) {
+        if (prior.activeTurn || prior.pendingInputs.size > 0 || prior.pendingCrons.length > 0) {
+          throw new AgentBackendError('Finish the active Claude turn or pending wakeups before changing model or reasoning effort', this.id, 'runtime');
+        }
+        await this.disposeLiveRuntime(prior);
+      }
+    }
 
     const runtimeSettings = { ...settings, claudeExecutable: runtimeResolution.executablePath };
     const isWsl = settings.executionMode === 'wsl';
@@ -704,6 +736,8 @@ export class ClaudeAgentAdapter implements AgentAdapter {
         forkSession: input.fork || undefined,
         settingSources: requiredSettingSources(settings.settingSources),
         model: input.model ?? settings.model ?? undefined,
+        effort: input.reasoningEffort === 'none' || input.reasoningEffort === 'minimal' || input.reasoningEffort === 'ultra'
+          ? undefined : input.reasoningEffort ?? undefined,
         systemPrompt: {
           type: 'preset',
           preset: 'claude_code',
@@ -1553,6 +1587,7 @@ function liveRuntimeKey(input: AgentRunInput, fingerprint: string) {
     input.cwd,
     JSON.stringify(input.additionalDirectories ?? []),
     input.model ?? '',
+    input.reasoningEffort ?? '',
     JSON.stringify(input.settingSources ?? []),
     input.systemInstructions,
     JSON.stringify(toolCatalog),

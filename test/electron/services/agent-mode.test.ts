@@ -18,10 +18,11 @@ describe('agent mode policy', () => {
     expect(normalizeAgentMode('unknown')).toBe('default');
   });
 
-  it('lets the SDK classifier own AUTO while bypass allows all tools', () => {
-    expect(resolvePermissionDisposition('default', true, 'medium')).toBe('allow');
-    expect(resolvePermissionDisposition('default', false, 'medium')).toBe('ask');
-    expect(resolvePermissionDisposition('auto', false, 'medium')).toBe('ask');
-    expect(resolvePermissionDisposition('bypassPermissions', false, 'low')).toBe('allow');
+  it('keeps tool approval independent of autonomy while the SDK classifier owns AUTO', () => {
+    expect(resolvePermissionDisposition('default', true)).toBe('allow');
+    expect(resolvePermissionDisposition('default', false)).toBe('ask');
+    expect(resolvePermissionDisposition('auto', true)).toBe('allow');
+    expect(resolvePermissionDisposition('auto', false)).toBe('ask');
+    expect(resolvePermissionDisposition('bypassPermissions', false)).toBe('allow');
   });
 });

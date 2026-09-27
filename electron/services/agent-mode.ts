@@ -18,9 +18,8 @@ export function normalizeAgentMode(mode: unknown): SupportedAgentMode {
 export function resolvePermissionDisposition(
   mode: SupportedAgentMode,
   readOnly: boolean,
-  autonomyLevel: 'low' | 'medium' | 'high',
 ): PermissionDisposition {
   if (mode === 'bypassPermissions') return 'allow';
-  if (readOnly && autonomyLevel !== 'low') return 'allow';
+  if (readOnly) return 'allow';
   return 'ask';
 }

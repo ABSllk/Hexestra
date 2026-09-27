@@ -75,6 +75,7 @@ describe('Agent tool policy', () => {
     expect(isTaskGuardedTool('mcp__hexestra__task_plan_create')).toBe(false);
     expect(isTaskGuardedTool('mcp__hexestra__shell_profiles')).toBe(false);
     expect(isTaskGuardedTool('mcp__hexestra__proxy_status')).toBe(false);
+    expect(isTaskGuardedTool('ScheduleWakeup', 'write')).toBe(false);
     expect(isTaskGuardedTool('mcp__hexestra__browser_navigate')).toBe(true);
     expect(isTaskGuardedTool('mcp__hexestra__shell_execute')).toBe(true);
     expect(isTaskGuardedTool('mcp__hexestra__unknown_write')).toBe(true);

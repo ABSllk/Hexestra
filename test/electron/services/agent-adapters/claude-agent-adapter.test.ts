@@ -86,7 +86,25 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
     vi.useRealTimers();
   });
 
-  it('keeps one streaming query alive across turns in the same conversation', async () => {
+  it('lists models reported by the selected Claude Code runtime', async () => {
+    const close = vi.fn();
+    sdk.query.mockReturnValue({ close, supportedModels: vi.fn(async () => [
+      { value: 'sonnet', resolvedModel: 'claude-sonnet-current', displayName: 'Claude Sonnet', description: 'Fast', supportedEffortLevels: ['low', 'medium', 'high'] },
+      { value: 'opus', displayName: 'Claude Opus', description: 'Deep reasoning' },
+    ]) });
+
+    await expect(new ClaudeAgentAdapter().listModels({ cwd: 'D:\\project' })).resolves.toEqual([
+      { id: 'sonnet', displayName: 'Claude Sonnet', description: 'Fast', resolvedModel: 'claude-sonnet-current', supportedReasoningEfforts: ['low', 'medium', 'high'] },
+      { id: 'opus', displayName: 'Claude Opus', description: 'Deep reasoning', resolvedModel: undefined, supportedReasoningEfforts: undefined },
+    ]);
+    expect(sdk.query).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({ cwd: 'D:\\project', persistSession: false,
+        pathToClaudeCodeExecutable: sdk.executable }),
+    }));
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps one query for unchanged turns and resumes when reasoning effort changes', async () => {
     const prompts: unknown[] = [];
     const contexts: string[] = [];
     const setPermissionMode = vi.fn(async () => undefined);
@@ -109,11 +127,12 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
     }));
 
     const adapter = new ClaudeAgentAdapter();
-    const first = await collect(adapter.runTurn(runInput('context-one'), interactions));
-    const second = await collect(adapter.runTurn(runInput('context-two'), interactions));
+    const first = await collect(adapter.runTurn({ ...runInput('context-one'), reasoningEffort: 'high' }, interactions));
+    const second = await collect(adapter.runTurn({ ...runInput('context-two'), reasoningEffort: 'high' }, interactions));
 
     expect(sdk.query).toHaveBeenCalledTimes(1);
     expect(sdk.query.mock.calls[0]?.[0].options.permissionMode).toBe('default');
+    expect(sdk.query.mock.calls[0]?.[0].options.effort).toBe('high');
     expect(sdk.query.mock.calls[0]?.[0].options.allowDangerouslySkipPermissions).toBe(true);
     expect(sdk.query.mock.calls[0]?.[0].options.disallowedTools).toEqual(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
     expect(setPermissionMode).toHaveBeenNthCalledWith(1, 'bypassPermissions');
@@ -123,6 +142,13 @@ describe('ClaudeAgentAdapter MCP runtime status', () => {
     expect(first.at(-1)).toEqual(expect.objectContaining({ type: 'turn_completed', content: 'reply-1' }));
     expect(second.at(-1)).toEqual(expect.objectContaining({ type: 'turn_completed', content: 'reply-2' }));
     expect(close).not.toHaveBeenCalled();
+
+    const third = await collect(adapter.runTurn({ ...runInput('context-three'), reasoningEffort: 'low',
+      runtime: { backendId: 'claude', sessionId: 'claude-session-1', connectionFingerprint: 'native-test' } }, interactions));
+    expect(sdk.query).toHaveBeenCalledTimes(2);
+    expect(sdk.query.mock.calls[1]?.[0].options).toMatchObject({ effort: 'low', resume: 'claude-session-1' });
+    expect(third.at(-1)).toEqual(expect.objectContaining({ type: 'turn_completed', content: 'reply-3' }));
+    expect(close).toHaveBeenCalled();
 
     await adapter.disposeConversation('project-1', 'main');
     expect(close).toHaveBeenCalled();

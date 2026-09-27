@@ -5,7 +5,16 @@ export function isAgentAuthenticationError(message: string) {
   return AUTHENTICATION_ERROR_PATTERN.test(message);
 }
 
-export function formatAgentFailure(message: string) {
+export function formatAgentFailure(message: string, backendId = 'claude') {
+  if (backendId === 'codex') {
+    const heading = `Codex error: ${message}`;
+    if (/\bENOENT\b|Codex CLI executable .* was not found/i.test(message)) {
+      return `${heading}\n\nCheck the Codex executable under Settings → Connection → Codex and run codex --version in the selected environment.`;
+    }
+    if (INVALID_EXECUTABLE_PATTERN.test(message)) return `${heading}\n\nInstall or select a working Codex executable in Agent settings.`;
+    if (isAgentAuthenticationError(message)) return `${heading}\n\nSign in with the Codex CLI in the selected runtime.`;
+    return heading;
+  }
   const heading = `Claude Agent SDK error: ${message}`;
   if (INVALID_EXECUTABLE_PATTERN.test(message)) {
     return [

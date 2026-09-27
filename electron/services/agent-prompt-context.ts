@@ -103,6 +103,11 @@ export function buildAgentDynamicSystemContext(input: AgentDynamicSystemContextI
       status: input.project.status,
       opsecLevel: input.project.opsecLevel,
       autonomyLevel: input.project.autonomyLevel,
+      autonomyGuidance: input.project.autonomyLevel === 'low'
+        ? 'Complete one meaningful step, then ask the operator before choosing the next step. Tool approvals still follow the permission mode.'
+        : input.project.autonomyLevel === 'high'
+          ? 'Continue through related steps needed to complete the request without routine check-ins. Ask only when blocked or the task scope changes. Tool approvals still follow the permission mode.'
+          : 'Complete the requested task without routine check-ins. Ask when the next step is ambiguous or would expand the task scope. Tool approvals still follow the permission mode.',
       scope: input.project.scope ? {
         mode: input.project.scope.mode,
         allowRules: sortedStrings(input.project.scope.allowRules),

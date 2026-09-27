@@ -44,7 +44,7 @@ const NATIVE_READ_ONLY_TOOLS = new Set([
   'CronList', 'TaskOutput', 'ListMcpResources', 'ReadMcpResourceDir',
   'ReadMcpResource',
 ]);
-const NATIVE_TASK_GATE_CONTROL_TOOLS = new Set(['TaskStop', 'CronDelete', 'RefreshMcpTools']);
+const NATIVE_TASK_GATE_CONTROL_TOOLS = new Set(['TaskStop', 'CronDelete', 'RefreshMcpTools', 'ScheduleWakeup']);
 const HEXESTRA_MCP_PREFIX = 'mcp__hexestra__';
 
 export function isSubagentSpawnTool(toolName: string) {

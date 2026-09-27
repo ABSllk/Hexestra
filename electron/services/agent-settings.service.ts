@@ -7,10 +7,17 @@ import type {
   AgentSettingsContainer,
   AgentSettingsContainerInput,
   ClaudeSettingSource,
+  CodexConnectionSettings,
 } from '../contracts/agent-settings';
 import { diagnoseAgentConnection } from './wsl-agent-runtime';
 
 const SETTING_SOURCES: ClaudeSettingSource[] = ['user', 'project', 'local'];
+const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const;
+
+function reasoningEffort(value: unknown) {
+  return typeof value === 'string' && REASONING_EFFORTS.some((effort) => effort === value)
+    ? value as typeof REASONING_EFFORTS[number] : null;
+}
 
 export function createDefaultAgentSettings(platform = process.platform): AgentConnectionSettings {
   return {
@@ -19,6 +26,7 @@ export function createDefaultAgentSettings(platform = process.platform): AgentCo
     wslDistribution: 'Ubuntu-24.04',
     claudeExecutable: platform === 'win32' ? '/usr/bin/claude' : '',
     model: null,
+    reasoningEffort: null,
     settingSources: [...SETTING_SOURCES],
   };
 }
@@ -27,7 +35,26 @@ export function createDefaultAgentSettingsContainer(platform = process.platform)
   return {
     version: 2,
     defaultBackendId: 'claude',
-    backends: { claude: createDefaultAgentSettings(platform) },
+    backends: { claude: createDefaultAgentSettings(platform), codex: createDefaultCodexSettings(platform) },
+  };
+}
+
+export function createDefaultCodexSettings(platform = process.platform): CodexConnectionSettings {
+  return { version: 1, executionMode: 'native',
+    wslDistribution: 'Ubuntu-24.04', codexExecutable: 'codex', model: null, reasoningEffort: null };
+}
+
+export function normalizeCodexSettings(value: unknown, platform = process.platform): CodexConnectionSettings {
+  const defaults = createDefaultCodexSettings(platform);
+  if (!isRecord(value)) return defaults;
+  return {
+    version: 1,
+    executionMode: value.executionMode === 'native' || (platform === 'win32' && value.executionMode === 'wsl')
+      ? value.executionMode : defaults.executionMode,
+    wslDistribution: boundedString(value.wslDistribution, 100) ?? defaults.wslDistribution,
+    codexExecutable: boundedString(value.codexExecutable, 1_000) ?? defaults.codexExecutable,
+    model: boundedString(value.model, 200),
+    reasoningEffort: reasoningEffort(value.reasoningEffort),
   };
 }
 
@@ -52,6 +79,8 @@ export function normalizeAgentSettings(
     wslDistribution: boundedString(value.wslDistribution, 100) ?? defaults.wslDistribution,
     claudeExecutable: executionMode === 'wsl' && !executable ? '/usr/bin/claude' : executable,
     model: boundedString(value.model, 200),
+    reasoningEffort: ['none', 'minimal', 'ultra'].includes(value.reasoningEffort as string)
+      ? null : reasoningEffort(value.reasoningEffort),
     settingSources: settingSources.length ? settingSources : [...defaults.settingSources],
   };
 }
@@ -67,9 +96,10 @@ export function normalizeAgentSettingsContainer(
     : value;
   return {
     version: 2,
-    defaultBackendId: 'claude',
+    defaultBackendId: value.defaultBackendId === 'codex' ? 'codex' : 'claude',
     backends: {
       claude: normalizeAgentSettings(rawClaude, platform),
+      codex: normalizeCodexSettings(isRecord(value.backends) ? value.backends.codex : undefined, platform),
     },
   };
 }
@@ -110,8 +140,12 @@ export class AgentSettingsService {
     return cloneClaudeSettings(this.getSettings().backends.claude);
   }
 
+  getCodexSettings() {
+    return { ...this.getSettings().backends.codex };
+  }
+
   updateSettings(input: AgentSettingsContainerInput | unknown) {
-    if (this.runtimeGuard()) throw new Error('Stop the active Claude request before changing Agent settings');
+    if (this.runtimeGuard()) throw new Error('Stop the active Agent request before changing Agent settings');
     const settings = normalizeAgentSettingsContainer(input);
     this.persist(settings);
     this.settings = settings;
@@ -151,7 +185,7 @@ export class AgentSettingsService {
 function cloneSettings(settings: AgentSettingsContainer): AgentSettingsContainer {
   return {
     ...settings,
-    backends: { claude: cloneClaudeSettings(settings.backends.claude) },
+    backends: { claude: cloneClaudeSettings(settings.backends.claude), codex: { ...settings.backends.codex } },
   };
 }
 

@@ -62,7 +62,16 @@ describe('Agent settings', () => {
           wslDistribution: 'legacy-distro',
           claudeExecutable: '/opt/claude',
           model: 'legacy-model',
+          reasoningEffort: null,
           settingSources: ['project'],
+        },
+        codex: {
+          version: 1,
+          executionMode: 'native',
+          wslDistribution: 'Ubuntu-24.04',
+          codexExecutable: 'codex',
+          model: null,
+          reasoningEffort: null,
         },
       },
     });

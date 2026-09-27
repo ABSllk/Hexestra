@@ -105,6 +105,18 @@ const project = {
 };
 
 describe('Agent prompt context', () => {
+  it('gives each autonomy level distinct operator check-in pacing without changing tool approvals', () => {
+    const low = buildAgentDynamicSystemContext({ project: { ...project, autonomyLevel: 'low' } });
+    const medium = buildAgentDynamicSystemContext({ project });
+    const high = buildAgentDynamicSystemContext({ project: { ...project, autonomyLevel: 'high' } });
+    expect(low).toContain('ask the operator before choosing the next step');
+    expect(medium).toContain('Ask when the next step is ambiguous');
+    expect(high).toContain('without routine check-ins');
+    expect(low).toContain('Tool approvals still follow the permission mode');
+    expect(low).not.toContain('Read tools require operator confirmation');
+    expect(low).not.toBe(medium);
+    expect(high).not.toBe(medium);
+  });
   it('keeps a plain operator message byte-identical when no evidence is selected', () => {
     expect(buildAgentUserPrompt({ content: '  keep my spacing  ' })).toBe('  keep my spacing  ');
   });
