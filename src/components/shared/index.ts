@@ -10,6 +10,7 @@ export type { ConfirmDialogOptions } from './ConfirmDialog';
 export { DismissibleNotice } from './DismissibleNotice';
 export type { DismissibleNoticeTone, DismissibleNoticeVariant } from './DismissibleNotice';
 export { SettingsListRow } from './SettingsListRow';
+export { ReasoningEffortSlider } from './ReasoningEffortSlider';
 export {
   Button,
   EmptyState,

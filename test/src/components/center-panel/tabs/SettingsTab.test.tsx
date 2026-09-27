@@ -22,11 +22,13 @@ describe('SettingsTab', () => {
   const invoke = vi.fn();
   let appSettings: { version: number; language: string; theme: 'system' | 'dark' | 'light'; mitmdumpPath: string | null; mihomoPath: string | null; shortcutOverrides: ShortcutOverrides } = { version: 5, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null, shortcutOverrides: {} };
   let rejectThemeUpdate = false;
+  let claudeModel: string | null = null;
 
   beforeEach(() => {
     invoke.mockReset();
     appSettings = { version: 5, language: 'en', theme: 'system', mitmdumpPath: null, mihomoPath: null, shortcutOverrides: {} };
     rejectThemeUpdate = false;
+    claudeModel = null;
     invoke.mockImplementation((channel: string, patch?: { language?: string; theme?: 'system' | 'dark' | 'light'; shortcutOverrides?: ShortcutOverrides }) => {
       if (channel === APP_SETTINGS_IPC.GET) return Promise.resolve({ ...appSettings });
       if (channel === APP_SETTINGS_IPC.UPDATE) {
@@ -35,7 +37,14 @@ describe('SettingsTab', () => {
         return Promise.resolve({ ...appSettings });
       }
       if (channel === 'app:getCapabilities') return Promise.resolve({ platform: 'win32', arch: 'x64', supportsWsl: true, defaultShell: 'powershell.exe', usesNativeTitleBar: false });
-      if (channel === 'agent:settings:get') return Promise.resolve(settings);
+      if (channel === 'agent:settings:get') return Promise.resolve({ ...settings, backends: {
+        ...settings.backends, claude: { ...settings.backends.claude, model: claudeModel },
+      } });
+      if (channel === 'agent:models:list') return Promise.resolve(String(patch) === 'codex'
+        ? [{ id: 'gpt-5.1-codex', displayName: 'GPT-5.1 Codex', isDefault: true,
+          defaultReasoningEffort: 'medium', supportedReasoningEfforts: ['low', 'medium', 'high'] }]
+        : [{ id: 'sonnet', displayName: 'Claude Sonnet', resolvedModel: 'claude-sonnet-current', supportedReasoningEfforts: ['low', 'medium', 'high'] }]);
+      if (channel === 'agent:settings:update') return Promise.resolve(patch);
       if (channel === 'agent:settings:test') return Promise.resolve({
         ok: true,
         checkedAt: '2026-07-20T00:00:00.000Z',
@@ -50,6 +59,8 @@ describe('SettingsTab', () => {
           { id: 'network', label: 'Provider network', status: 'pass', detail: 'api.anthropic.com is reachable from WSL' },
         ],
       });
+      if (channel === 'codex:diagnose') return Promise.resolve({ available: true, authenticated: true,
+        lastError: null, runtimeLabel: 'Native', skills: 3, mcpServers: 1, bridgeReady: true, bridgeError: null });
       return Promise.resolve(settings);
     });
     Object.defineProperty(window, 'hexestra', {
@@ -76,6 +87,15 @@ describe('SettingsTab', () => {
     }));
   });
 
+  it('shows an existing Claude model ID through its runtime alias', async () => {
+    claudeModel = 'claude-sonnet-current';
+    render(<SettingsTab />);
+    fireEvent.click(screen.getByRole('button', { name: 'Connection' }));
+    expect(await screen.findByRole('option', { name: 'Claude Sonnet' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Claude model')).toHaveValue('sonnet');
+    expect(screen.queryByText(/claude-sonnet-current ·/)).not.toBeInTheDocument();
+  });
+
   it('switches to native mode without retaining the Linux executable', async () => {
     render(<SettingsTab />);
     fireEvent.click(screen.getByRole('button', { name: 'Connection' }));
@@ -85,7 +105,48 @@ describe('SettingsTab', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Claude executable')).toHaveValue('');
     });
+    expect(screen.getByLabelText('Claude model')).toBeDisabled();
+    expect(screen.getByText('Save runtime settings to load its models')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+  });
+
+  it('shows one backend at a time and saves the Codex draft before testing it', async () => {
+    render(<SettingsTab />);
+    fireEvent.click(screen.getByRole('button', { name: 'Connection' }));
+    await screen.findByDisplayValue('/usr/bin/claude');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Codex' }));
+    expect(screen.queryByLabelText('Claude executable')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Codex executable')).toHaveValue('codex');
+    expect(screen.queryByRole('button', { name: 'Sign in with ChatGPT' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Make default' })).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: 'GPT-5.1 Codex' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Codex model'), { target: { value: 'gpt-5.1-codex' } });
+    const slider = screen.getByRole('slider', { name: 'Reasoning effort' });
+    fireEvent.change(slider, { target: { value: '2' } });
+    fireEvent.pointerUp(slider);
+    fireEvent.click(screen.getByRole('button', { name: 'Make default' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save and test' }));
+
+    expect(await screen.findByText('3 Skills · 1 MCP servers')).toBeInTheDocument();
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('agent:settings:update', expect.objectContaining({
+      defaultBackendId: 'codex', backends: expect.objectContaining({ codex: expect.objectContaining({ model: 'gpt-5.1-codex', reasoningEffort: 'high' }) }),
+    })));
+    expect(invoke).toHaveBeenCalledWith('codex:diagnose', null);
+    fireEvent.click(screen.getByRole('button', { name: 'Claude Code' }));
+    expect(screen.getByLabelText('Claude executable')).toHaveValue('/usr/bin/claude');
+    expect(screen.queryByLabelText('Codex executable')).not.toBeInTheDocument();
+  });
+
+  it('localizes the shared backend settings in Chinese', async () => {
+    render(<I18nProvider><SettingsTab /></I18nProvider>);
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Language' }), { target: { value: 'zh-CN' } });
+    fireEvent.click(await screen.findByRole('button', { name: '连接' }));
+    expect(await screen.findByRole('group', { name: '后端' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Codex' }));
+    expect(screen.getByLabelText('Codex 可执行文件')).toHaveValue('codex');
+    expect(screen.getByRole('button', { name: '设为默认' })).toBeInTheDocument();
   });
 
   it('changes the global interface language from General settings', async () => {

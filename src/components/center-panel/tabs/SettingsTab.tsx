@@ -3,13 +3,14 @@ import type {
   AgentConnectionDiagnostic,
   AgentConnectionSettings,
   AgentSettingsContainer,
+  CodexConnectionSettings,
   AgentExecutionMode,
   ClaudeSettingSource,
 } from '@electron/contracts/agent-settings';
 import type { PlatformCapabilities } from '@electron/contracts/platform';
 import type { MitmproxyRuntimeDiagnostic } from '@electron/services/mitmproxy-runtime';
 import { TRAFFIC_IPC } from '@electron/contracts/traffic';
-import { DismissibleNotice, Icon, Surface } from '@/components/shared';
+import { DismissibleNotice, Icon, ReasoningEffortSlider, Surface } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useChatStore } from '@/stores';
 import { useTabStore, type SettingsPage } from '@/stores/useTabStore';
@@ -21,12 +22,18 @@ import { AgentInstructionsSettings } from './AgentInstructionsSettings';
 import { ToolCatalogSettings } from './ToolCatalogSettings';
 import { ShortcutsSettings } from './ShortcutsSettings';
 import { useAppPreferences, useI18n } from '@/i18n';
+import { useAgentModels } from '@/hooks/useAgentModels';
 
 const SOURCES: Array<{ id: ClaudeSettingSource; label: string; detail: string }> = [
   { id: 'user', label: 'User', detail: '~/.claude/settings.json' },
   { id: 'project', label: 'Project', detail: '.claude/settings.json' },
   { id: 'local', label: 'Local', detail: '.claude/settings.local.json' },
 ];
+
+type AgentBackendSelection = 'claude' | 'codex';
+type CodexDiagnostic = { available: boolean; authenticated: boolean | null; lastError: string | null; runtimeLabel: string;
+  skills?: number | null; mcpServers?: number | null; skillError?: string | null; mcpError?: string | null;
+  bridgeReady?: boolean; bridgeError?: string | null };
 
 export function SettingsTab() {
   const requestedPage = useTabStore((state) => {
@@ -79,10 +86,18 @@ function ConnectionSettings() {
   const { t } = useI18n();
   const [settings, setSettings] = useState<AgentSettingsContainer | null>(null);
   const [saved, setSaved] = useState<AgentSettingsContainer | null>(null);
+  const [selectedBackend, setSelectedBackend] = useState<AgentBackendSelection>('claude');
   const [diagnostic, setDiagnostic] = useState<AgentConnectionDiagnostic | null>(null);
+  const [codexDiagnostic, setCodexDiagnostic] = useState<CodexDiagnostic | null>(null);
   const [busy, setBusy] = useState<'save' | 'test' | 'reset' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<PlatformCapabilities | null>(null);
+  const [modelRefreshKey, setModelRefreshKey] = useState(0);
+  const activeProjectId = useChatStore((state) => state.activeProjectId);
+  const agentStatus = useChatStore((state) => state.agentStatus);
+  const modelRuntimeChanged = Boolean(settings && saved &&
+    modelRuntimeKey(settings.backends[selectedBackend]) !== modelRuntimeKey(saved.backends[selectedBackend]));
+  const modelCatalog = useAgentModels(selectedBackend, settings !== null && !modelRuntimeChanged, activeProjectId, modelRefreshKey);
 
   useEffect(() => {
     let active = true;
@@ -92,6 +107,7 @@ function ConnectionSettings() {
         const value = normalizeSettingsPayload(raw);
         setSettings(value);
         setSaved(value);
+        setSelectedBackend(value.defaultBackendId);
       })
       .catch((reason) => active && setError(String(reason)));
     return () => { active = false; };
@@ -102,20 +118,43 @@ function ConnectionSettings() {
   }, []);
 
   const claude = settings?.backends.claude;
-  const updateClaude = (patch: Partial<NonNullable<typeof claude>>) => setSettings((current) => current ? {
+  const updateClaude = (patch: Partial<NonNullable<typeof claude>>) => {
+    setDiagnostic(null);
+    setSettings((current) => current ? {
     ...current,
     backends: { ...current.backends, claude: { ...current.backends.claude, ...patch } },
-  } : current);
-
+    } : current);
+  };
+  const updateCodex = (patch: Partial<CodexConnectionSettings>) => {
+    setCodexDiagnostic(null);
+    setSettings((current) => current ? {
+    ...current,
+    backends: { ...current.backends, codex: { ...current.backends.codex, ...patch } },
+    } : current);
+  };
+  const diagnoseCodex = async () => {
+    setError(null);
+    try { setCodexDiagnostic(await window.hexestra.invoke('codex:diagnose', activeProjectId)); }
+    catch (reason) { setError(String(reason)); }
+  };
   const updateMode = (executionMode: AgentExecutionMode) => {
-    if (!claude) return;
-    updateClaude({
-      executionMode,
-      claudeExecutable: executionMode === 'wsl'
-        ? (claude.executionMode === 'wsl' ? claude.claudeExecutable : '/usr/bin/claude')
-        : (claude.executionMode === 'native' ? claude.claudeExecutable : ''),
-    });
-    setDiagnostic(null);
+    if (!settings) return;
+    if (selectedBackend === 'codex') {
+      const codex = settings.backends.codex;
+      updateCodex({ executionMode, codexExecutable: codex.executionMode === executionMode ? codex.codexExecutable : 'codex' });
+      return;
+    }
+    updateClaude({ executionMode, claudeExecutable: executionMode === 'wsl'
+      ? (claude?.executionMode === 'wsl' ? claude.claudeExecutable : '/usr/bin/claude')
+      : (claude?.executionMode === 'native' ? claude.claudeExecutable : '') });
+  };
+
+  const persistSettings = async (value: AgentSettingsContainer) => {
+    const updated = await window.hexestra.invoke<AgentSettingsContainer>('agent:settings:update', value);
+    setSettings(updated);
+    setSaved(updated);
+    setModelRefreshKey((current) => current + 1);
+    await useChatStore.getState().refreshStatus();
   };
 
   const save = async () => {
@@ -123,10 +162,7 @@ function ConnectionSettings() {
     setBusy('save');
     setError(null);
     try {
-      const value = await window.hexestra.invoke<AgentSettingsContainer>('agent:settings:update', settings);
-      setSettings(value);
-      setSaved(value);
-      await useChatStore.getState().refreshStatus();
+      await persistSettings(settings);
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -139,7 +175,12 @@ function ConnectionSettings() {
     setBusy('test');
     setError(null);
     try {
-      setDiagnostic(await window.hexestra.invoke<AgentConnectionDiagnostic>('agent:settings:test', settings));
+      if (selectedBackend === 'codex') {
+        if (JSON.stringify(settings) !== JSON.stringify(saved)) await persistSettings(settings);
+        await diagnoseCodex();
+      } else {
+        setDiagnostic(await window.hexestra.invoke<AgentConnectionDiagnostic>('agent:settings:test', settings));
+      }
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -154,7 +195,10 @@ function ConnectionSettings() {
       const value = await window.hexestra.invoke<AgentSettingsContainer>('agent:settings:reset');
       setSettings(value);
       setSaved(value);
+      setSelectedBackend(value.defaultBackendId);
       setDiagnostic(null);
+      setCodexDiagnostic(null);
+      setModelRefreshKey((current) => current + 1);
       await useChatStore.getState().refreshStatus();
     } catch (reason) {
       setError(String(reason));
@@ -168,6 +212,17 @@ function ConnectionSettings() {
   }
 
   const claudeSettings = settings.backends.claude;
+  const codexSettings = settings.backends.codex;
+  const selectedSettings = selectedBackend === 'codex' ? codexSettings : claudeSettings;
+  const selectedModelOption = modelCatalog.models.find((model) => model.id === selectedSettings.model
+    || model.resolvedModel === selectedSettings.model);
+  const effortModelOption = selectedModelOption ?? (!selectedSettings.model
+    ? modelCatalog.models.find((model) => selectedBackend === agentStatus.backendId
+      && (model.id === agentStatus.model || model.resolvedModel === agentStatus.model))
+      ?? modelCatalog.models.find((model) => model.isDefault || model.id === 'default')
+      ?? modelCatalog.models[0]
+    : undefined);
+  const availableEfforts = effortModelOption?.supportedReasoningEfforts ?? [];
   const dirty = JSON.stringify(settings) !== JSON.stringify(saved);
 
   return (
@@ -185,17 +240,32 @@ function ConnectionSettings() {
           </span>
         </header>
 
+        <SettingsSection title={t('settings.agentBackend')} description={t('settings.agentBackendHint')}>
+          <div className="ui-segmented grid grid-cols-2" role="group" aria-label={t('settings.agentBackend')}>
+            {(['claude', 'codex'] as const).map((backendId) => (
+              <button key={backendId} type="button" aria-pressed={selectedBackend === backendId}
+                className={cn('ui-segmented-item px-3 py-1.5 text-xs', selectedBackend === backendId && 'ui-segmented-item-active')}
+                onClick={() => setSelectedBackend(backendId)}>{backendId === 'claude' ? 'Claude Code' : 'Codex'}</button>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-border-subtle pt-3 text-xs text-text-muted">
+            <span>{settings.defaultBackendId === selectedBackend ? t('settings.defaultAgent') : t('settings.defaultAgentHint')}</span>
+            {settings.defaultBackendId !== selectedBackend && <button type="button" className="ui-button ui-button-neutral"
+              onClick={() => setSettings({ ...settings, defaultBackendId: selectedBackend })}>{t('settings.makeDefaultAgent')}</button>}
+          </div>
+        </SettingsSection>
+
         <SettingsSection title={t('settings.executionEnvironment')} description={t('settings.executionEnvironmentDescription')}>
           <div className={`grid gap-3 ${capabilities?.supportsWsl ? 'grid-cols-2' : 'grid-cols-1'}`}>
             {capabilities?.supportsWsl && <RuntimeCard
-                active={claudeSettings.executionMode === 'wsl'}
+                active={selectedSettings.executionMode === 'wsl'}
                 icon="terminal"
                 title="WSL"
                 detail={t('settings.wslDetail')}
                 onClick={() => updateMode('wsl')}
               />}
             <RuntimeCard
-              active={claudeSettings.executionMode === 'native'}
+              active={selectedSettings.executionMode === 'native'}
               icon="code"
               title={t('settings.native')}
               detail={t('settings.nativeDetail')}
@@ -204,55 +274,90 @@ function ConnectionSettings() {
           </div>
         </SettingsSection>
 
-        {capabilities?.supportsWsl && claudeSettings.executionMode === 'wsl' && (
-          <SettingsSection title="WSL runtime" description="These values are passed as arguments to wsl.exe without a shell.">
-            <Field label="Distribution" hint="The exact name shown by wsl.exe --list --verbose">
+        {capabilities?.supportsWsl && selectedSettings.executionMode === 'wsl' && (
+          <SettingsSection title={t('settings.wslRuntime')} description={t('settings.wslRuntimeHint')}>
+            <Field label={t('settings.distribution')} hint={t('settings.distributionHint')}>
               <input
-                aria-label="WSL distribution"
-                value={claudeSettings.wslDistribution}
-                onChange={(event) => updateClaude({ wslDistribution: event.target.value })}
+                aria-label={t('settings.wslDistribution')}
+                value={selectedSettings.wslDistribution}
+                onChange={(event) => selectedBackend === 'codex'
+                  ? updateCodex({ wslDistribution: event.target.value }) : updateClaude({ wslDistribution: event.target.value })}
                 className="settings-input"
                 placeholder="Ubuntu-24.04"
               />
             </Field>
-            <Field label="Claude executable" hint="Absolute Linux path inside the selected distribution">
+            <Field label={selectedBackend === 'codex' ? t('settings.codexExecutable') : t('settings.claudeExecutable')} hint={selectedBackend === 'codex'
+              ? t('settings.codexWslExecutableHint') : t('settings.claudeWslExecutableHint')}>
               <input
-                aria-label="Claude executable"
-                value={claudeSettings.claudeExecutable}
-                onChange={(event) => updateClaude({ claudeExecutable: event.target.value })}
+                aria-label={selectedBackend === 'codex' ? t('settings.codexExecutable') : t('settings.claudeExecutable')}
+                value={selectedBackend === 'codex' ? codexSettings.codexExecutable : claudeSettings.claudeExecutable}
+                onChange={(event) => selectedBackend === 'codex'
+                  ? updateCodex({ codexExecutable: event.target.value }) : updateClaude({ claudeExecutable: event.target.value })}
                 className="settings-input font-mono"
-                placeholder="/usr/bin/claude"
+                placeholder={selectedBackend === 'codex' ? 'codex' : '/usr/bin/claude'}
               />
             </Field>
           </SettingsSection>
         )}
 
-        {claudeSettings.executionMode === 'native' && (
-          <SettingsSection title="Native runtime" description="Leave the executable empty to discover Claude Code from your login shell, PATH, and standard install locations.">
-            <Field label="Claude executable" hint="Optional absolute path; empty means automatic local discovery">
+        {selectedSettings.executionMode === 'native' && (
+          <SettingsSection title={t('settings.nativeRuntime')} description={selectedBackend === 'codex'
+            ? t('settings.codexNativeRuntimeHint') : t('settings.claudeNativeRuntimeHint')}>
+            <Field label={selectedBackend === 'codex' ? t('settings.codexExecutable') : t('settings.claudeExecutable')} hint={selectedBackend === 'codex'
+              ? t('settings.codexNativeExecutableHint') : t('settings.claudeNativeExecutableHint')}>
               <input
-                aria-label="Claude executable"
-                value={claudeSettings.claudeExecutable}
-                onChange={(event) => updateClaude({ claudeExecutable: event.target.value })}
+                aria-label={selectedBackend === 'codex' ? t('settings.codexExecutable') : t('settings.claudeExecutable')}
+                value={selectedBackend === 'codex' ? codexSettings.codexExecutable : claudeSettings.claudeExecutable}
+                onChange={(event) => selectedBackend === 'codex'
+                  ? updateCodex({ codexExecutable: event.target.value }) : updateClaude({ claudeExecutable: event.target.value })}
                 className="settings-input font-mono"
-                placeholder="Auto-discover local Claude Code"
+                placeholder={selectedBackend === 'codex' ? 'codex' : t('settings.autoDiscoverClaude')}
               />
             </Field>
           </SettingsSection>
         )}
 
-        <SettingsSection title="Claude options" description="Applied to new requests; no application turn limit is added.">
-          <Field label="Model" hint="Leave empty to use the Claude Code default">
-            <input
-              aria-label="Claude model"
-              value={claudeSettings.model ?? ''}
-              onChange={(event) => updateClaude({ model: event.target.value || null })}
-              className="settings-input font-mono"
-              placeholder="Default"
-            />
+        <SettingsSection title={t('settings.agentOptions')} description={t('settings.agentOptionsHint')}>
+          <Field label={t('settings.model')} hint={selectedBackend === 'codex' ? t('settings.codexModelHint') : t('settings.claudeModelHint')}>
+            <select
+              aria-label={selectedBackend === 'codex' ? t('settings.codexModel') : t('settings.claudeModel')}
+              value={selectedModelOption?.id ?? selectedSettings.model ?? ''}
+              disabled={modelRuntimeChanged}
+              onChange={(event) => {
+                const model = event.target.value || null;
+                const option = modelCatalog.models.find((item) => item.id === model)
+                  ?? (!model ? effortModelOption : undefined);
+                const reasoningEffort = option?.supportedReasoningEfforts?.includes(selectedSettings.reasoningEffort!)
+                  ? selectedSettings.reasoningEffort : null;
+                if (selectedBackend === 'codex') updateCodex({ model, reasoningEffort });
+                else updateClaude({ model, reasoningEffort });
+              }}
+              className="settings-input"
+            >
+              <option value="">{t('settings.defaultModel')}</option>
+              {selectedSettings.model && !selectedModelOption &&
+                <option value={selectedSettings.model} disabled>{selectedSettings.model} · {t('agent.modelUnavailable')}</option>}
+              {modelCatalog.models.map((model) => <option key={model.id} value={model.id}>{model.displayName}</option>)}
+            </select>
+            {modelCatalog.loading && <p className="mt-1 text-[11px] text-text-muted">{t('agent.loadingModels')}</p>}
+            {modelRuntimeChanged && <p className="mt-1 text-[11px] text-text-muted">{t('settings.saveRuntimeForModels')}</p>}
+            {modelCatalog.error && <p className="mt-1 text-[11px] text-status-error">{t('agent.modelsError')}: {modelCatalog.error}</p>}
+            {!modelRuntimeChanged && !modelCatalog.loading && !modelCatalog.error && modelCatalog.models.length === 0 &&
+              <p className="mt-1 text-[11px] text-text-muted">{t('agent.noModels')}</p>}
           </Field>
-          <div>
-            <p className="mb-2 text-xs font-medium text-text-secondary">Setting sources</p>
+          <Field label={t('agent.effort')} hint={t('agent.effortHint')}>
+            <ReasoningEffortSlider value={selectedSettings.reasoningEffort ?? null} efforts={availableEfforts}
+              defaultEffort={effortModelOption?.defaultReasoningEffort}
+              descriptions={effortModelOption?.reasoningEffortDescriptions}
+              disabled={modelRuntimeChanged || !effortModelOption}
+              onCommit={(reasoningEffort) => {
+                if (selectedBackend === 'codex') updateCodex({ reasoningEffort });
+                else updateClaude({ reasoningEffort });
+              }} />
+            {!effortModelOption && <p className="mt-1 text-[11px] text-text-muted">{t('agent.chooseModelForEffort')}</p>}
+          </Field>
+          {selectedBackend === 'claude' && <div>
+            <p className="mb-2 text-xs font-medium text-text-secondary">{t('settings.settingSources')}</p>
             <div className="grid grid-cols-3 gap-2">
               {SOURCES.map((source) => {
                 const checked = claudeSettings.settingSources.includes(source.id);
@@ -277,10 +382,11 @@ function ConnectionSettings() {
                 );
               })}
             </div>
-          </div>
+          </div>}
         </SettingsSection>
 
-        {diagnostic && <DiagnosticCard diagnostic={diagnostic} />}
+        {selectedBackend === 'claude' && diagnostic && <DiagnosticCard diagnostic={diagnostic} />}
+        {selectedBackend === 'codex' && codexDiagnostic && <CodexDiagnosticCard diagnostic={codexDiagnostic} />}
         {error && <DismissibleNotice tone="error" className="mb-4 text-xs" onDismiss={() => setError(null)}>{error}</DismissibleNotice>}
 
         <footer className="flex items-center justify-between border-t border-border-subtle pt-4">
@@ -289,7 +395,7 @@ function ConnectionSettings() {
           </button>
           <div className="flex gap-2">
             <button onClick={() => void test()} disabled={busy !== null} className="ui-button ui-button-neutral hover:border-accent-blue/40 hover:text-accent-blue">
-              {busy === 'test' ? t('settings.testing') : t('settings.testConnection')}
+              {busy === 'test' ? t('settings.testing') : selectedBackend === 'codex' && dirty ? t('settings.saveAndTest') : t('settings.testConnection')}
             </button>
             <button onClick={() => void save()} disabled={busy !== null || !dirty} className="ui-button ui-button-primary">
               {busy === 'save' ? t('settings.saving') : dirty ? t('settings.saveChanges') : t('common.saved')}
@@ -453,11 +559,12 @@ function isSettingsPage(value: unknown): value is SettingsPage {
 }
 
 function normalizeSettingsPayload(value: AgentSettingsContainer | AgentConnectionSettings): AgentSettingsContainer {
-  if ('backends' in value) return value;
+  const codex = { version: 1 as const, executionMode: 'native' as const, wslDistribution: 'Ubuntu-24.04', codexExecutable: 'codex', model: null, reasoningEffort: null };
+  if ('backends' in value) return { ...value, backends: { ...value.backends, codex: value.backends.codex ?? codex } };
   return {
     version: 2,
     defaultBackendId: 'claude',
-    backends: { claude: value },
+    backends: { claude: value, codex },
   };
 }
 
@@ -483,6 +590,12 @@ function Field({ label, hint, children }: { label: string; hint: string; childre
       {children}
     </label>
   );
+}
+
+function modelRuntimeKey(settings: AgentConnectionSettings | CodexConnectionSettings) {
+  return JSON.stringify([settings.executionMode, settings.wslDistribution,
+    'codexExecutable' in settings ? settings.codexExecutable : settings.claudeExecutable,
+    'settingSources' in settings ? settings.settingSources : null]);
 }
 
 function RuntimeCard({ active, icon, title, detail, onClick }: { active: boolean; icon: 'terminal' | 'code'; title: string; detail: string; onClick: () => void }) {
@@ -520,6 +633,36 @@ function DiagnosticCard({ diagnostic }: { diagnostic: AgentConnectionDiagnostic 
             <p className="break-words font-mono text-[11px] leading-4 text-text-muted">{check.detail}</p>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function CodexDiagnosticCard({ diagnostic }: { diagnostic: CodexDiagnostic }) {
+  const { t } = useI18n();
+  const ready = diagnostic.available && diagnostic.authenticated && diagnostic.bridgeReady;
+  const checks = [
+    { label: t('settings.codexRuntime'), detail: diagnostic.lastError ?? diagnostic.runtimeLabel, ok: diagnostic.available },
+    { label: t('settings.codexAccount'), detail: diagnostic.authenticated ? t('settings.signedIn') : t('settings.signInRequired'), ok: Boolean(diagnostic.authenticated) },
+    { label: t('settings.projectToolBridge'), detail: diagnostic.bridgeError ?? (diagnostic.bridgeReady ? t('settings.connected') : t('settings.unavailable')), ok: Boolean(diagnostic.bridgeReady) },
+    { label: t('settings.skillsAndMcp'), detail: diagnostic.skillError ?? diagnostic.mcpError
+      ?? `${diagnostic.skills == null ? t('settings.unavailable') : t('settings.skillsCount', { count: diagnostic.skills })} · ${diagnostic.mcpServers == null ? t('settings.unavailable') : t('settings.mcpCount', { count: diagnostic.mcpServers })}`,
+    ok: !diagnostic.skillError && !diagnostic.mcpError && diagnostic.skills != null && diagnostic.mcpServers != null },
+  ];
+  return (
+    <section className={cn('mb-5 rounded-lg border p-3', ready ? 'border-accent-green/25 bg-accent-green/5' : 'border-severity-critical/30 bg-severity-critical/5')} aria-label={t('settings.connectionDiagnostic')}>
+      <div className="mb-3 flex items-center gap-2">
+        <Icon name={ready ? 'check' : 'alert'} size={14} className={ready ? 'text-accent-green' : 'text-severity-critical'} />
+        <span className="text-xs font-semibold text-text-secondary">{ready ? t('settings.connectionReady') : t('settings.connectionNeedsAttention')}</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {checks.map((check) => <div key={check.label} className="rounded border border-border-subtle/70 bg-panel/50 p-2">
+          <div className="mb-1 flex items-center gap-1.5">
+            <span className={cn('h-1.5 w-1.5 rounded-full', check.ok ? 'bg-accent-green' : 'bg-severity-critical')} />
+            <span className="text-[11px] font-medium text-text-secondary">{check.label}</span>
+          </div>
+          <p className="break-words font-mono text-[11px] leading-4 text-text-muted">{check.detail}</p>
+        </div>)}
       </div>
     </section>
   );

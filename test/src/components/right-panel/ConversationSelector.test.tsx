@@ -60,8 +60,23 @@ describe('ConversationSelector', () => {
     render(<ConversationSelector />);
 
     fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Codex' }));
 
-    expect(newConversation).toHaveBeenCalledOnce();
+    expect(newConversation).toHaveBeenCalledWith('codex');
+  });
+
+  it('closes the backend menu on outside click or Escape', () => {
+    render(<ConversationSelector />);
+    const trigger = screen.getByRole('button', { name: 'New conversation' });
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.pointerDown(document.body);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(trigger);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveFocus();
   });
 
   it('keeps conversation changes available while Claude is running', () => {

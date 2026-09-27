@@ -13,6 +13,7 @@ const LIVE_FOLLOW_THRESHOLD_PX = 64;
 export function ChatMessages() {
   const messages = useChatStore((s) => s.messages);
   const isProcessing = useChatStore((s) => s.isProcessing);
+  const backendId = useChatStore((s) => s.agentStatus.backendId);
   const branchFromMessage = useChatStore((s) => s.branchFromMessage);
   const openSubagent = useChatStore((s) => s.openSubagent);
   const subagentRuns = useChatStore((s) => s.subagentRuns);
@@ -254,7 +255,7 @@ export function ChatMessages() {
                 value={draft}
               />
               <p className="mt-1 text-[11px] leading-relaxed text-text-muted">
-                Hexestra will create a new Claude branch from this turn. Project assets,
+                Hexestra will create a new {backendId === 'codex' ? 'Codex' : 'Claude'} branch from this turn. Project assets,
                 Scope, tasks, Findings, Evidence, Reports, and files remain shared.
               </p>
               <div className="mt-2 flex justify-end gap-1.5">

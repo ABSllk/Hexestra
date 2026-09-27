@@ -65,7 +65,7 @@ interface ChatStore {
   activateProject: (sessionId: string) => Promise<ProjectWorkspaceState>;
   deactivateProject: () => void;
   sendMessage: (content: string, attachments?: AgentAttachment[], workflowInvocation?: WorkflowInvocation) => Promise<void>;
-  newConversation: () => Promise<boolean>;
+  newConversation: (backendId?: 'claude' | 'codex') => Promise<boolean>;
   branchFromMessage: (messageId: string, content: string) => Promise<void>;
   switchBranch: (branchId: string) => Promise<void>;
   appendMessage: (msg: ChatMessage) => void;
@@ -266,7 +266,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
-  newConversation: async () => {
+  newConversation: async (backendId) => {
     const state = get();
     const requestEpoch = ++historyRequestEpoch;
     if (!window.hexestra || !state.activeProjectId) {
@@ -288,7 +288,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const optimisticConversation: ConversationBranchSummary = {
       id: conversationId,
       title: `New conversation ${state.branches.length + 1}`,
-      backendId: state.agentStatus.backendId,
+      backendId: backendId ?? state.agentStatus.backendId,
       createdAt: new Date().toISOString(),
       messageCount: 0,
     };
@@ -314,7 +314,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const activation = await window.hexestra.invoke<Pick<
         ProjectActivation,
         'messages' | 'history' | 'branches' | 'activeBranchId' | 'status' | 'subagentRuns'
-      >>('agent:conversation:new', state.activeProjectId, conversationId);
+      >>('agent:conversation:new', state.activeProjectId, conversationId, ...(backendId ? [backendId] : []));
       if (get().activeProjectId === state.activeProjectId && requestEpoch === historyRequestEpoch) {
         set({
           messages: activation.messages,

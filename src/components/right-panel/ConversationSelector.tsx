@@ -12,9 +12,11 @@ export function ConversationSelector() {
   const newConversation = useChatStore((state) => state.newConversation);
   const switchBranch = useChatStore((state) => state.switchBranch);
   const [open, setOpen] = useState(false);
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const selectorRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const newTriggerRef = useRef<HTMLButtonElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const listboxId = 'agent-conversation-listbox';
   const activeIndex = Math.max(0, branches.findIndex((branch) => branch.id === activeBranchId));
@@ -28,15 +30,16 @@ export function ConversationSelector() {
   }, [activeIndex, open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open && !newMenuOpen) return;
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!selectorRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!selectorRef.current?.contains(event.target as Node)) { setOpen(false); setNewMenuOpen(false); }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setOpen(false);
-        triggerRef.current?.focus();
+        setNewMenuOpen(false);
+        (newMenuOpen ? newTriggerRef : triggerRef).current?.focus();
       }
     };
 
@@ -46,7 +49,7 @@ export function ConversationSelector() {
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [open]);
+  }, [open, newMenuOpen]);
 
   const focusOption = (index: number) => {
     if (branches.length === 0) return;
@@ -103,7 +106,7 @@ export function ConversationSelector() {
             open && 'border-accent-blue/50 bg-panel shadow-lg shadow-black/20',
           )}
           disabled={!activeProjectId}
-          onClick={() => setOpen((current) => !current)}
+          onClick={() => { setNewMenuOpen(false); setOpen((current) => !current); }}
           onKeyDown={handleTriggerKeyDown}
         >
           <span className="flex min-w-0 items-center gap-2">
@@ -115,7 +118,7 @@ export function ConversationSelector() {
                 {activeConversation?.title ?? t('agent.noConversation')}
               </span>
               <span className="block truncate font-mono text-[10px] text-text-muted">
-                {activeConversation ? t('agent.messagesCount', { count: activeConversation.messageCount }) : t('agent.conversationCount', { count: 0 })}
+                {activeConversation ? `${activeConversation.backendId === 'codex' ? 'Codex' : 'Claude'} · ${t('agent.messagesCount', { count: activeConversation.messageCount })}` : t('agent.conversationCount', { count: 0 })}
               </span>
             </span>
           </span>
@@ -158,7 +161,7 @@ export function ConversationSelector() {
                         {conversation.title}
                       </span>
                       <span className="mt-0.5 block truncate font-mono text-[10px] text-text-muted">
-                        {t('agent.messagesCount', { count: conversation.messageCount })}
+                        {conversation.backendId === 'codex' ? 'Codex' : 'Claude'} · {t('agent.messagesCount', { count: conversation.messageCount })}
                       </span>
                     </span>
                     {selected && <span className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.12em] text-accent-blue">{t('agent.active')}</span>}
@@ -169,15 +172,26 @@ export function ConversationSelector() {
           </div>
         )}
       </div>
+      <div className="relative">
       <button
+        ref={newTriggerRef}
         aria-label={t('agent.newConversation')}
+        aria-expanded={newMenuOpen}
         className="ui-icon-button h-9 w-9 border-border-subtle bg-panel/40 hover:border-accent-blue/30 hover:bg-accent-blue/10 hover:text-accent-blue disabled:cursor-not-allowed disabled:opacity-40"
         disabled={!activeProjectId}
-        onClick={() => { setOpen(false); void newConversation(); }}
+        onClick={() => { setOpen(false); setNewMenuOpen((value) => !value); }}
         title={t('agent.newConversation')}
       >
         <Icon name="plus" size={13} />
       </button>
+      {newMenuOpen && <div className="ui-popover absolute right-0 top-full z-50 mt-1.5 min-w-36 p-1.5">
+        {(['claude', 'codex'] as const).map((backendId) => <button key={backendId} type="button"
+          className="w-full rounded-md px-3 py-2 text-left text-xs text-text-secondary hover:bg-raised hover:text-text-primary"
+          onClick={() => { setNewMenuOpen(false); void newConversation(backendId); }}>
+          {backendId === 'claude' ? 'Claude' : 'Codex'}
+        </button>)}
+      </div>}
+      </div>
     </div>
   );
 }

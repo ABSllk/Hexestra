@@ -90,7 +90,7 @@ export function AIChatSidebar() {
                   ? 'h-1.5 w-1.5 rounded-full bg-accent-green'
                   : 'h-1.5 w-1.5 rounded-full bg-severity-medium'
             }
-            title={agentStatus.lastError ?? `Claude SDK: ${agentStatus.state}`}
+            title={agentStatus.lastError ?? `${agentStatus.backendId === 'codex' ? 'Codex' : 'Claude'}: ${agentStatus.state}`}
           />
           {isProcessing && (
             <span className="typing-indicator ml-1 flex gap-0.5" aria-label={t('agent.processing')}>
