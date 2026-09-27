@@ -1,9 +1,15 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage, SubagentRun } from '@/types';
 import { AgentTimelineMessage } from '@/components/right-panel/AgentTimelineMessage';
+import { useSessionStore } from '@/stores/useSessionStore';
+import { useTabStore } from '@/stores/useTabStore';
 
 describe('AgentTimelineMessage', () => {
+  beforeEach(() => {
+    useSessionStore.setState({ currentSession: null });
+    useTabStore.getState().resetProject();
+  });
   it('renders text, collapsed thinking, and tool execution in source order', () => {
     const message: ChatMessage = {
       id: 'assistant-turn',
@@ -110,9 +116,53 @@ describe('AgentTimelineMessage', () => {
     expect(screen.getByText('https', { selector: 'code' })).toBeInTheDocument();
     expect(screen.getByText('HTTP open', { selector: 'del' })).toBeInTheDocument();
     expect(screen.getByText('Validate with the operator.').closest('blockquote')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Reference' })).toHaveAttribute('target', '_blank');
-    expect(screen.getByRole('link', { name: 'Reference' })).toHaveAttribute('rel', 'noopener noreferrer');
+    const reference = screen.getByRole('link', { name: 'Reference' });
+    expect(reference).not.toHaveAttribute('target');
+    fireEvent.click(reference);
+    expect(useTabStore.getState().tabs).toContainEqual(expect.objectContaining({
+      type: 'browser', data: { url: 'https://example.com/' },
+    }));
     expect(container.querySelector('script')).not.toBeInTheDocument();
+  });
+
+  it('opens project Markdown links in the existing editor instead of another app window', () => {
+    useSessionStore.setState({ currentSession: {
+      id: 'project-1', name: 'Project', basePath: 'D:\\projects\\demo', status: 'active',
+      createdAt: '', updatedAt: '', opsecLevel: 'balanced', autonomyLevel: 'medium',
+      targetCount: 0, findingCount: 0, vulnerabilityCount: 0,
+    } });
+    const message: ChatMessage = {
+      id: 'file-link', role: 'assistant', content: '[ptt.md](ptt.md)', timestamp: '', status: 'complete',
+      activities: [{ id: 'answer', kind: 'text', status: 'complete', content: '[ptt.md](ptt.md)' }],
+    };
+    render(<AgentTimelineMessage message={message} />);
+    const link = screen.getByRole('link', { name: 'ptt.md' });
+    expect(link).not.toHaveAttribute('target');
+    fireEvent.click(link);
+    expect(useTabStore.getState().tabs).toContainEqual(expect.objectContaining({
+      type: 'editor', data: { filePath: 'ptt.md', sessionId: 'project-1' },
+    }));
+    fireEvent.click(link);
+    expect(useTabStore.getState().tabs.filter((tab) => tab.type === 'editor')).toHaveLength(1);
+  });
+
+  it('keeps project file URLs clickable after Markdown sanitization', () => {
+    useSessionStore.setState({ currentSession: {
+      id: 'project-1', name: 'Project', basePath: 'D:\\projects\\demo', status: 'active',
+      createdAt: '', updatedAt: '', opsecLevel: 'balanced', autonomyLevel: 'medium',
+      targetCount: 0, findingCount: 0, vulnerabilityCount: 0,
+    } });
+    const content = '[ptt.md](file:///D:/projects/demo/ptt.md)';
+    render(<AgentTimelineMessage message={{
+      id: 'file-url', role: 'assistant', content, timestamp: '', status: 'complete',
+      activities: [{ id: 'answer', kind: 'text', status: 'complete', content }],
+    }} />);
+    const link = screen.getByRole('link', { name: 'ptt.md' });
+    expect(link).toHaveAttribute('href', 'file:///D:/projects/demo/ptt.md');
+    fireEvent.click(link);
+    expect(useTabStore.getState().tabs).toContainEqual(expect.objectContaining({
+      type: 'editor', data: { filePath: 'ptt.md', sessionId: 'project-1' },
+    }));
   });
 
   it('keeps live token text lightweight until the activity completes', () => {

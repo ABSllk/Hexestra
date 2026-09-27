@@ -1,10 +1,13 @@
 import { memo, useMemo } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Icon } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import type { AgentActivity, ChatMessage, SubagentRun } from '@/types';
 import { useI18n } from '@/i18n';
+import { resolveMarkdownLink } from '@/lib/markdownLinks';
+import { useSessionStore } from '@/stores/useSessionStore';
+import { openBrowserTab, useTabStore } from '@/stores/useTabStore';
 import { subagentStatusText, subagentTitle, useSubagentClock } from './subagent-presentation';
 
 export const AgentTimelineMessage = memo(function AgentTimelineMessage({
@@ -326,9 +329,33 @@ function ActivityDetails({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function MarkdownContent({ content, compact = false }: { content: string; compact?: boolean }) {
+export function MarkdownContent({ content, compact = false, sourceFilePath }: { content: string; compact?: boolean; sourceFilePath?: string }) {
+  const project = useSessionStore((state) => state.currentSession);
+  const components: Components = {
+    ...markdownComponents,
+    a: ({ children, href }) => {
+      const target = resolveMarkdownLink(href ?? '', project?.basePath, sourceFilePath);
+      if (!target) return <span className="text-text-secondary">{children}</span>;
+      return <a href={href} className="break-all text-accent-blue underline decoration-accent-blue/40 underline-offset-2 hover:text-accent-teal"
+        onAuxClick={(event) => { if (target.kind !== 'anchor') event.preventDefault(); }}
+        onClick={(event) => {
+          if (target.kind === 'anchor') return;
+          event.preventDefault();
+          if (target.kind === 'web') { openBrowserTab(target.url); return; }
+          if (!project) return;
+          const store = useTabStore.getState();
+          const existing = store.tabs.find((tab) => tab.type === 'editor'
+            && tab.data?.filePath === target.path && tab.data?.sessionId === project.id);
+          if (existing) store.setActiveTab(existing.id);
+          else store.openTab({ type: 'editor', title: target.path.split('/').at(-1) ?? target.path,
+            icon: 'file', closable: true, data: { filePath: target.path, sessionId: project.id } });
+        }}>{children}</a>;
+    },
+  };
   const markdown = (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}
+      urlTransform={(url, key) => key === 'href' && resolveMarkdownLink(url, project?.basePath, sourceFilePath)
+        ? url : defaultUrlTransform(url)}>
       {content}
     </ReactMarkdown>
   );
@@ -350,16 +377,6 @@ const markdownComponents: Components = {
     <blockquote className="my-2 border-l-2 border-accent-blue/60 bg-panel/40 py-1 pl-2.5 pr-1 text-text-secondary">
       {children}
     </blockquote>
-  ),
-  a: ({ children, href }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="break-all text-accent-blue underline decoration-accent-blue/40 underline-offset-2 hover:text-accent-teal"
-    >
-      {children}
-    </a>
   ),
   strong: ({ children }) => <strong className="font-semibold text-text-primary">{children}</strong>,
   em: ({ children }) => <em className="italic text-text-secondary">{children}</em>,

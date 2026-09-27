@@ -228,7 +228,7 @@ export function EditorTab({ tabId }: { tabId: string }) {
       <div className="min-h-0 flex-1">
         {isMarkdown && markdownMode === 'preview' ? (
           <div className="h-full overflow-y-auto bg-panel px-6 py-5 text-sm leading-6 text-text-secondary">
-            <MarkdownContent content={content || '_Empty Markdown file_'} />
+            <MarkdownContent content={content || '_Empty Markdown file_'} sourceFilePath={filePath} />
           </div>
         ) : (
           <Editor
