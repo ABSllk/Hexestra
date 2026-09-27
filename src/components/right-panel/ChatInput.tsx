@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentConnectionSettings, AgentSettingsContainer } from '@electron/contracts/agent-settings';
+import type { AgentReasoningEffort } from '@electron/contracts/agent-runtime';
 import type { ClaudeSkillListResult } from '@electron/contracts/claude-capabilities';
 import {
   normalizeAgentCommandsChangedPayload,
@@ -7,12 +8,13 @@ import {
   normalizeAgentSlashCommands,
   type AgentSlashCommandDescriptor,
 } from '@electron/agent-command-contract';
-import { Icon } from '@/components/shared';
+import { Icon, ReasoningEffortSlider } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useChatStore } from '@/stores';
 import { agentContextRefKey, type AgentAttachment, type AgentAttachmentPicker, type AgentContextRef, type AutonomyLevel } from '@/types';
 import { ClaudeModeSelector } from './ClaudeModeSelector';
 import { useI18n } from '@/i18n';
+import { useAgentModels } from '@/hooks/useAgentModels';
 
 type ComposerMenu = 'attachments' | 'mode' | 'model' | 'autonomy' | null;
 
@@ -28,7 +30,6 @@ export function ChatInput() {
   const [attachments, setAttachments] = useState<AgentAttachment[]>([]);
   const [openMenu, setOpenMenu] = useState<ComposerMenu>(null);
   const [connectionSettings, setConnectionSettings] = useState<AgentSettingsContainer | null>(null);
-  const [modelDraft, setModelDraft] = useState('');
   const [composerError, setComposerError] = useState<string | null>(null);
   const [runtimeCommands, setRuntimeCommands] = useState<ComposerCommand[] | null>(null);
   const [skillCommands, setSkillCommands] = useState<ComposerCommand[]>([]);
@@ -52,7 +53,10 @@ export function ChatInput() {
   const refreshStatus = useChatStore((state) => state.refreshStatus);
   const activeProjectId = useChatStore((state) => state.activeProjectId);
 
-  const commands = commandCatalog(t, runtimeCommands, skillCommands);
+  const isCodex = agentStatus.backendId === 'codex';
+  const modelBackendId = isCodex ? 'codex' : 'claude';
+  const modelCatalog = useAgentModels(modelBackendId, openMenu === 'model', activeProjectId);
+  const commands = isCodex ? [] : commandCatalog(t, runtimeCommands, skillCommands);
   const activeCommand = commandForText(text, commands);
   const commandQuery = activeCommand ? null : slashCommandQuery(text);
   const commandSuggestions = commandQuery === null
@@ -70,14 +74,22 @@ export function ChatInput() {
         if (!active) return;
         const settings = normalizeSettingsPayload(raw);
         setConnectionSettings(settings);
-        setModelDraft(settings.backends.claude.model ?? '');
       })
       .catch((error) => active && setComposerError(String(error)));
     return () => { active = false; };
-  }, []);
+  }, [agentStatus.backendId]);
 
   useEffect(() => {
-    if (!window.hexestra) return;
+    if (openMenu !== 'model' || !window.hexestra) return;
+    let active = true;
+    void window.hexestra.invoke<AgentSettingsContainer>('agent:settings:get')
+      .then((value) => active && setConnectionSettings(normalizeSettingsPayload(value)))
+      .catch((reason) => active && setComposerError(String(reason)));
+    return () => { active = false; };
+  }, [openMenu]);
+
+  useEffect(() => {
+    if (!window.hexestra || isCodex) { setRuntimeCommands(null); return; }
     let active = true;
     let receivedLiveUpdate = false;
     setRuntimeCommands(null);
@@ -99,10 +111,10 @@ export function ChatInput() {
       active = false;
       unsubscribe();
     };
-  }, [activeProjectId, agentStatus.runtimeLabel, agentStatus.runtimeMode]);
+  }, [activeProjectId, agentStatus.runtimeLabel, agentStatus.runtimeMode, isCodex]);
 
   useEffect(() => {
-    if (!window.hexestra) return;
+    if (!window.hexestra || isCodex) { setSkillCommands([]); return; }
     let active = true;
     void window.hexestra.invoke<ClaudeSkillListResult>('claude:skills:list', activeProjectId)
       .then((result) => {
@@ -118,7 +130,7 @@ export function ChatInput() {
       })
       .catch(() => active && setSkillCommands([]));
     return () => { active = false; };
-  }, [activeProjectId]);
+  }, [activeProjectId, isCodex]);
 
   useEffect(() => {
     setActiveCommandIndex(0);
@@ -145,7 +157,7 @@ export function ChatInput() {
   const handleSend = useCallback(async () => {
     if (!text.trim() && attachments.length === 0 && contextRefs.length === 0) return;
     const content = text.trim() || 'Analyze the attached material in the context of this penetration-testing project.';
-    if (normalizeAgentSlashCommand(content) && (attachments.length > 0 || contextRefs.length > 0)) {
+    if (!isCodex && normalizeAgentSlashCommand(content) && (attachments.length > 0 || contextRefs.length > 0)) {
       setComposerError(t('agent.commandContextError'));
       return;
     }
@@ -159,7 +171,7 @@ export function ChatInput() {
       // The store owns request errors; preserve only composer-specific errors here.
     }
     textareaRef.current?.focus();
-  }, [attachments, contextRefs.length, sendMessage, text]);
+  }, [attachments, contextRefs.length, isCodex, sendMessage, text]);
 
   const pickAttachments = async (picker: AgentAttachmentPicker) => {
     if (!window.hexestra) return;
@@ -177,24 +189,25 @@ export function ChatInput() {
     }
   };
 
-  const saveModel = async (model: string | null) => {
-    if (!window.hexestra || !connectionSettings || isProcessing) return;
+  const saveModelSettings = async (model: string | null, reasoningEffort: AgentReasoningEffort | null, closeMenu = true): Promise<boolean> => {
+    if (!window.hexestra || !connectionSettings || isProcessing) return false;
     setComposerError(null);
     try {
       const raw = await window.hexestra.invoke<AgentSettingsContainer | AgentConnectionSettings>('agent:settings:update', {
         ...connectionSettings,
         backends: {
           ...connectionSettings.backends,
-          claude: { ...connectionSettings.backends.claude, model },
+          [modelBackendId]: { ...connectionSettings.backends[modelBackendId], model, reasoningEffort },
         },
       });
       const updated = normalizeSettingsPayload(raw);
       setConnectionSettings(updated);
-      setModelDraft(updated.backends.claude.model ?? '');
-      setOpenMenu(null);
+      if (closeMenu) setOpenMenu(null);
       await refreshStatus();
+      return true;
     } catch (error) {
       setComposerError(String(error));
+      return false;
     }
   };
 
@@ -245,11 +258,23 @@ export function ChatInput() {
     element.style.height = `${Math.min(element.scrollHeight, 144)}px`;
   };
 
-  const modeLabel = permissionMode === 'default' ? 'ASK' : permissionMode === 'auto' ? 'AUTO' : 'BYPASS';
-  const modelLabel = connectionSettings?.backends?.claude?.model ?? agentStatus.model ?? 'Default';
+  const modeLabel = t(`agent.permissionMode.${permissionMode}`);
+  const modeShortLabel = permissionMode === 'bypassPermissions'
+    ? t('agent.permissionModeShort.bypassPermissions') : modeLabel;
+  const modelLabel = connectionSettings?.backends?.[isCodex ? 'codex' : 'claude']?.model ?? agentStatus.model ?? 'Default';
+  const selectedModel = connectionSettings?.backends[modelBackendId].model ?? null;
+  const selectedModelOption = modelCatalog.models.find((model) => model.id === selectedModel || model.resolvedModel === selectedModel);
+  const effectiveModelOption = selectedModelOption ?? (!selectedModel
+    ? modelCatalog.models.find((model) => model.id === agentStatus.model || model.resolvedModel === agentStatus.model)
+      ?? modelCatalog.models.find((model) => model.isDefault || model.id === 'default')
+      ?? modelCatalog.models[0]
+    : undefined);
+  const selectedEffort = connectionSettings?.backends[modelBackendId].reasoningEffort ?? null;
+  const availableEfforts = effectiveModelOption?.supportedReasoningEfforts ?? [];
+  const effortLabel = selectedEffort ? t(`agent.effort.${selectedEffort}`) : t('agent.effort.default');
 
   return (
-    <div ref={composerRef} className="relative z-30 shrink-0 border-t border-border-subtle bg-canvas/95 p-3">
+    <div ref={composerRef} className={cn('agent-composer relative z-30 shrink-0 border-t border-border-subtle bg-canvas/95 p-2.5', isProcessing && 'agent-composer-processing')}>
       <div className="rounded-xl border border-border-subtle/80 bg-panel shadow-lg shadow-black/10 transition-colors focus-within:!border-accent-blue/45 hover:border-border-strong/60">
         {contextRefs.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-3">
@@ -287,7 +312,7 @@ export function ChatInput() {
           </div>
         )}
 
-        <div className="flex min-h-16 min-w-0 items-start gap-2 px-3 pb-2 pt-3">
+        <div className="flex min-h-10 min-w-0 items-start gap-2 px-3 pb-1 pt-2.5">
           {activeCommand && (
             <button
               type="button"
@@ -315,27 +340,32 @@ export function ChatInput() {
             }}
             onKeyDown={handleKeyDown}
             placeholder={activeCommand ? t('agent.commandArguments') : t('agent.placeholder')}
-            rows={2}
+            rows={1}
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={showCommandSuggestions}
             aria-controls={showCommandSuggestions ? 'agent-command-suggestions' : undefined}
             aria-activedescendant={showCommandSuggestions ? `agent-command-option-${activeCommandIndex}` : undefined}
-            className="agent-composer-input max-h-36 min-h-10 min-w-0 flex-1 resize-none rounded-md border-0 bg-transparent p-0 font-sans text-xs leading-5 text-text-primary placeholder:text-text-muted"
+            className="agent-composer-input max-h-36 min-h-8 min-w-0 flex-1 resize-none rounded-md border-0 bg-transparent p-0 font-sans text-xs leading-5 text-text-primary placeholder:text-text-muted"
           />
         </div>
 
         {composerError && <div className="px-4 pb-1 text-[11px] text-severity-critical">{composerError}</div>}
 
-        <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
-          <div className="flex min-w-0 items-center gap-1 select-none">
+        <div className="agent-composer-actions flex min-w-0 items-center gap-0.5 px-2 pb-2 select-none">
+          <div className="agent-composer-plus shrink-0">
             <ComposerTrigger active={openMenu === 'attachments'} ariaLabel={t('agent.addFilesImages')} onClick={() => setOpenMenu((current) => current === 'attachments' ? null : 'attachments')} icon="plus" />
-            <ComposerTrigger active={openMenu === 'mode'} ariaLabel={`Claude mode ${modeLabel}`} onClick={() => setOpenMenu((current) => current === 'mode' ? null : 'mode')} icon="shield" label={modeLabel} danger={permissionMode === 'bypassPermissions'} />
           </div>
-
-          <div className="flex min-w-0 items-center justify-end gap-1 select-none">
-            <ComposerTrigger active={openMenu === 'model'} ariaLabel={`Model ${modelLabel}`} onClick={() => setOpenMenu((current) => current === 'model' ? null : 'model')} icon="bot" label="MODEL" />
-            <ComposerTrigger active={openMenu === 'autonomy'} ariaLabel={`Autonomy ${autonomyLevel}`} onClick={() => setOpenMenu((current) => current === 'autonomy' ? null : 'autonomy')} icon="sparkles" label={autonomyLevel.toUpperCase()} />
+          <div className="agent-composer-model min-w-0 flex-1">
+            <ComposerTrigger active={openMenu === 'model'} ariaLabel={`${t('agent.model')} ${modelLabel}, ${t('agent.effort')} ${effortLabel}`} onClick={() => setOpenMenu((current) => current === 'model' ? null : 'model')} icon="bot" label={<><span className="agent-composer-model-detail truncate">{selectedModelOption?.displayName ?? modelLabel} · {effortLabel}</span><span className="agent-composer-model-short hidden">{t('agent.modelEffortShort')}</span></>} />
+          </div>
+          <div className="agent-composer-autonomy shrink-0">
+            <ComposerTrigger active={openMenu === 'autonomy'} ariaLabel={`${t('agent.autonomy')} ${t(`agent.autonomy.${autonomyLevel}`)}`} onClick={() => setOpenMenu((current) => current === 'autonomy' ? null : 'autonomy')} label={`${t('agent.autonomyShort')}·${t(`agent.autonomyShort.${autonomyLevel}`)}`} />
+          </div>
+          <div className="agent-composer-mode shrink-0">
+            <ComposerTrigger active={openMenu === 'mode'} ariaLabel={`${t('agent.permissionMode')} ${modeLabel}`} onClick={() => setOpenMenu((current) => current === 'mode' ? null : 'mode')} icon="shield" label={<><span className="agent-composer-mode-full">{modeLabel}</span><span className="agent-composer-mode-short hidden">{modeShortLabel}</span></>} danger={permissionMode === 'bypassPermissions'} />
+          </div>
+          <div className="agent-composer-send ml-auto flex shrink-0 items-center gap-1">
             <button
               aria-label={t('agent.send')}
               onClick={() => void handleSend()}
@@ -392,36 +422,70 @@ export function ChatInput() {
         <p className="mt-2 border-t border-border-subtle pt-2 text-[11px] leading-4 text-text-muted">Up to 8 attachments · 10 MB each</p>
       </Popover>}
 
-      {openMenu === 'mode' && <Popover align="left" label="Claude Mode" wide>
+      {openMenu === 'mode' && <Popover align="right" label={t('agent.permissionMode')} wide>
         <ClaudeModeSelector value={permissionMode} onChange={(mode) => { setPermissionMode(mode); setOpenMenu(null); }} isProcessing={isProcessing} />
       </Popover>}
 
       {openMenu === 'model' && <Popover align="right" label={t('agent.model')} wide>
-        <p className="mb-2 text-[11px] leading-4 text-text-muted">{t('agent.modelHint')}</p>
-        <input aria-label={t('agent.modelId')} value={modelDraft} onChange={(event) => setModelDraft(event.target.value)} placeholder={agentStatus.model ?? 'Default'} className="h-8 w-full rounded border border-border-subtle bg-panel px-2 font-mono text-[11px] text-text-primary outline-none focus:border-accent-blue/50" />
-        <div className="mt-2 flex justify-between gap-2">
-          <button disabled={isProcessing} onClick={() => void saveModel(null)} className="rounded px-2 py-1 text-[11px] text-text-muted hover:bg-raised hover:text-text-primary disabled:opacity-40">{t('agent.useDefault')}</button>
-          <button disabled={isProcessing} onClick={() => void saveModel(modelDraft.trim() || null)} className="rounded bg-accent-blue/15 px-2 py-1 text-[11px] text-accent-blue hover:bg-accent-blue/25 disabled:opacity-40">{t('agent.applyModel')}</button>
+        <div className="px-1 pb-2">
+          <p className="px-1 pb-1 text-[11px] font-medium text-text-primary">{t('agent.effort')}</p>
+          <p className="px-1 pb-2 text-[11px] leading-4 text-text-muted">{t('agent.effortHint')}</p>
+          <div className="px-1"><ReasoningEffortSlider value={selectedEffort} efforts={availableEfforts}
+            defaultEffort={effectiveModelOption?.defaultReasoningEffort}
+            descriptions={effectiveModelOption?.reasoningEffortDescriptions} disabled={isProcessing || !effectiveModelOption}
+            onCommit={(effort) => saveModelSettings(selectedModel, effort, false)} /></div>
+          {!effectiveModelOption && !modelCatalog.loading && <p className="px-1 pt-1 text-[11px] text-text-muted">{t('agent.chooseModelForEffort')}</p>}
+        </div>
+        <div className="border-t border-border-subtle pt-2">
+          <p className="px-2 pb-1 text-[11px] font-medium text-text-primary">{t('agent.model')}</p>
+        <div className="max-h-40 overflow-y-auto">
+          <button aria-pressed={!selectedModel} disabled={isProcessing}
+            onClick={() => void saveModelSettings(null, null)}
+            className={cn('flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] hover:bg-raised/50 disabled:opacity-40',
+              !selectedModel ? 'bg-accent-blue/10 text-accent-blue' : 'text-text-secondary')}>
+            {t('agent.useDefault')}
+            {!selectedModel && <Icon name="check" size={11} />}
+          </button>
+          {modelCatalog.models.map((model) => <button key={model.id}
+            aria-pressed={selectedModelOption?.id === model.id}
+            disabled={isProcessing} title={model.description || model.id} onClick={() => void saveModelSettings(model.id, model.supportedReasoningEfforts?.includes(selectedEffort as AgentReasoningEffort) ? selectedEffort : null)}
+            className={cn('flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-raised/50 disabled:opacity-40',
+              selectedModelOption?.id === model.id ? 'bg-accent-blue/10 text-accent-blue' : 'text-text-secondary')}>
+            <span className="min-w-0 truncate">{model.displayName}</span>
+            {selectedModelOption?.id === model.id && <Icon name="check" size={11} />}
+          </button>)}
+        </div>
+        {modelCatalog.loading && <p className="px-2 py-1.5 text-[11px] text-text-muted">{t('agent.loadingModels')}</p>}
+        {modelCatalog.error && <p className="px-2 py-1.5 text-[11px] text-status-error">{t('agent.modelsError')}: {modelCatalog.error}</p>}
+        {!modelCatalog.loading && !modelCatalog.error && modelCatalog.models.length === 0 &&
+          <p className="px-2 py-1.5 text-[11px] text-text-muted">{t('agent.noModels')}</p>}
+        {selectedModel && !modelCatalog.loading && !selectedModelOption &&
+          <p className="border-t border-border-subtle px-2 py-1.5 text-[11px] text-text-muted">
+            {selectedModel} · {t('agent.modelUnavailable')}
+          </p>}
         </div>
       </Popover>}
 
       {openMenu === 'autonomy' && <Popover align="right" label={t('agent.autonomy')}>
+        <p className="px-2 pb-1 text-[11px] leading-4 text-text-muted">{t('agent.autonomyHint')}</p>
         {(['low', 'medium', 'high'] as AutonomyLevel[]).map((level) => (
-          <button key={level} aria-pressed={autonomyLevel === level} onClick={() => { setAutonomyLevel(level); setOpenMenu(null); }} className={cn('flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] uppercase', autonomyLevel === level ? 'bg-accent-blue/10 text-accent-blue' : 'text-text-secondary hover:bg-raised/50')}>
-            {level}{autonomyLevel === level && <Icon name="check" size={11} />}
+          <button key={level} aria-pressed={autonomyLevel === level} onClick={() => { setAutonomyLevel(level); setOpenMenu(null); }} className={cn('flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-[11px]', autonomyLevel === level ? 'bg-accent-blue/10 text-accent-blue' : 'text-text-secondary hover:bg-raised/50')}>
+            <span><span className="block font-medium">{t(`agent.autonomy.${level}`)}</span><span className="block text-text-muted">{t(`agent.autonomyHint.${level}`)}</span></span>{autonomyLevel === level && <Icon name="check" size={11} />}
           </button>
         ))}
+        <p className="mt-1 border-t border-border-subtle px-2 pt-2 text-[11px] leading-4 text-text-muted">{t('agent.autonomyPermissionHint')}</p>
       </Popover>}
     </div>
   );
 }
 
 function normalizeSettingsPayload(value: AgentSettingsContainer | AgentConnectionSettings): AgentSettingsContainer {
-  if ('backends' in value) return value;
+  const codex = { version: 1 as const, executionMode: 'native' as const, wslDistribution: 'Ubuntu-24.04', codexExecutable: 'codex', model: null, reasoningEffort: null };
+  if ('backends' in value) return { ...value, backends: { ...value.backends, codex: value.backends.codex ?? codex } };
   return {
     version: 2,
     defaultBackendId: 'claude',
-    backends: { claude: value },
+    backends: { claude: value, codex },
   };
 }
 
@@ -441,16 +505,16 @@ function agentContextTitle(ref: AgentContextRef) {
   return `${ref.method} ${ref.url}\nFlow ${ref.flowId}`;
 }
 
-function ComposerTrigger({ active, ariaLabel, onClick, icon, label, danger = false }: { active: boolean; ariaLabel: string; onClick: () => void; icon: 'plus' | 'shield' | 'bot' | 'sparkles'; label?: string; danger?: boolean }) {
-  return <button aria-label={ariaLabel} aria-expanded={active} onClick={onClick} className={cn('flex h-7 min-w-7 max-w-full items-center justify-center gap-1 overflow-hidden rounded-lg px-1.5 text-[11px] font-medium transition-colors', danger ? 'text-severity-critical hover:bg-severity-critical/10' : active ? 'bg-raised text-text-primary' : 'text-text-muted hover:bg-raised/60 hover:text-text-secondary')}>
-    <Icon name={icon} size={13} />
+function ComposerTrigger({ active, ariaLabel, onClick, icon, label, danger = false }: { active: boolean; ariaLabel: string; onClick: () => void; icon?: 'plus' | 'shield' | 'bot'; label?: React.ReactNode; danger?: boolean }) {
+  return <button aria-label={ariaLabel} title={ariaLabel} aria-expanded={active} onClick={onClick} className={cn('flex h-7 min-w-7 max-w-full items-center justify-center gap-1 overflow-hidden rounded-lg px-1.5 text-[11px] font-medium transition-colors', danger ? 'text-severity-critical hover:bg-severity-critical/10' : active ? 'bg-raised text-text-primary' : 'text-text-muted hover:bg-raised/60 hover:text-text-secondary')}>
+    {icon && <Icon name={icon} size={13} />}
     {label && <span className="min-w-0 truncate">{label}</span>}
     {label && <Icon name="chevron-right" size={9} className="rotate-90 opacity-60" />}
   </button>;
 }
 
 function Popover({ align, label, wide = false, children }: { align: 'left' | 'right'; label: string; wide?: boolean; children: React.ReactNode }) {
-  return <div aria-label={label} className={cn('ui-popover absolute bottom-[3.25rem] z-20 max-h-64 overflow-y-auto p-2', align === 'left' ? 'left-3' : 'right-3', wide ? 'w-72 max-w-[calc(100%-1.5rem)]' : 'w-56 max-w-[calc(100%-1.5rem)]')}>{children}</div>;
+  return <div aria-label={label} className={cn('agent-composer-popover ui-popover absolute bottom-[3.25rem] z-20 max-h-72 overflow-y-auto p-2', align === 'left' ? 'left-3' : 'right-3', wide ? 'w-72 max-w-[calc(100%-1.5rem)]' : 'w-56 max-w-[calc(100%-1.5rem)]')}>{children}</div>;
 }
 
 function MenuButton({ icon, label, detail, onClick }: { icon: 'file' | 'image'; label: string; detail: string; onClick: () => void }) {

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatStore } from '@/stores';
 import type { AgentAttachment } from '@/types';
 import { ChatInput } from '@/components/right-panel/ChatInput';
+import { I18nProvider } from '@/i18n';
 
 const settings = {
   version: 2 as const,
@@ -33,9 +34,19 @@ describe('ChatInput composer', () => {
   const setAutonomyLevel = vi.fn();
   const refreshStatus = vi.fn(async () => {});
   let commandDiscoveryFails = false;
+  let modelDiscoveryFails = false;
+  let appLanguage: 'en' | 'zh-CN' = 'en';
+  let currentSettings: unknown = settings;
   const eventHandlers = new Map<string, (...args: unknown[]) => void>();
-  const invoke = vi.fn(async (channel: string) => {
-    if (channel === 'agent:settings:get') return settings;
+  const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+    if (channel === 'app:settings:get') return { version: 5, language: appLanguage, theme: 'system' };
+    if (channel === 'agent:settings:get') return currentSettings;
+    if (channel === 'agent:models:list') {
+      if (modelDiscoveryFails) throw new Error("Error invoking remote method 'agent:models:list': Error: spawn codex ENOENT");
+      if (args[0] === 'codex') return [{ id: 'gpt-codex', displayName: 'GPT Codex', isDefault: true,
+        defaultReasoningEffort: 'medium', supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] }];
+      return [{ id: 'custom-model', displayName: 'Available Claude model', supportedReasoningEfforts: ['low', 'medium', 'high'] }];
+    }
     if (channel === 'agent:commands:list') {
       if (commandDiscoveryFails) throw new Error('Runtime command discovery failed');
       return [
@@ -56,13 +67,16 @@ describe('ChatInput composer', () => {
       errors: [],
     };
     if (channel === 'agent:attachments:pick') return [imageAttachment];
-    if (channel === 'agent:settings:update') return { ...settings, backends: { claude: { ...settings.backends.claude, model: 'custom-model' } } };
+    if (channel === 'agent:settings:update') { currentSettings = args[0]; return currentSettings; }
     return undefined;
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
     commandDiscoveryFails = false;
+    modelDiscoveryFails = false;
+    appLanguage = 'en';
+    currentSettings = settings;
     eventHandlers.clear();
     Object.defineProperty(window, 'hexestra', {
       configurable: true,
@@ -100,15 +114,30 @@ describe('ChatInput composer', () => {
   it('keeps mode and autonomy choices collapsed until their triggers are clicked', async () => {
     render(<ChatInput />);
     expect(screen.queryByRole('button', { name: 'AUTO' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'high' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /High.*Continue until blocked/ })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Claude mode ASK' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Permission mode ASK' }));
+    expect(screen.getByLabelText('Permission mode')).toHaveClass('right-3', 'max-w-[calc(100%-1.5rem)]');
     fireEvent.click(screen.getByRole('button', { name: 'AUTO' }));
     expect(setPermissionMode).toHaveBeenCalledWith('auto');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Autonomy medium' }));
-    fireEvent.click(screen.getByRole('button', { name: 'high' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Autonomy Medium' }));
+    fireEvent.click(screen.getByRole('button', { name: /High.*Continue until blocked/ }));
     expect(setAutonomyLevel).toHaveBeenCalledWith('high');
+  });
+
+  it('shows the permission menu and narrow trigger in Chinese when selected', async () => {
+    appLanguage = 'zh-CN';
+    render(<I18nProvider><ChatInput /></I18nProvider>);
+    const trigger = await screen.findByRole('button', { name: '权限模式 询问' });
+    expect(trigger).toHaveTextContent('询问');
+    fireEvent.click(trigger);
+    expect(screen.getByLabelText('权限模式')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '自动' })).toHaveTextContent('后台评估操作风险。');
+    expect(screen.getByRole('button', { name: '跳过审批' })).toHaveTextContent('关闭软件权限检查。');
+    fireEvent.click(screen.getByRole('button', { name: '跳过审批' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('命令和文件修改将不再请求批准。');
+    expect(screen.getByRole('button', { name: '启用跳过审批' })).toBeInTheDocument();
   });
 
   it('attaches an image and sends it with the current prompt', async () => {
@@ -205,17 +234,61 @@ describe('ChatInput composer', () => {
   it('updates the global model from the collapsed model menu', async () => {
     render(<ChatInput />);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('agent:settings:get'));
-    expect(screen.getByText('MODEL')).toBeInTheDocument();
-    expect(screen.queryByText('runtime-model')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Model runtime-model' }));
+    expect(screen.getByText('runtime-model · Default')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Model runtime-model, Reasoning effort Default' }));
     expect(screen.getByLabelText('Model')).toHaveClass('bottom-[3.25rem]');
     expect(screen.getByLabelText('Model')).not.toHaveClass('bottom-full');
-    fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'custom-model' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Apply model' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Available Claude model' }));
 
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('agent:settings:update', expect.objectContaining({
       backends: expect.objectContaining({ claude: expect.objectContaining({ model: 'custom-model' }) }),
     })));
+  });
+
+  it('selects supported reasoning effort from the same menu as the model', async () => {
+    render(<ChatInput />);
+    fireEvent.click(screen.getByRole('button', { name: 'Model runtime-model, Reasoning effort Default' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Available Claude model' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Model custom-model, Reasoning effort Default' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Model custom-model, Reasoning effort Default' }));
+    const slider = await screen.findByRole('slider', { name: 'Reasoning effort' });
+    fireEvent.change(slider, { target: { value: '2' } });
+    expect(slider).toHaveAttribute('aria-valuetext', 'High');
+    expect(invoke).not.toHaveBeenCalledWith('agent:settings:update', expect.objectContaining({
+      backends: expect.objectContaining({ claude: expect.objectContaining({ reasoningEffort: 'high' }) }),
+    }));
+    fireEvent.pointerUp(slider);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('agent:settings:update', expect.objectContaining({
+      backends: expect.objectContaining({ claude: expect.objectContaining({ model: 'custom-model', reasoningEffort: 'high' }) }),
+    })));
+    expect(screen.getByRole('slider', { name: 'Reasoning effort' })).toHaveAttribute('aria-valuetext', 'High');
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('agent:settings:update', expect.objectContaining({
+      backends: expect.objectContaining({ claude: expect.objectContaining({ model: 'custom-model', reasoningEffort: null }) }),
+    })));
+  });
+
+  it('offers reasoning effort for the active default Codex model', async () => {
+    useChatStore.setState((state) => ({ agentStatus: { ...state.agentStatus, backendId: 'codex', model: 'gpt-codex' } }));
+    render(<ChatInput />);
+    fireEvent.click(screen.getByRole('button', { name: 'Model gpt-codex, Reasoning effort Default' }));
+    const slider = await screen.findByRole('slider', { name: 'Reasoning effort' });
+    expect(slider).toHaveAttribute('max', '5');
+    expect(slider).toHaveAttribute('aria-valuetext', 'Default · Medium');
+    fireEvent.change(slider, { target: { value: '2' } });
+    fireEvent.keyUp(slider, { key: 'ArrowRight' });
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('agent:settings:update', expect.objectContaining({
+      backends: expect.objectContaining({ codex: expect.objectContaining({ model: null, reasoningEffort: 'high' }) }),
+    })));
+  });
+
+  it('explains a missing Codex CLI instead of displaying the spawn error', async () => {
+    modelDiscoveryFails = true;
+    useChatStore.setState((state) => ({ agentStatus: { ...state.agentStatus, backendId: 'codex' } }));
+    render(<ChatInput />);
+    fireEvent.click(screen.getByRole('button', { name: 'Model runtime-model, Reasoning effort Default' }));
+    expect(await screen.findByText(/Codex CLI was not found in the selected environment/)).toBeInTheDocument();
+    expect(screen.queryByText(/spawn codex ENOENT/)).not.toBeInTheDocument();
   });
 
   it('shows removable Agent context chips without sending automatically', () => {

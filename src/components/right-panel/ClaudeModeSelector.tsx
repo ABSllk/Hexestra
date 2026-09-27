@@ -1,26 +1,29 @@
 import { useState } from 'react';
 import { Icon } from '@/components/shared/Icon';
+import { useI18n } from '@/i18n';
+import type { TranslationKey } from '@/i18n/translations';
+import { cn } from '@/lib/cn';
 import type { AgentPermissionMode } from '@/types';
 
 export const CLAUDE_MODE_OPTIONS: ReadonlyArray<{
   value: AgentPermissionMode;
-  label: string;
-  description: string;
+  labelKey: TranslationKey;
+  descriptionKey: TranslationKey;
 }> = [
   {
     value: 'default',
-    label: 'ASK',
-    description: 'Ask before risky tool use',
+    labelKey: 'agent.permissionMode.default',
+    descriptionKey: 'agent.permissionModeHint.default',
   },
   {
     value: 'auto',
-    label: 'AUTO',
-    description: 'Classifier reviews actions in the background',
+    labelKey: 'agent.permissionMode.auto',
+    descriptionKey: 'agent.permissionModeHint.auto',
   },
   {
     value: 'bypassPermissions',
-    label: 'BYPASS',
-    description: 'Software permission checks disabled',
+    labelKey: 'agent.permissionMode.bypassPermissions',
+    descriptionKey: 'agent.permissionModeHint.bypassPermissions',
   },
 ];
 
@@ -33,8 +36,8 @@ export function ClaudeModeSelector({
   onChange: (mode: AgentPermissionMode) => void;
   isProcessing: boolean;
 }) {
+  const { t } = useI18n();
   const [confirmingBypass, setConfirmingBypass] = useState(false);
-  const activeMode = CLAUDE_MODE_OPTIONS.find((mode) => mode.value === value)!;
 
   const selectMode = (mode: AgentPermissionMode) => {
     if (mode === 'bypassPermissions' && value !== 'bypassPermissions') {
@@ -46,54 +49,50 @@ export function ClaudeModeSelector({
   };
 
   return (
-    <div className="border-b border-border-subtle/50 bg-panel/30 px-3 py-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-muted">
-          Claude Mode
-        </span>
-        <div className="flex rounded border border-border-subtle bg-panel p-0.5" aria-label="Claude Code mode">
-          {CLAUDE_MODE_OPTIONS.map((mode) => (
-            <button
-              key={mode.value}
-              type="button"
-              aria-pressed={value === mode.value}
-              onClick={() => selectMode(mode.value)}
-              className={
-                value === mode.value && mode.value === 'bypassPermissions'
-                  ? 'rounded bg-severity-critical/20 px-2 py-0.5 text-[11px] font-semibold text-severity-critical'
-                  : value === mode.value
-                  ? 'rounded bg-accent-teal/15 px-1.5 py-0.5 text-[11px] font-medium text-accent-teal'
-                  : 'rounded px-2 py-0.5 text-[11px] text-text-muted hover:bg-raised/40 hover:text-text-secondary'
-              }
-              title={`${mode.value}: ${mode.description}`}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-text-muted">
-        <span className={value === 'bypassPermissions' ? 'truncate text-severity-critical' : 'truncate'}>
-          {activeMode.description}
-        </span>
-        {isProcessing && <span className="shrink-0 text-accent-blue">NEXT REQUEST</span>}
-      </div>
+    <div>
+      <p className="px-2 pb-1 text-[11px] leading-4 text-text-muted">{t('agent.permissionModeHint')}</p>
+      {CLAUDE_MODE_OPTIONS.map((mode) => {
+        const selected = value === mode.value;
+        const danger = mode.value === 'bypassPermissions';
+        return (
+          <button
+            key={mode.value}
+            type="button"
+            aria-label={t(mode.labelKey)}
+            aria-pressed={selected}
+            onClick={() => selectMode(mode.value)}
+            className={cn(
+              'flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-raised/50',
+              selected
+                ? danger ? 'bg-severity-critical/10 text-severity-critical' : 'bg-accent-blue/10 text-accent-blue'
+                : danger ? 'text-severity-critical' : 'text-text-secondary',
+            )}
+          >
+            <span className="min-w-0">
+              <span className="block text-[11px] font-medium">{t(mode.labelKey)}</span>
+              <span className="block text-[11px] leading-4 text-text-muted">{t(mode.descriptionKey)}</span>
+            </span>
+            {selected && <Icon name="check" size={12} className="shrink-0" />}
+          </button>
+        );
+      })}
+      {isProcessing && <p className="mt-1 border-t border-border-subtle px-2 pt-2 text-[11px] text-text-muted">{t('agent.permissionModeNextRequest')}</p>}
       {confirmingBypass && (
         <div
-          className="mt-1.5 rounded border border-severity-critical/50 bg-severity-critical/10 p-2"
+          className="mt-2 border-t border-border-subtle px-2 pt-2"
           role="alert"
         >
-          <div className="flex gap-1.5 text-[11px] leading-4 text-text-secondary">
-            <Icon name="alert" size={12} className="mt-0.5 shrink-0 text-severity-critical" />
-            <span>BYPASS allows commands and file changes without permission prompts.</span>
+          <div className="flex gap-1.5 text-[11px] leading-4 text-severity-critical">
+            <Icon name="alert" size={13} className="mt-0.5 shrink-0" />
+            <span>{t('agent.permissionModeBypassWarning')}</span>
           </div>
-          <div className="mt-1.5 flex justify-end gap-1.5">
+          <div className="mt-2 flex flex-wrap justify-end gap-1.5">
             <button
               type="button"
               onClick={() => setConfirmingBypass(false)}
-              className="rounded border border-border-subtle px-2 py-0.5 text-[11px] text-text-muted hover:text-text-primary"
+              className="ui-button ui-button-neutral"
             >
-              CANCEL
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -101,9 +100,9 @@ export function ClaudeModeSelector({
                 setConfirmingBypass(false);
                 onChange('bypassPermissions');
               }}
-              className="rounded border border-severity-critical/60 bg-severity-critical/15 px-2 py-0.5 text-[11px] font-semibold text-severity-critical hover:bg-severity-critical/25"
+              className="ui-button ui-button-danger"
             >
-              ENABLE BYPASS
+              {t('agent.permissionModeEnableBypass')}
             </button>
           </div>
         </div>
