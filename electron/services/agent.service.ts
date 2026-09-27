@@ -219,6 +219,11 @@ class AgentService {
   constructor() {
     this.adapterRegistry.register(this.claudeAdapter);
     this.adapterRegistry.register(this.codexAdapter);
+    this.codexAdapter.onSkillsChanged(() => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send('codex:skills-changed');
+      }
+    });
     this.refineryService = new KnowledgeRefineryService({
       analyze: (input) => this.claudeAdapter.distillKnowledge(input),
       isMainAgentBusy: () => this.activeRuns.size > 0,
@@ -250,6 +255,10 @@ class AgentService {
 
     ipcMain.handle('agent:commands:list', async (_event, sessionId?: string | null) => {
       return this.listCommands(sessionId ?? undefined);
+    });
+
+    ipcMain.handle('codex:skills:list', async (_event, sessionId?: string | null) => {
+      return this.codexAdapter.listSkills(this.discoveryInput(sessionId ?? undefined));
     });
 
     ipcMain.handle('agent:models:list', async (_event, backendId: string, sessionId?: string | null) => {

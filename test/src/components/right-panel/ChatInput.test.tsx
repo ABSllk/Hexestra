@@ -30,6 +30,7 @@ const imageAttachment: AgentAttachment = {
 
 describe('ChatInput composer', () => {
   const sendMessage = vi.fn(async () => {});
+  const newConversation = vi.fn(async () => true);
   const setPermissionMode = vi.fn();
   const setAutonomyLevel = vi.fn();
   const refreshStatus = vi.fn(async () => {});
@@ -37,6 +38,7 @@ describe('ChatInput composer', () => {
   let modelDiscoveryFails = false;
   let appLanguage: 'en' | 'zh-CN' = 'en';
   let currentSettings: unknown = settings;
+  let codexSkills = [{ name: 'recon-helper', description: 'Run the Codex recon workflow' }];
   const eventHandlers = new Map<string, (...args: unknown[]) => void>();
   const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
     if (channel === 'app:settings:get') return { version: 5, language: appLanguage, theme: 'system' };
@@ -66,6 +68,7 @@ describe('ChatInput composer', () => {
       }],
       errors: [],
     };
+    if (channel === 'codex:skills:list') return codexSkills;
     if (channel === 'agent:attachments:pick') return [imageAttachment];
     if (channel === 'agent:settings:update') { currentSettings = args[0]; return currentSettings; }
     return undefined;
@@ -77,6 +80,7 @@ describe('ChatInput composer', () => {
     modelDiscoveryFails = false;
     appLanguage = 'en';
     currentSettings = settings;
+    codexSkills = [{ name: 'recon-helper', description: 'Run the Codex recon workflow' }];
     eventHandlers.clear();
     Object.defineProperty(window, 'hexestra', {
       configurable: true,
@@ -92,6 +96,7 @@ describe('ChatInput composer', () => {
     });
     useChatStore.setState({
       sendMessage,
+      newConversation,
       setPermissionMode,
       setAutonomyLevel,
       refreshStatus,
@@ -193,6 +198,85 @@ describe('ChatInput composer', () => {
 
     fireEvent.keyDown(screen.getByPlaceholderText('Command arguments…'), { key: 'Enter' });
     await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('/compact', []));
+  });
+
+  it('completes only commands supported by Codex conversations', async () => {
+    useChatStore.setState((state) => ({ agentStatus: { ...state.agentStatus, backendId: 'codex' } }));
+    render(<ChatInput />);
+    const composer = screen.getByRole('combobox');
+
+    fireEvent.change(composer, { target: { value: '/' } });
+    for (const name of ['/distill', '/compact', '/context', '/help', '/status', '/model', '/permissions', '/skills', '/mcp', '/new']) {
+      expect(screen.getByRole('option', { name: new RegExp(name) })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('option', { name: /\/context/ })).toHaveTextContent('Summarize the project and focused task.');
+    expect(screen.queryByRole('option', { name: /\/cost/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /\/doctor/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /\/recon-helper/ })).not.toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalledWith('agent:commands:list', expect.anything());
+
+    fireEvent.change(composer, { target: { value: '/sta' } });
+    fireEvent.keyDown(composer, { key: 'Tab' });
+    expect(screen.getByRole('button', { name: 'Edit command /status' })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByPlaceholderText('Command arguments…'), { key: 'Enter' });
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('/status', []));
+  });
+
+  it('shows Codex command descriptions in Chinese', async () => {
+    appLanguage = 'zh-CN';
+    useChatStore.setState((state) => ({ agentStatus: { ...state.agentStatus, backendId: 'codex' } }));
+    render(<I18nProvider><ChatInput /></I18nProvider>);
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '/co' } });
+    await waitFor(() => expect(screen.getByRole('option', { name: /\/compact/ })).toHaveTextContent('压缩 Codex 会话上下文。'));
+    expect(screen.getByRole('option', { name: /\/context/ })).toHaveTextContent('总结项目与当前任务。');
+  });
+
+  it('loads Codex Skill completion from the selected runtime when $ is entered', async () => {
+    useChatStore.setState((state) => ({ agentStatus: { ...state.agentStatus, backendId: 'codex' } }));
+    render(<ChatInput />);
+    const composer = screen.getByRole('combobox');
+
+    fireEvent.change(composer, { target: { value: '$rec' } });
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('codex:skills:list', null));
+    expect(await screen.findByRole('option', { name: /\$recon-helper/ })).toHaveTextContent('Run the Codex recon workflow');
+    codexSkills = [{ name: 'recon-updated', description: 'Updated by Codex' }];
+    eventHandlers.get('codex:skills-changed')?.();
+    const option = await screen.findByRole('option', { name: /\$recon-updated/ });
+    expect(option).toHaveTextContent('Updated by Codex');
+    expect(screen.queryByRole('option', { name: /\$recon-helper/ })).not.toBeInTheDocument();
+    fireEvent.click(option);
+    expect(screen.getByRole('button', { name: 'Edit command $recon-updated' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Inspect the target' } });
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('$recon-updated Inspect the target', []));
+  });
+
+  it('routes Codex picker commands to Hexestra controls instead of the Agent turn', async () => {
+    useChatStore.setState((state) => ({ agentStatus: { ...state.agentStatus, backendId: 'codex' } }));
+    render(<ChatInput />);
+    const composer = screen.getByRole('combobox');
+
+    fireEvent.change(composer, { target: { value: '/model' } });
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    expect(screen.getByLabelText('Model')).toBeInTheDocument();
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    fireEvent.change(composer, { target: { value: '/permissions' } });
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    expect(screen.getByLabelText('Permission mode')).toBeInTheDocument();
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    fireEvent.change(composer, { target: { value: '/skills' } });
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    expect(composer).toHaveValue('$');
+    expect(await screen.findByRole('option', { name: /\$recon-helper/ })).toBeInTheDocument();
+
+    fireEvent.change(composer, { target: { value: '/new' } });
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    await waitFor(() => expect(newConversation).toHaveBeenCalledWith('codex'));
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it('uses the runtime command catalog, aliases, and argument hints', async () => {

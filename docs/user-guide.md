@@ -548,7 +548,7 @@ Text, code, PDF, local file paths, and PNG/JPEG/GIF/WebP images are supported:
 | `/help` | View runtime help |
 | `/status` | View runtime status |
 
-Claude conversations also show commands discovered from Claude Code and enabled-skill commands. Native Claude slash commands pass through to Claude Code. Codex exposes supported commands and Hexestra equivalents; `/cost` is unavailable there.
+Claude conversations also show commands discovered from Claude Code and enabled-skill commands. Native Claude slash commands pass through to Claude Code. In Codex conversations, `/` completes Hexestra-supported actions; `/model`, `/permissions`, `/skills`, `/mcp`, and `/new` open the corresponding controls. Type `$` to complete enabled Skills from the selected Codex runtime. Codex CLI-only commands are not exposed in Hexestra, and `/cost` is unavailable.
 
 ### 7.4 Permission modes and autonomy level
 

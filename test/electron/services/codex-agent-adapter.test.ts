@@ -2,10 +2,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentRunInput } from '@electron/contracts/agent-runtime';
 
-const rpc = vi.hoisted(() => ({ calls: [] as Array<{ method: string; params: unknown }>, failStart: false }));
+const rpc = vi.hoisted(() => ({ calls: [] as Array<{ method: string; params: unknown }>, failStart: false,
+  server: null as null | { emit: (event: string, message: unknown) => void },
+  executionMode: 'native' as 'native' | 'wsl' }));
 
 vi.mock('@electron/services/agent-settings.service', () => ({ agentSettingsService: {
-  getCodexSettings: () => ({ version: 1, executionMode: 'native', wslDistribution: 'Ubuntu-24.04',
+  getCodexSettings: () => ({ version: 1, executionMode: rpc.executionMode, wslDistribution: 'Ubuntu-24.04',
     codexExecutable: 'codex', model: null }),
 } }));
 
@@ -23,11 +25,18 @@ vi.mock('@electron/services/agent-adapters/codex-tool-bridge', () => ({
 vi.mock('@electron/services/agent-adapters/codex-app-server', async () => {
   const { EventEmitter } = await import('events');
   return { CodexAppServer: class extends EventEmitter {
+    constructor(...args: unknown[]) { super(); void args; rpc.server = this; }
     async start() { if (rpc.failStart) throw new Error('spawn codex ENOENT'); }
     close() {}
     async request(method: string, params: unknown) {
       rpc.calls.push({ method, params });
       if (method === 'account/read') return { account: { type: 'chatgpt' } };
+      if (method === 'skills/list') return { data: [{ skills: [
+        { name: 'recon-helper', description: 'Recon from disk', enabled: true,
+          interface: { shortDescription: 'Run reconnaissance' } },
+        { name: 'disabled-skill', description: 'Disabled', enabled: false },
+        { name: 'bad name', description: 'Invalid token', enabled: true },
+      ] }] };
       if (method === 'model/list') {
         const cursor = (params as { cursor?: string | null }).cursor;
         return cursor ? { data: [{ model: 'gpt-next', displayName: 'GPT Next', hidden: false }], nextCursor: null }
@@ -106,6 +115,30 @@ describe('Codex Agent adapter protocol', () => {
         defaultReasoningEffort: undefined, supportedReasoningEfforts: undefined, reasoningEffortDescriptions: undefined },
     ]);
     expect(rpc.calls.filter((call) => call.method === 'model/list')).toHaveLength(2);
+  });
+  it('discovers enabled Codex Skills from the selected cwd with a fresh runtime read', async () => {
+    rpc.calls.length = 0;
+    const adapter = new CodexAgentAdapter();
+    await expect(adapter.listSkills({ cwd: process.cwd() })).resolves.toEqual([
+      { name: 'recon-helper', description: 'Run reconnaissance' },
+    ]);
+    expect(rpc.calls.find((call) => call.method === 'skills/list')?.params)
+      .toEqual({ cwds: [process.cwd()], forceReload: true });
+    const changed = vi.fn();
+    adapter.onSkillsChanged(changed);
+    rpc.server?.emit('message', { method: 'skills/changed' });
+    expect(changed).toHaveBeenCalledOnce();
+  });
+  it('queries Codex Skills with a WSL path in WSL mode', async () => {
+    rpc.executionMode = 'wsl';
+    rpc.calls.length = 0;
+    try {
+      await new CodexAgentAdapter().listSkills({ cwd: 'C:\\work\\project' });
+      expect(rpc.calls.find((call) => call.method === 'skills/list')?.params)
+        .toEqual({ cwds: ['/mnt/c/work/project'], forceReload: true });
+    } finally {
+      rpc.executionMode = 'native';
+    }
   });
   it('projects App Server text and completion into generic Agent events', async () => {
     rpc.calls.length = 0;

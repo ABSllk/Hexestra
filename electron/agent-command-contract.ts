@@ -15,6 +15,11 @@ export interface AgentSlashCommandDescriptor {
   aliases: string[];
 }
 
+export interface AgentSkillDescriptor {
+  name: string;
+  description: string;
+}
+
 export interface AgentCommandsChangedPayload {
   sessionId: string | null;
   commands: AgentSlashCommandDescriptor[];

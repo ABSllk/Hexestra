@@ -9,6 +9,7 @@ import { windowsPathToWsl } from '../wsl-agent-runtime';
 import { CodexAppServer } from './codex-app-server';
 import { CodexToolBridge } from './codex-tool-bridge';
 import type { SubagentRun } from '../../agent-subagent-contract';
+import type { AgentSkillDescriptor } from '../../agent-command-contract';
 
 const execFileAsync = promisify(execFile);
 const CONTEXT_VERSION = 'hexestra-codex-v1';
@@ -30,6 +31,12 @@ export class CodexAgentAdapter implements AgentAdapter {
   private diagnosticServer: CodexAppServer | null = null;
   private diagnosticFingerprint: string | null = null;
   private modelCatalog = new WeakMap<CodexAppServer, AgentModelOption[]>();
+  private readonly skillsChangedListeners = new Set<() => void>();
+
+  onSkillsChanged(listener: () => void) {
+    this.skillsChangedListeners.add(listener);
+    return () => this.skillsChangedListeners.delete(listener);
+  }
 
   async initialize() {
     const settings = agentSettingsService.getCodexSettings();
@@ -71,6 +78,26 @@ export class CodexAgentAdapter implements AgentAdapter {
   async listModels(_input: AgentCommandDiscoveryInput): Promise<AgentModelOption[]> {
     const server = await this.getDiagnosticServer();
     return this.readModels(server, true);
+  }
+
+  async listSkills(input: AgentCommandDiscoveryInput): Promise<AgentSkillDescriptor[]> {
+    const server = await this.getDiagnosticServer();
+    const settings = agentSettingsService.getCodexSettings();
+    const cwd = settings.executionMode === 'wsl'
+      ? windowsPathToWsl(input.cwd, settings.wslDistribution) : input.cwd;
+    const result = await server.request<{ data?: Array<{ skills?: Array<{
+      name?: unknown; description?: unknown; enabled?: unknown;
+      interface?: { shortDescription?: unknown };
+    }> }> }>('skills/list', { cwds: [cwd], forceReload: true });
+    const skills = new Map<string, AgentSkillDescriptor>();
+    for (const skill of result.data?.[0]?.skills ?? []) {
+      if (skill.enabled === false || typeof skill.name !== 'string'
+        || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(skill.name)) continue;
+      const description = typeof skill.interface?.shortDescription === 'string'
+        ? skill.interface.shortDescription : typeof skill.description === 'string' ? skill.description : '';
+      skills.set(skill.name, { name: skill.name, description });
+    }
+    return [...skills.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
   private async readModels(server: CodexAppServer, refresh = false): Promise<AgentModelOption[]> {
@@ -172,6 +199,10 @@ export class CodexAgentAdapter implements AgentAdapter {
     this.diagnosticServer = null;
     const settings = agentSettingsService.getCodexSettings();
     const server = new CodexAppServer(settings);
+    server.on('message', (message: RpcMessage) => {
+      if (message.method !== 'skills/changed' || this.diagnosticServer !== server) return;
+      for (const listener of this.skillsChangedListeners) listener();
+    });
     try {
       await server.start();
     } catch (error) {

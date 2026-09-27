@@ -6,11 +6,13 @@ import {
   normalizeAgentCommandsChangedPayload,
   normalizeAgentSlashCommand,
   normalizeAgentSlashCommands,
+  type AgentSkillDescriptor,
   type AgentSlashCommandDescriptor,
 } from '@electron/agent-command-contract';
 import { Icon, ReasoningEffortSlider } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useChatStore } from '@/stores';
+import { openSettingsTab } from '@/stores/useTabStore';
 import { agentContextRefKey, type AgentAttachment, type AgentAttachmentPicker, type AgentContextRef, type AutonomyLevel } from '@/types';
 import { ClaudeModeSelector } from './ClaudeModeSelector';
 import { useI18n } from '@/i18n';
@@ -33,11 +35,13 @@ export function ChatInput() {
   const [composerError, setComposerError] = useState<string | null>(null);
   const [runtimeCommands, setRuntimeCommands] = useState<ComposerCommand[] | null>(null);
   const [skillCommands, setSkillCommands] = useState<ComposerCommand[]>([]);
+  const [codexSkillCommands, setCodexSkillCommands] = useState<ComposerCommand[]>([]);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const [dismissedCommandQuery, setDismissedCommandQuery] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const sendMessage = useChatStore((state) => state.sendMessage);
+  const newConversation = useChatStore((state) => state.newConversation);
   const text = useChatStore((state) => state.composerText);
   const setText = useChatStore((state) => state.setComposerText);
   const contextRefs = useChatStore((state) => state.composerContextRefs) ?? [];
@@ -56,15 +60,19 @@ export function ChatInput() {
   const isCodex = agentStatus.backendId === 'codex';
   const modelBackendId = isCodex ? 'codex' : 'claude';
   const modelCatalog = useAgentModels(modelBackendId, openMenu === 'model', activeProjectId);
-  const commands = isCodex ? [] : commandCatalog(t, runtimeCommands, skillCommands);
+  const commands = isCodex
+    ? [...codexCommandCatalog(t), ...codexSkillCommands]
+    : commandCatalog(t, runtimeCommands, skillCommands);
   const activeCommand = commandForText(text, commands);
-  const commandQuery = activeCommand ? null : slashCommandQuery(text);
+  const commandQuery = activeCommand ? null : completionQuery(text, isCodex);
   const commandSuggestions = commandQuery === null
     ? []
-    : commands.filter((command) => command.name.slice(1).toLowerCase().startsWith(commandQuery.toLowerCase()));
+    : commands.filter((command) => command.name.toLowerCase().startsWith(commandQuery.toLowerCase()));
   const showCommandSuggestions = commandSuggestions.length > 0
     && dismissedCommandQuery !== commandQuery;
   const visibleText = activeCommand ? commandArguments(text, activeCommand.name) : text;
+  const isCodexSkillQuery = isCodex
+    && (commandQuery?.startsWith('$') === true || activeCommand?.name.startsWith('$') === true);
 
   useEffect(() => {
     if (!window.hexestra) return;
@@ -133,6 +141,30 @@ export function ChatInput() {
   }, [activeProjectId, isCodex]);
 
   useEffect(() => {
+    if (!window.hexestra || !isCodexSkillQuery) { setCodexSkillCommands([]); return; }
+    let active = true;
+    let revision = 0;
+    setCodexSkillCommands([]);
+    const refresh = () => {
+      const request = ++revision;
+      void window.hexestra.invoke<AgentSkillDescriptor[]>('codex:skills:list', activeProjectId)
+        .then((skills) => {
+          if (!active || request !== revision) return;
+          setCodexSkillCommands(skills.map((skill) => ({
+            name: `$${skill.name}`,
+            description: skill.description,
+            argumentHint: '',
+            source: 'skill' as const,
+          })));
+        })
+        .catch(() => active && request === revision && setCodexSkillCommands([]));
+    };
+    const unsubscribe = window.hexestra.on('codex:skills-changed', refresh);
+    refresh();
+    return () => { active = false; unsubscribe(); };
+  }, [activeProjectId, isCodexSkillQuery]);
+
+  useEffect(() => {
     setActiveCommandIndex(0);
     setDismissedCommandQuery(null);
   }, [commandQuery]);
@@ -157,6 +189,18 @@ export function ChatInput() {
   const handleSend = useCallback(async () => {
     if (!text.trim() && attachments.length === 0 && contextRefs.length === 0) return;
     const content = text.trim() || 'Analyze the attached material in the context of this penetration-testing project.';
+    if (isCodex) {
+      if (content === '/model' || content === '/permissions' || content === '/skills' || content === '/mcp' || content === '/new') {
+        setComposerError(null);
+        if (content === '/model') { setText(''); setOpenMenu('model'); }
+        if (content === '/permissions') { setText(''); setOpenMenu('mode'); }
+        if (content === '/skills') { setText('$'); setOpenMenu(null); }
+        if (content === '/mcp') { setText(''); setOpenMenu(null); openSettingsTab('connection'); }
+        if (content === '/new' && await newConversation('codex')) { setAttachments([]); setOpenMenu(null); }
+        textareaRef.current?.focus();
+        return;
+      }
+    }
     if (!isCodex && normalizeAgentSlashCommand(content) && (attachments.length > 0 || contextRefs.length > 0)) {
       setComposerError(t('agent.commandContextError'));
       return;
@@ -171,7 +215,7 @@ export function ChatInput() {
       // The store owns request errors; preserve only composer-specific errors here.
     }
     textareaRef.current?.focus();
-  }, [attachments, contextRefs.length, isCodex, sendMessage, text]);
+  }, [attachments, contextRefs.length, isCodex, newConversation, sendMessage, text]);
 
   const pickAttachments = async (picker: AgentAttachmentPicker) => {
     if (!window.hexestra) return;
@@ -246,7 +290,7 @@ export function ChatInput() {
   };
 
   const chooseCommand = (command: ComposerCommand) => {
-    setText(replaceSlashCommandToken(text, command.name));
+    setText(replaceCommandToken(text, command.name));
     setDismissedCommandQuery(null);
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
@@ -545,6 +589,21 @@ function commandCatalog(
   return [...byName.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
+function codexCommandCatalog(t: ReturnType<typeof useI18n>['t']): ComposerCommand[] {
+  return [
+    { name: '/distill', description: t('agent.commandDistill'), argumentHint: '', source: 'app' },
+    { name: '/compact', description: t('agent.codexCommandCompact'), argumentHint: '', source: 'app' },
+    { name: '/context', description: t('agent.codexCommandContext'), argumentHint: '', source: 'app' },
+    { name: '/help', description: t('agent.codexCommandHelp'), argumentHint: '', source: 'app' },
+    { name: '/status', description: t('agent.codexCommandStatus'), argumentHint: '', source: 'app' },
+    { name: '/model', description: t('agent.codexCommandModel'), argumentHint: '', source: 'app' },
+    { name: '/permissions', description: t('agent.codexCommandPermissions'), argumentHint: '', source: 'app' },
+    { name: '/skills', description: t('agent.codexCommandSkills'), argumentHint: '', source: 'app' },
+    { name: '/mcp', description: t('agent.codexCommandMcp'), argumentHint: '', source: 'app' },
+    { name: '/new', description: t('agent.codexCommandNew'), argumentHint: '', source: 'app' },
+  ];
+}
+
 function expandRuntimeCommands(commands: AgentSlashCommandDescriptor[]): ComposerCommand[] {
   const expanded = new Map<string, ComposerCommand>();
   for (const command of commands) {
@@ -567,9 +626,9 @@ function expandRuntimeCommands(commands: AgentSlashCommandDescriptor[]): Compose
   return [...expanded.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function slashCommandQuery(content: string) {
-  const match = content.match(/^\/([^\s]*)$/);
-  return match ? match[1] : null;
+function completionQuery(content: string, includeSkills: boolean) {
+  const match = content.match(includeSkills ? /^([/$])([^\s]*)$/ : /^(\/)([^\s]*)$/);
+  return match ? `${match[1]}${match[2]}` : null;
 }
 
 function commandForText(content: string, commands: ComposerCommand[]) {
@@ -581,7 +640,7 @@ function commandArguments(content: string, commandName: string) {
   return content.trimStart().slice(commandName.length).replace(/^\s+/, '');
 }
 
-function replaceSlashCommandToken(content: string, commandName: string) {
-  const remainder = content.trimStart().replace(/^\/[^\s]*/, '').replace(/^\s+/, '');
+function replaceCommandToken(content: string, commandName: string) {
+  const remainder = content.trimStart().replace(/^[/$][^\s]*/, '').replace(/^\s+/, '');
   return `${commandName}${remainder ? ` ${remainder}` : ''}`;
 }

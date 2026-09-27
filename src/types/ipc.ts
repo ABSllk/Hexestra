@@ -34,6 +34,8 @@ export const IPC = {
   AGENT_MESSAGE: 'agent:message',
   AGENT_STATUS: 'agent:status',
   AGENT_COMMANDS_LIST: 'agent:commands:list',
+  CODEX_SKILLS_LIST: 'codex:skills:list',
+  CODEX_SKILLS_CHANGED: 'codex:skills-changed',
   AGENT_COMMANDS_CHANGED: 'agent:commands-changed',
   AGENT_TOOL_REQUEST: 'agent:tool-request',
   AGENT_SUBAGENT_UPDATE: 'agent:subagent-update',
