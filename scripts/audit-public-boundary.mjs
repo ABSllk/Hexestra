@@ -59,15 +59,22 @@ const LOCAL_VERSIONED_RELEASE_DIRECTORY_PATTERN =
   /^release-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 const SKIPPED_PUBLIC_PREFIXES = [
+  'docs/demo-source/',
   'resources/mitmproxy/bin/',
   'resources/mitmproxy/__pycache__/',
+  'scripts/__pycache__/',
+  'scripts/readme-demo/',
 ];
 
 const SKIPPED_PUBLIC_FILES = new Set([
   'resources/burp-bridge/hexestra-burp-bridge.jar',
+  'scripts/generate-readme-demo.py',
 ]);
 
 const REQUIRED_IGNORE_RULES = new Set([
+  '/docs/demo-source/',
+  '/scripts/readme-demo/',
+  '/scripts/generate-readme-demo.py',
   '.agents/',
   '.claude/',
   '.codex/',
@@ -167,6 +174,11 @@ const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const DEVELOPER_HOME_PATTERN = /(?:[A-Za-z]:\\+(?:[Uu]sers|Documents and Settings)\\+[^\\\r\n]+|\/(?:Users|home)\/[^/\s]+)/;
 const OLD_BRAND_PATTERN = /pengent/i;
 const MAX_PUBLIC_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_PUBLIC_DEMO_VIDEO_BYTES = 45 * 1024 * 1024;
+const PUBLIC_DEMO_VIDEOS = new Set([
+  'docs/images/hexestra-tour.mp4',
+  'docs/images/hexestra-tour-zh-CN.mp4',
+]);
 
 const SECRET_PATTERNS = [
   ['private key block', /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/],
@@ -265,9 +277,12 @@ async function checkPublicFile(file) {
     failures.push(`${file.publicPath}: disallowed binary, capture, or credential extension`);
   }
 
-  if (file.size > MAX_PUBLIC_FILE_BYTES) {
+  const maxBytes = PUBLIC_DEMO_VIDEOS.has(file.publicPath)
+    ? MAX_PUBLIC_DEMO_VIDEO_BYTES
+    : MAX_PUBLIC_FILE_BYTES;
+  if (file.size > maxBytes) {
     failures.push(
-      `${file.publicPath}: ${file.size} bytes exceeds the 5 MiB public-source limit`,
+      `${file.publicPath}: ${file.size} bytes exceeds the ${Math.round(maxBytes / 1024 / 1024)} MiB public-source limit`,
     );
   }
 

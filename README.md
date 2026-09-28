@@ -8,203 +8,69 @@
 
 ## Orchestrate your pentest.
 
-An AI-native penetration testing IDE where human operators and AI share the same browser, terminals, traffic, asset graph, tasks, evidence, and controls.
+An AI-native penetration testing workbench where you and AI agents work together to accelerate your pentest workflow.
+
+[Download](https://github.com/ABSllk/Hexestra/releases/latest) · [Watch the demo](docs/images/hexestra-tour.mp4) · [Get started](docs/user-guide.md#1-quick-start)
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-[User guide](docs/user-guide.md) · [Docs index](docs/index.md)
-
 </div>
-
-> [!WARNING]
-> Hexestra is intended exclusively for authorized security testing. Never use it against systems you do not own or have explicit permission to assess.
 
 ## Why Hexestra?
 
-Hexestra brings the fragmented parts of a penetration test into one project. Scope labels give the Agent semantic asset context, while the operator can inspect, guide, approve, interrupt, or take over at any time.
+- **Rich integrations.** Built-in browser, terminals, HTTP/HTTPS traffic capture, interception and replay, NetMap asset topology, shell management, payload generation, Burp Suite integration, and more.
+- **AI-native.** Optimized for Claude Code and Codex CLI so agents can directly operate Hexestra's features and components.
+- **Custom workflows.** An ATT&CK-based rules and workflow system for penetration testing. Import PDF, DOCX, or Markdown documents and let agents turn them into your own rules, workflows, and skills, saving time spent tuning prompts.
+- **Cross-session memory.** Key assessment details—including assets, traffic, tasks, and evidence—live in a separate memory system that you can review and pick up in a new conversation.
+- **You stay in control.** Agent actions are controllable and traceable, making it easy to review the action chain and guard against unauthorized actions.
+- **Quick to get started.** Most work can be done by talking with an Agent, with little to learn and no need to change how you work.
 
-- **One shared operational surface:** human and AI work with the same browser, terminal sessions, captured traffic, tasks, assets, and evidence.
-- **Controlled execution:** choose a permission mode (ASK, AUTO, or BYPASS) and a separate autonomy level while preserving Rules of Engagement and technical safety boundaries; Scope labels remain advisory.
-- **Keep the tools you know:** use Claude Code or Codex alongside Burp Suite, PowerShell, WSL, SSH, and their existing configurations.
-- **Durable engagement state:** reopen a project folder to restore Scope, tasks, NetMap, evidence, findings, reports, workspace tabs, permissions, and conversation branches.
+## Demo
 
-## Screenshots
+<div align="center">
 
-These screenshots use the fictional Northstar Demo Lab, reserved `example.test` domains, documentation-only IP addresses, synthetic identities, and synthetic evidence.
+<img src="docs/images/hexestra-tour-poster.png" alt="Hexestra workbench with targets, welcome page, AI chat, and NetMap" width="960">
 
-![Hexestra shared workspace with task tree, report, Agent activity, and NetMap](docs/images/hexestra-workspace-netmap.png)
+*Workbench overview: targets, welcome page, AI chat, and NetMap.*
 
-*The shared workspace keeps the task tree, report, Agent activity, active asset, and 17-node NetMap in one controllable surface.*
+<img src="docs/images/hexestra-demo-shell.png" alt="AI verifies unauthorized access to an order in the attack shell" width="960">
 
-![Hexestra Inventory showing target asset list, selected target details, and AI summary](docs/images/hexestra-inventory.png)
+*The Agent can run commands in the Shell.*
 
-*Target assets are displayed on the left, with related assets and details shown below in NetMap.*
+<img src="docs/images/hexestra-demo-finding.png" alt="Confirmed order authorization vulnerability with related evidence" width="960">
 
-![Hexestra Evidence record with raw HTTP response and linked records](docs/images/hexestra-evidence.png)
+*The Agent automatically generates vulnerability details. This is a demonstration; actual findings are much more detailed.*
 
-*Evidence preserves raw output and links it to the Finding and validated Vulnerability.*
+*The screenshots are captured directly from the app, and the demo was tested in a fictional local lab. [Watch the full video](docs/images/hexestra-tour.mp4).*
 
-![Hexestra Vulnerability record with severity, impact, and remediation](docs/images/hexestra-vulnerability.png)
+</div>
 
-*A validated Vulnerability keeps severity, lifecycle, impact, remediation, and linked context together.*
+## Get started
 
-![Hexestra built-in browser and traffic capture](docs/images/hexestra-browser.png)
+1. [Download the desktop app](https://github.com/ABSllk/Hexestra/releases/latest) for Windows x64, Linux x64, macOS Intel, or macOS Apple Silicon.
+2. Install and sign in to [Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup) or [Codex CLI](https://developers.openai.com/codex/cli) in the Native or WSL environment you will use.
+3. In **Settings → Connection**, select that CLI and check the connection. Create a project, define its Scope, and begin in **ASK** mode.
 
-*Use the built-in browser to access targets; enable capture on the left to record traffic, with interception and replay support.*
+The [user guide](docs/user-guide.md) walks you through your first assessment.
 
-## Core capabilities
+## Build from source
 
-- Integrated browser, HTTP/HTTPS capture, inspection, interception, Repeater, and evidence capture
-- Shared local, WSL, SSH, jump-host, and raw reverse-shell sessions with human takeover and Agent command auditing
-- Graph-guided testing through typed assets, relationships, provenance, and active objectives in NetMap
-- Structured progression from raw output to Evidence, Finding, Vulnerability, and Report
-- Non-destructive conversation branches that preserve the original reasoning path and canonical project state
-- Claude Code or Codex conversations with shared Hexestra project tools, approvals, and records
-- Optional Burp Bridge and Burp MCP integration without replacing the normal Burp workflow
-- Optional per-project Mihomo multi-hop egress with encrypted nodes and fail-closed managed routing
-
-## Quick start
-
-### Requirements
-
-- Node.js 24 and npm
-- Windows x64, Linux x64 (Ubuntu 24.04 baseline), macOS Intel, or macOS Apple Silicon
-- Standard Electron desktop libraries; Ubuntu needs the usual X11/GTK runtime libraries
-- Claude Code or Codex CLI installed separately in the selected Native or WSL runtime; Hexestra does not bundle either CLI
-- mitmproxy is bundled in packaged builds; source runs may provide it separately
-- Optional Burp Suite and JDK 17 for the Bridge
-- Optional user-provided [Mihomo](https://github.com/MetaCubeX/mihomo/releases) for project-level multi-hop egress (v1.19.29 is tested and recommended, but not required)
-
-### Install an Agent runtime
-
-Choose Claude Code or Codex when creating a conversation. Existing conversations keep their selected backend.
-
-#### Claude Code
-
-Run these commands in the Native or WSL environment selected under **Settings > Connection**:
-
-```bash
-npm install -g @anthropic-ai/claude-code
-claude --version
-```
-
-To use an Anthropic account:
-
-```bash
-claude auth login
-claude auth status
-```
-
-#### Codex
-
-Install and sign in with the Codex CLI in the Native or WSL environment selected under **Settings > Connection**, then verify it there:
-
-```bash
-codex --version
-```
-
-Hexestra starts the installed CLI's App Server and reuses its sign-in. If the Codex desktop app is installed but `codex` is not on that environment's `PATH`, set the CLI executable path in Hexestra's Codex connection settings.
-
-### Configure a third-party API
-
-Set provider variables in the same terminal that will start Hexestra. DeepSeek example from its [official Claude Code integration guide](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code/):
-
-Linux and macOS:
-
-```bash
-export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
-export ANTHROPIC_AUTH_TOKEN="YOUR_DEEPSEEK_API_KEY"
-export ANTHROPIC_MODEL='deepseek-v4-pro[1m]'
-export ANTHROPIC_DEFAULT_OPUS_MODEL='deepseek-v4-pro[1m]'
-export ANTHROPIC_DEFAULT_SONNET_MODEL='deepseek-v4-pro[1m]'
-export ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
-export CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash
-export CLAUDE_CODE_EFFORT_LEVEL=max
-```
-
-Windows PowerShell:
-
-```powershell
-$env:ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
-$env:ANTHROPIC_AUTH_TOKEN="YOUR_DEEPSEEK_API_KEY"
-$env:ANTHROPIC_MODEL="deepseek-v4-pro[1m]"
-$env:ANTHROPIC_DEFAULT_OPUS_MODEL="deepseek-v4-pro[1m]"
-$env:ANTHROPIC_DEFAULT_SONNET_MODEL="deepseek-v4-pro[1m]"
-$env:ANTHROPIC_DEFAULT_HAIKU_MODEL="deepseek-v4-flash"
-$env:CLAUDE_CODE_SUBAGENT_MODEL="deepseek-v4-flash"
-$env:CLAUDE_CODE_EFFORT_LEVEL="max"
-```
-
-Replace the endpoint, token, and model names for another Anthropic-compatible provider. Never commit an API key.
-
-### Run from source
-
-Run these commands in the Hexestra project root:
+Requires Node.js 24 and npm. Traffic capture in source runs also needs `mitmdump`; see the [user guide](docs/user-guide.md).
 
 ```bash
 npm ci
 npm run electron:dev
 ```
 
-### Configure Traffic Capture and mitmproxy
+## Go further
 
-When running Hexestra from source, install mitmproxy and confirm that
-`mitmdump` is available:
+[User guide](docs/user-guide.md) · [Architecture](docs/architecture.md) · [Agent runtime](docs/agent-runtime.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
-```bash
-uv tool install mitmproxy
-mitmdump --version
-```
+Not sure which document to read? See the [documentation index](docs/index.md).
 
-Packaged builds include a mitmdump runtime, so Traffic Capture works without a separate mitmproxy installation.
+Have a feature in mind? [Open an issue](https://github.com/ABSllk/Hexestra/issues/new).
 
-### Configure project-level Mihomo egress
-
-Download Mihomo from the upstream releases, then select its executable under **Settings > Proxy**. v1.19.29 is the tested and recommended reference version, but Hexestra does not enforce an exact version: a runnable binary is accepted and compatibility is determined by configuration validation and Controller startup. Mihomo is an external, user-provided [GPLv3](https://raw.githubusercontent.com/MetaCubeX/mihomo/Meta/LICENSE) runtime; Hexestra does not download or redistribute it.
-
-Proxy enforcement is isolated to the active project: no TUN or system proxy is enabled. Browser, Traffic/Replay, outer SSH or jump-host connections, and WebShell requests use the managed route. Local and WSL terminals receive `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, and `WSLENV`; programs that ignore these variables and open raw sockets can bypass the terminal boundary. Claude API traffic and secondary egress created by commands on a remote shell are outside v1.
-
-When enforcement is on, a missing node, invalid chain, stopped/crashed runtime, or failed reload blocks managed egress instead of falling back to a direct connection. Run the real two-hop acceptance smoke with:
-
-```bash
-HEXESTRA_MIHOMO_PATH=/path/to/mihomo npm run test:proxy-smoke
-```
-
-### Configure the Burp Suite Bridge
-
-Burp integration is optional. Hexestra captures traffic through mitmproxy and mirrors completed exchanges to Burp through an authenticated loopback Bridge; Burp is not silently inserted into the browser's live network path.
-
-Build the Bridge on Windows, Linux, or macOS with JDK 17:
-
-```bash
-npm run build:burp-bridge
-```
-
-1. In Burp, open **Extensions > Installed > Add**, choose **Java**, and load `resources/burp-bridge/hexestra-burp-bridge.jar`.
-2. Open **Hexestra Bridge**, note the loopback port, and copy the pairing token.
-3. In Hexestra, open **Settings > Burp**, enter the port and token, save, and choose **Connect Bridge**.
-
-Mirrored exchanges appear in **Target > Site map** and, when supported, **Organizer**. Burp's public extension API cannot create synthetic entries in **Proxy > HTTP history**.
-
-### Build and verify
-
-```bash
-npm run electron:build
-npm run audit:public
-npm run check
-```
-
-## Responsible use
-
-Use Hexestra only with explicit authorization and an accurate project Scope. Destructive, disruptive, or privacy-impacting actions require appropriate approval, and exported evidence or reports should be treated as sensitive data. Scope labels guide Agent prioritization but do not block commands or traffic; ASK, AUTO, and BYPASS change approval behavior, while Rules of Engagement and technical safety boundaries remain enforced. Hexestra does not replace professional judgment or accountability.
-
-## Contributing
-
-See the [contribution guide](CONTRIBUTING.md) and [changelog](CHANGELOG.md).
-
-## License
-
-Hexestra is licensed under the [Apache License 2.0](LICENSE). Third-party components remain subject to their own licenses and terms.
+Hexestra is licensed under [Apache 2.0](LICENSE). If it makes your pentest workflow more efficient, consider starring the repository.
 
 ## Star History
 

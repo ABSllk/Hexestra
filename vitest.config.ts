@@ -17,6 +17,7 @@ export default defineConfig({
     setupFiles: ['./test/setup.ts'],
     exclude: [
       'node_modules/**',
+      'scripts/readme-demo/**',
       'artifacts/**',
       'dist/**',
       'dist-electron/**',

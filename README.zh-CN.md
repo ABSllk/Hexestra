@@ -8,205 +8,69 @@
 
 ## 协奏于攻守之间。
 
-一款 AI 原生渗透测试 IDE，让人类操作员与智能体共用浏览器、终端、流量、资产图、任务、证据和控制权。
+一款AI原生渗透测试工作台，让人与 Agent 无缝协作，加速你的渗透工作流。
+
+[下载桌面版](https://github.com/ABSllk/Hexestra/releases/latest) · [观看演示](docs/images/hexestra-tour-zh-CN.mp4) · [开始使用](docs/user-guide.zh-CN.md#1-快速开始)
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-[用户手册](docs/user-guide.zh-CN.md) · [文档索引](docs/index.zh-CN.md)
-
 </div>
-
-> [!WARNING]
-> Hexestra 仅用于经过授权的安全测试。请勿将其用于您不拥有或未获得明确测试授权的系统。
 
 ## 为什么选择 Hexestra？
 
-Hexestra 连接用户在本机或 WSL 中安装的 Claude Code 或 Codex CLI，并将分散的渗透测试环节整合进同一个项目。项目上下文和内置规则由 Hexestra 补充；操作员可以随时检查、引导、审批、中断或直接接管。
+- **丰富集成：** 内置浏览器、终端、HTTP/HTTPS 抓包、拦截与重放、NetMap 资产拓扑图、Shell管理、Payload生成和Burp Suite接入等一系列常用功能。
+- **AI原生：** 接入 Claude Code 或 Codex CLI 并经过特殊优化，让所有功能和组件都可被Agent直接操控。
+- **自定义工作流：** 根据ATT&CK框架，打造了针对于渗透测试的规则和工作流系统，可导入 PDF、DOCX、Markdown 格式文档，Agent会将其提炼为您专属的规则，工作流和技能，无需费时调教AI。
+- **跨会话记忆：** 渗透测试中的资产、流量、任务、证据等关键信息会做为独立的记忆系统，不仅便于人类阅读，打开新的对话窗口也可继续任务。
+- **高度可控：** Agent行为高度可控且可追踪，可快速帮助人类梳理操作链，且无需担心越权行为。
+- **快速上手：** 开箱即用，上手简单，大部分工作都可通过与Agent对话完成，无需额外学习也无需改变工作习惯。
 
-- **人与 AI 共用同一操作面：** 双方使用同一个浏览器、终端会话、捕获流量、任务、资产和证据。
-- **可控执行：** 分别设置权限模式（询问、自动、跳过审批）和自主程度，同时保留 Rules of Engagement 和技术安全边界；Scope 标签只作提示。
-- **可选本地后端：** 新建会话时选择 Claude Code 或 Codex，沿用各自已安装的运行时和登录状态。
-- **继续使用熟悉的工具：** 保留 Burp Suite、PowerShell、WSL、SSH 及其现有配置，不必重新适应一套封闭替代品。
-- **持久化的项目状态：** 重新打开项目文件夹即可恢复 Scope、任务、NetMap、证据、Finding、报告、工作区、权限偏好和对话分支。
+## 产品演示
 
-## 界面截图
+<div align="center">
 
-以下截图均来自完全虚构的 Northstar Demo Lab，仅使用保留的 `example.test` 域名、文档专用 IP、合成身份和合成证据。
+<img src="docs/images/hexestra-tour-poster-zh-CN.png" alt="Hexestra 工作台同屏展示目标、欢迎页、AI 对话和 NetMap" width="960">
 
-![Hexestra 共用工作区中的任务树、报告、Agent 活动和 NetMap](docs/images/hexestra-workspace-netmap.png)
+*工作台总览：目标、欢迎页、AI 对话和 NetMap 同屏展示。*
 
-*任务树、报告、Agent 活动、当前资产和包含 17 个节点的 NetMap 位于同一个可控操作面。*
+<img src="docs/images/hexestra-demo-shell-zh-CN.png" alt="AI 在攻击机终端验证订单越权访问" width="960">
 
-![Hexestra Inventory 展示目标资产列表，选定目标详细信息和AI总结](docs/images/hexestra-inventory.png)
+*Agent可操控Shell执行命令*
 
-*目标资产列表将显示在左侧，并在下方 NetMap 中展示出关联资产及详细信息*
+<img src="docs/images/hexestra-demo-finding-zh-CN.png" alt="已确认的订单越权访问漏洞及关联证据" width="960">
 
-![Hexestra Evidence 原始 HTTP 响应及关联记录](docs/images/hexestra-evidence.png)
+*Agent自动生成的漏洞信息（此处仅做演示，实际情况会十分详细）*
 
-*Evidence 保留原始输出，并与 Finding 和已验证的 Vulnerability 建立关联。*
+*图片直接截自应用，测试于虚构本地靶场。[播放完整视频](docs/images/hexestra-tour-zh-CN.mp4)。*
 
-![Hexestra Vulnerability 严重度、影响和修复建议](docs/images/hexestra-vulnerability.png)
+</div>
 
-*已验证的 Vulnerability 集中保存严重度、生命周期、影响、修复建议和关联上下文。*
+## 开始使用
 
-![Hexestra 内置浏览器和抓包界面](docs/images/hexestra-browser.png)
+1. [下载桌面版](https://github.com/ABSllk/Hexestra/releases/latest)：支持 Windows x64、Linux x64、macOS Intel 和 macOS Apple Silicon。
+2. 在准备使用的本机或 WSL 环境中安装并登录 [Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup) 或 [Codex CLI](https://developers.openai.com/codex/cli)。
+3. 在 **设置 → 连接** 中选择对应 CLI，检查连接状态；创建项目、设置 Scope，并从 **询问（ASK）** 模式开始。
 
-*可使用内置浏览器进行目标访问，在左侧开启抓包后出现流量记录，并可进行拦截，重放等操作。*
+[用户手册](docs/user-guide.zh-CN.md)会带你完成第一次测试
 
-## 核心能力
+## 从源码运行
 
-- 集成浏览器、HTTP/HTTPS 流量捕获、检查、拦截、Repeater 和证据保存
-- 人类与 Agent 共享本地、WSL、SSH、跳板机和原始反向 Shell 会话，并支持人工接管与 Agent 命令审计
-- 通过 NetMap 中的结构化资产、关系、来源和当前目标进行图驱动测试
-- 将原始输出依次整理为 Evidence、Finding、Vulnerability 和 Report
-- 使用非破坏性对话分支保留原始推理路径，同时共享项目的权威状态
-- Claude Code 与 Codex 会话共用 Hexestra 的项目工具、审批和记录
-- 可选接入 Burp Bridge 和 Burp MCP，不改变原有 Burp 工作流
-- 可选的项目级 Mihomo 多跳出口，节点加密保存并对受控路由执行 fail-closed
-
-## 快速开始
-
-### 环境要求
-
-- Node.js 24 和 npm
-- Windows x64、Linux x64（以 Ubuntu 24.04 为基准）、macOS Intel 或 macOS Apple Silicon
-- 当前平台的标准 Electron 桌面运行库；Ubuntu 需要常见的 X11/GTK 运行库
-- 在所选本机或 WSL 环境中单独安装 Claude Code 或 Codex CLI；Hexestra 不内置这两个 CLI
-- 打包版已内置 mitmproxy；从源码运行时可单独提供
-- 可选的 Burp Suite；构建 Bridge 需要 JDK 17
-- 可选的用户提供 [Mihomo](https://github.com/MetaCubeX/mihomo/releases)，用于项目级多跳出口（v1.19.29 是已测试的推荐版本）
-
-### 安装智能体运行时
-
-新建会话时可选择 Claude Code 或 Codex；已有会话继续使用原后端。
-
-#### Claude Code
-
-在 **Settings > Connection（设置 > 连接）** 中选择的 Native 或 WSL 环境内执行：
-
-Native 或 WSL 环境需要单独安装 Claude Code；Hexestra 不会内置或自动安装 CLI。
-
-```bash
-npm install -g @anthropic-ai/claude-code
-claude --version
-```
-
-使用 Anthropic 账号时执行：
-
-```bash
-claude auth login
-claude auth status
-```
-
-#### Codex
-
-在 **设置 > 连接** 中选定的本机或 WSL 环境内安装并登录 Codex CLI，然后在同一环境验证：
-
-```bash
-codex --version
-```
-
-Hexestra 会启动已安装 CLI 的 App Server，并复用其登录状态。如果只装了 Codex 桌面应用，而所选环境的 `PATH` 中找不到 `codex`，请在 Hexestra 的 Codex 连接设置中填写 CLI 可执行文件路径。
-
-### 配置第三方 API
-
-请在随后用于启动 Hexestra 的同一个终端中设置服务商环境变量。以下命令来自 [DeepSeek 官方 Claude Code 接入指南](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code/)：
-
-Linux 和 macOS：
-
-```bash
-export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
-export ANTHROPIC_AUTH_TOKEN="YOUR_DEEPSEEK_API_KEY"
-export ANTHROPIC_MODEL='deepseek-v4-pro[1m]'
-export ANTHROPIC_DEFAULT_OPUS_MODEL='deepseek-v4-pro[1m]'
-export ANTHROPIC_DEFAULT_SONNET_MODEL='deepseek-v4-pro[1m]'
-export ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
-export CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash
-export CLAUDE_CODE_EFFORT_LEVEL=max
-```
-
-Windows PowerShell：
-
-```powershell
-$env:ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
-$env:ANTHROPIC_AUTH_TOKEN="YOUR_DEEPSEEK_API_KEY"
-$env:ANTHROPIC_MODEL="deepseek-v4-pro[1m]"
-$env:ANTHROPIC_DEFAULT_OPUS_MODEL="deepseek-v4-pro[1m]"
-$env:ANTHROPIC_DEFAULT_SONNET_MODEL="deepseek-v4-pro[1m]"
-$env:ANTHROPIC_DEFAULT_HAIKU_MODEL="deepseek-v4-flash"
-$env:CLAUDE_CODE_SUBAGENT_MODEL="deepseek-v4-flash"
-$env:CLAUDE_CODE_EFFORT_LEVEL="max"
-```
-
-使用其他兼容 Anthropic 接口的服务商时，按其文档替换接口地址、Token 和模型名称。不要把 API Key 提交到仓库。
-
-### 从源码运行
-
-在 Hexestra 项目根目录执行：
+需要 Node.js 24 和 npm。源码运行时，流量捕获还需要 `mitmdump`；详见[用户手册](docs/user-guide.zh-CN.md)。
 
 ```bash
 npm ci
 npm run electron:dev
 ```
 
-### 配置流量捕获与 mitmproxy
+## 深入了解
 
-从源码运行 Hexestra 时，请安装 mitmproxy 并确认 `mitmdump` 可用：
+[用户手册](docs/user-guide.zh-CN.md) · [架构说明](docs/architecture.zh-CN.md) · [智能体运行机制](docs/agent-runtime.zh-CN.md) · [参与贡献](CONTRIBUTING.md) · [更新记录](CHANGELOG.md)
 
-```bash
-uv tool install mitmproxy
-mitmdump --version
-```
+文档太多，不知道看哪个？见[文档索引](docs/index.zh-CN.md)。
 
-Release 已内置 mitmdump 运行时，因此 Traffic Capture 无需单独安装 mitmproxy。
+如果有想要添加的功能，欢迎[提交 Issue](https://github.com/ABSllk/Hexestra/issues/new)。
 
-### 配置项目级 Mihomo 出口
-
-从上游发布页下载 Mihomo，然后在 **设置 > 代理** 中选择可执行文件。v1.19.29 是已测试的推荐参考版本；可执行文件能够运行即可接受，实际兼容性由配置校验和 Controller 启动结果决定。Mihomo 是由用户提供的外部 [GPLv3](https://raw.githubusercontent.com/MetaCubeX/mihomo/Meta/LICENSE) 运行时；Hexestra 不下载或随安装包分发它。
-
-代理范围仅限当前活动项目：不会启用 TUN，也不会修改系统代理。Browser、Traffic/Replay、最外层 SSH 或 jump-host 连接以及 WebShell 请求会使用受控链路。Local/WSL Terminal 会注入 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 和 `WSLENV`；忽略这些变量并直接创建裸 socket 的程序可能绕过 Terminal 边界。Claude API 流量和远端 Shell 命令产生的二次出站不在 v1 控制范围。
-
-代理开启后，缺少节点、链无效、Runtime 停止/崩溃或重载失败都会阻断受控出口，不会回退直连。真实两跳验收可运行：
-
-```bash
-HEXESTRA_MIHOMO_PATH=/path/to/mihomo npm run test:proxy-smoke
-```
-
-### 配置 Burp Suite Bridge
-
-Burp 集成是可选的。Hexestra 通过 mitmproxy 捕获流量，再通过需要认证的本机回环 Bridge 将已完成的交换镜像到 Burp；Burp 不会被静默加入浏览器的实时网络路径。
-
-在 Windows、Linux 或 macOS 上安装 JDK 17 后构建 Bridge：
-
-```bash
-npm run build:burp-bridge
-```
-
-1. 在 Burp 中打开 **Extensions > Installed > Add**，选择 **Java**，加载 `resources/burp-bridge/hexestra-burp-bridge.jar`。
-2. 打开 **Hexestra Bridge**，记录本机回环端口并复制配对 token。
-3. 在 Hexestra 中打开 **Settings > Burp（设置 > Burp）**，填写端口和 token，保存后点击 **Connect Bridge**。
-
-镜像的交换会出现在 **Target > Site map**，在支持时也会出现在 **Organizer**。Burp 的公开扩展 API 无法把合成记录写入 **Proxy > HTTP history**。
-
-### 构建与检查
-
-```bash
-npm run electron:build
-npm run audit:public
-npm run check
-```
-
-## 负责使用
-
-只在获得明确授权并准确设置项目 Scope 后使用 Hexestra。破坏性、干扰性或影响隐私的操作应获得适当批准，导出的证据和报告应作为敏感数据处理。Scope 标签用于引导 Agent 优先级，但不阻断命令或流量；ASK、AUTO 和 BYPASS 改变审批行为，Rules of Engagement 和技术安全边界仍然有效。Hexestra 不能替代专业判断和责任承担。
-
-## 参与贡献
-
-请阅读[贡献指南](CONTRIBUTING.md)和[更新记录](CHANGELOG.md)。
-
-## 开源许可证
-
-Hexestra 采用 [Apache License 2.0](LICENSE) 开源。第三方组件仍受其各自许可证和条款约束。
+Hexestra 采用 [Apache 2.0](LICENSE) 许可证。如果它让你的渗透更高效，欢迎为仓库点个 Star。
 
 ## Star History
 

@@ -7,7 +7,7 @@
 
 ## 1. Quick start
 
-This section gets you through your first session. Full details on installation and each feature come in later chapters.
+This section gets you through your first session. Full details on installation and each feature come in later chapters. (Example only, you may freely begin the task according to your personal preferences and habits.)
 
 ### 1.1 Open or create a project
 

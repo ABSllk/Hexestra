@@ -15,6 +15,11 @@ tmp/
 .ui-test/
 *.pyc
 
+# Local README demo production sources
+/scripts/readme-demo/
+/scripts/generate-readme-demo.py
+/docs/demo-source/
+
 # Local AI and project-workflow state
 .agents/
 .claude/
