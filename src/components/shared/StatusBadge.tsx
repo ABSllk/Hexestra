@@ -6,18 +6,18 @@ interface StatusBadgeProps {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  untested: 'bg-node-untested/20 text-node-untested border-node-untested/30',
-  in_progress: 'bg-node-progress/20 text-node-progress border-node-progress/30',
-  scanned: 'bg-node-scanned/20 text-node-scanned border-node-scanned/30',
-  vulnerable: 'bg-node-vulnerable/20 text-node-vulnerable border-node-vulnerable/30',
-  compromised: 'bg-node-compromised/20 text-node-compromised border-node-compromised/30',
-  pending: 'bg-raised text-text-muted border-text-muted/30',
-  completed: 'bg-node-compromised/20 text-node-compromised border-node-compromised/30',
-  blocked: 'bg-severity-critical/20 text-severity-critical border-severity-critical/30',
-  failed: 'bg-severity-critical/20 text-severity-critical border-severity-critical/30',
-  active: 'bg-node-compromised/20 text-node-compromised border-node-compromised/30',
-  paused: 'bg-node-scanned/20 text-node-scanned border-node-scanned/30',
-  archived: 'bg-raised text-text-muted border-text-muted/30',
+  untested: 'bg-node-untested/20 text-node-untested',
+  in_progress: 'bg-node-progress/20 text-node-progress',
+  scanned: 'bg-node-scanned/20 text-node-scanned',
+  vulnerable: 'bg-node-vulnerable/20 text-node-vulnerable',
+  compromised: 'bg-node-compromised/20 text-node-compromised',
+  pending: 'bg-raised text-text-muted',
+  completed: 'bg-node-compromised/20 text-node-compromised',
+  blocked: 'bg-severity-critical/20 text-severity-critical',
+  failed: 'bg-severity-critical/20 text-severity-critical',
+  active: 'bg-node-compromised/20 text-node-compromised',
+  paused: 'bg-node-scanned/20 text-node-scanned',
+  archived: 'bg-raised text-text-muted',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -42,7 +42,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex min-h-6 items-center rounded-md border px-2 text-[11px] font-medium',
+        'inline-flex min-h-6 items-center rounded-md border border-transparent px-2 text-[11px] font-medium',
         style,
         className
       )}

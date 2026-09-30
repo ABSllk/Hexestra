@@ -116,6 +116,17 @@ describe('ChatInput composer', () => {
     });
   });
 
+  it('shrinks a cleared multiline draft and keeps the text area free of clipping corners', () => {
+    render(<ChatInput />);
+    const input = screen.getByRole('combobox') as HTMLTextAreaElement;
+    Object.defineProperty(input, 'scrollHeight', { configurable: true, get: () => 220 });
+    fireEvent.change(input, { target: { value: 'A long draft\nwith multiple lines' } });
+    expect(input.style.height).toBe('144px');
+    fireEvent.change(input, { target: { value: '' } });
+    expect(input.style.height).toBe('32px');
+    expect(input).toHaveClass('rounded-none');
+  });
+
   it('keeps mode and autonomy choices collapsed until their triggers are clicked', async () => {
     render(<ChatInput />);
     expect(screen.queryByRole('button', { name: 'AUTO' })).not.toBeInTheDocument();

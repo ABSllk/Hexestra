@@ -4,7 +4,7 @@ import { cn } from '@/lib/cn';
 import { useChatStore } from '@/stores';
 import { useI18n } from '@/i18n';
 
-export function ConversationSelector() {
+export function ConversationSelector({ onOpen }: { onOpen?: () => void }) {
   const { t } = useI18n();
   const activeProjectId = useChatStore((state) => state.activeProjectId);
   const activeBranchId = useChatStore((state) => state.activeBranchId);
@@ -20,7 +20,11 @@ export function ConversationSelector() {
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const listboxId = 'agent-conversation-listbox';
   const activeIndex = Math.max(0, branches.findIndex((branch) => branch.id === activeBranchId));
-  const activeConversation = branches.find((branch) => branch.id === activeBranchId) ?? branches[0];
+
+  useEffect(() => {
+    setOpen(false);
+    setNewMenuOpen(false);
+  }, [activeProjectId]);
 
   useEffect(() => {
     if (!open) return;
@@ -67,6 +71,8 @@ export function ConversationSelector() {
   const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
+      onOpen?.();
+      setNewMenuOpen(false);
       setOpen(true);
     }
   };
@@ -91,44 +97,31 @@ export function ConversationSelector() {
   };
 
   return (
-    <div className="relative flex shrink-0 items-center gap-1.5 border-b border-border-subtle/70 bg-panel/70 px-2.5 py-2" ref={selectorRef}>
-      <div className="relative min-w-0 flex-1">
+    <div className="flex shrink-0 items-center gap-1" ref={selectorRef}>
+      <div>
         <button
           ref={triggerRef}
           type="button"
-          role="combobox"
-          aria-label={t('agent.selectConversation')}
+          aria-label={t('agent.conversationHistory')}
+          title={t('agent.conversationHistory')}
           aria-controls={listboxId}
           aria-expanded={open}
           aria-haspopup="listbox"
           className={cn(
-            'ui-control flex min-h-9 w-full min-w-0 items-center justify-between gap-2 px-2.5 py-1.5 text-left text-[11px] text-text-secondary',
-            open && 'border-accent-blue/50 bg-panel shadow-lg shadow-black/20',
+            'ui-icon-button h-7 w-7 disabled:cursor-not-allowed disabled:opacity-40',
+            open && 'bg-raised text-text-primary',
           )}
           disabled={!activeProjectId}
-          onClick={() => { setNewMenuOpen(false); setOpen((current) => !current); }}
+          onClick={() => { onOpen?.(); setNewMenuOpen(false); setOpen((current) => !current); }}
           onKeyDown={handleTriggerKeyDown}
         >
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border-subtle bg-raised/65 text-text-muted">
-              <Icon name="message" size={11} />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate font-medium text-text-primary">
-                {activeConversation?.title ?? t('agent.noConversation')}
-              </span>
-              <span className="block truncate font-mono text-[10px] text-text-muted">
-                {activeConversation ? `${activeConversation.backendId === 'codex' ? 'Codex' : 'Claude'} · ${t('agent.messagesCount', { count: activeConversation.messageCount })}` : t('agent.conversationCount', { count: 0 })}
-              </span>
-            </span>
-          </span>
-          <Icon name="chevron-down" size={13} className={cn('text-text-muted transition-transform', open && 'rotate-180 text-accent-blue')} />
+          <Icon name="history" size={14} />
         </button>
 
         {open && (
-          <div id={listboxId} role="listbox" aria-label={t('agent.selectConversation')} className="ui-popover absolute left-0 right-0 top-full z-50 mt-1.5 max-h-72 overflow-y-auto p-1.5">
+          <div id={listboxId} role="listbox" aria-label={t('agent.conversationHistory')} className="ui-popover absolute right-2.5 top-11 z-50 max-h-[min(18rem,calc(100%-3.5rem))] w-72 max-w-[calc(100%-1.25rem)] overflow-y-auto p-1.5">
             <div className="flex items-center justify-between px-2 py-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted">{t('agent.conversations')}</span>
+              <span className="text-[11px] font-semibold text-text-secondary">{t('agent.conversationHistory')}</span>
               <span className="font-mono text-[10px] text-text-muted">{t('agent.conversationCount', { count: branches.length })}</span>
             </div>
             {branches.length === 0 ? (
@@ -145,15 +138,15 @@ export function ConversationSelector() {
                     role="option"
                     aria-selected={selected}
                     className={cn(
-                      'group flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors',
-                      selected ? 'border-accent-blue/35 bg-accent-blue/10' : 'border-transparent',
+                      'group flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus',
+                      selected && 'bg-accent-blue/10',
                       highlighted && !selected && 'bg-raised/65',
-                      'hover:border-border-subtle hover:bg-raised/70',
+                      'hover:bg-raised/70',
                     )}
                     onClick={() => selectConversation(conversation.id)}
                     onKeyDown={(event) => handleOptionKeyDown(event, index, conversation.id)}
                   >
-                    <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md border', selected ? 'border-accent-blue/40 bg-accent-blue/15 text-accent-blue' : 'border-border-subtle bg-panel text-text-muted')}>
+                    <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md', selected ? 'bg-accent-blue/15 text-accent-blue' : 'bg-raised/65 text-text-muted')}>
                       <Icon name={selected ? 'check' : 'message'} size={12} />
                     </span>
                     <span className="min-w-0 flex-1">
@@ -172,22 +165,23 @@ export function ConversationSelector() {
           </div>
         )}
       </div>
-      <div className="relative">
+      <div>
       <button
         ref={newTriggerRef}
         aria-label={t('agent.newConversation')}
         aria-expanded={newMenuOpen}
-        className="ui-icon-button h-9 w-9 border-border-subtle bg-panel/40 hover:border-accent-blue/30 hover:bg-accent-blue/10 hover:text-accent-blue disabled:cursor-not-allowed disabled:opacity-40"
+        type="button"
+        className="ui-icon-button h-7 w-7 hover:bg-accent-blue/10 hover:text-accent-blue disabled:cursor-not-allowed disabled:opacity-40"
         disabled={!activeProjectId}
-        onClick={() => { setOpen(false); setNewMenuOpen((value) => !value); }}
+        onClick={() => { onOpen?.(); setOpen(false); setNewMenuOpen((value) => !value); }}
         title={t('agent.newConversation')}
       >
         <Icon name="plus" size={13} />
       </button>
-      {newMenuOpen && <div className="ui-popover absolute right-0 top-full z-50 mt-1.5 min-w-36 p-1.5">
+      {newMenuOpen && <div className="ui-popover absolute right-2.5 top-11 z-50 max-h-[calc(100%-3.5rem)] w-36 max-w-[calc(100%-1.25rem)] overflow-y-auto p-1.5">
         {(['claude', 'codex'] as const).map((backendId) => <button key={backendId} type="button"
           className="w-full rounded-md px-3 py-2 text-left text-xs text-text-secondary hover:bg-raised hover:text-text-primary"
-          onClick={() => { setNewMenuOpen(false); void newConversation(backendId); }}>
+          onClick={() => { setNewMenuOpen(false); newTriggerRef.current?.focus(); void newConversation(backendId); }}>
           {backendId === 'claude' ? 'Claude' : 'Codex'}
         </button>)}
       </div>}

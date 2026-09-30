@@ -58,7 +58,7 @@ export function StatusBar() {
     : `${proxyEnabled ? 'Proxy' : 'Local'} exit ${proxyIp}, status ${proxyState.toUpperCase()}, click to turn proxy ${proxyEnabled ? 'off' : 'on'}`;
 
   return (
-    <div className="flex h-7 shrink-0 select-none items-center border-t border-border-subtle bg-canvas px-3 text-[11px] text-text-muted">
+    <div className="flex h-7 shrink-0 select-none items-center bg-canvas px-3 text-[11px] text-text-muted">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {session && (
           <div className="flex items-center gap-2 font-mono text-[11px]">

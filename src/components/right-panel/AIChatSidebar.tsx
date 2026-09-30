@@ -79,7 +79,7 @@ export function AIChatSidebar() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
       <PanelHeader
         title={<span className="flex items-center gap-2"><Icon name="bot" size={15} className="text-accent-blue" /><span>{t('agent.assistant')}</span>
           <span
@@ -101,6 +101,7 @@ export function AIChatSidebar() {
           )}
         </span>}
         actions={<div className="flex items-center gap-1">
+          <ConversationSelector onOpen={() => setInboxOpen(false)} />
           <div className="relative">
             <IconButton name="bell" label={t('agent.inbox')} size={14} onClick={() => setInboxOpen((open) => !open)} />
             {attentionItems.some((item) => !item.read) && <span className="pointer-events-none absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-status-warning" />}
@@ -129,12 +130,10 @@ export function AIChatSidebar() {
         </div>}
       />
 
-      <ConversationSelector />
-
       <ContextIndicator />
 
       {agentStatus.state === 'error' && agentStatus.lastError && (
-        <div className="border-b border-severity-critical/20 bg-severity-critical/10 px-3 py-2 text-2xs text-severity-critical">
+        <div className="bg-severity-critical/10 px-3 py-2 text-2xs text-severity-critical">
           {agentStatus.lastError}
         </div>
       )}

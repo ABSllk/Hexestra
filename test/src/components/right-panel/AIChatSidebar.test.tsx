@@ -47,6 +47,15 @@ describe('AIChatSidebar interaction layout', () => {
     expect(screen.getByRole('region', { name: 'Claude question' })).not.toHaveClass('max-h-[58vh]');
   });
 
+  it('keeps conversation controls in the title bar without a separate history row', () => {
+    render(<AIChatSidebar />);
+    const history = screen.getByRole('button', { name: 'Conversation history' });
+    const header = history.closest('header');
+    expect(header).not.toBeNull();
+    expect(header).toContainElement(screen.getByRole('button', { name: 'New conversation' }));
+    expect(screen.queryByRole('combobox', { name: 'Select conversation' })).not.toBeInTheDocument();
+  });
+
   it('projects only the active managed record into the context indicator', async () => {
     useTabStore.setState({
       tabs: [

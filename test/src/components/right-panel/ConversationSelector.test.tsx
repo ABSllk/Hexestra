@@ -38,16 +38,72 @@ describe('ConversationSelector', () => {
   it('selects a persisted conversation', () => {
     render(<ConversationSelector />);
 
-    fireEvent.click(screen.getByRole('combobox', { name: 'Select conversation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Conversation history' }));
     fireEvent.click(screen.getByRole('option', { name: /Web attack path.*2 messages/ }));
 
     expect(switchBranch).toHaveBeenCalledWith('conversation-2');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Conversation history' })).toHaveFocus();
+  });
+
+  it('shows history only in the floating list and marks the active conversation', () => {
+    render(<ConversationSelector />);
+    const trigger = screen.getByRole('button', { name: 'Conversation history' });
+    expect(screen.queryByText('Initial reconnaissance')).not.toBeInTheDocument();
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('option', { name: /Initial reconnaissance/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('option', { name: /Web attack path/ })).toHaveAttribute('aria-selected', 'false');
+    fireEvent.click(screen.getByRole('option', { name: /Initial reconnaissance/ }));
+    expect(switchBranch).not.toHaveBeenCalled();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('closes history on outside click or Escape and restores keyboard focus', () => {
+    render(<ConversationSelector />);
+    const trigger = screen.getByRole('button', { name: 'Conversation history' });
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveFocus();
+  });
+
+  it('keeps history and the new-conversation menu mutually exclusive', () => {
+    render(<ConversationSelector />);
+    const history = screen.getByRole('button', { name: 'Conversation history' });
+    const create = screen.getByRole('button', { name: 'New conversation' });
+    fireEvent.click(history);
+    fireEvent.click(create);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(create).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.keyDown(history, { key: 'ArrowDown' });
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(create).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('handles an empty project history', () => {
+    useChatStore.setState({ branches: [] });
+    render(<ConversationSelector />);
+    fireEvent.click(screen.getByRole('button', { name: 'Conversation history' }));
+    expect(screen.getByText('No conversation selected')).toBeInTheDocument();
+  });
+
+  it('disables conversation controls without a project', () => {
+    useChatStore.setState({ activeProjectId: null, branches: [] });
+    render(<ConversationSelector />);
+    expect(screen.getByRole('button', { name: 'Conversation history' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'New conversation' })).toBeDisabled();
   });
 
   it('supports keyboard navigation in the conversation menu', () => {
     render(<ConversationSelector />);
 
-    const trigger = screen.getByRole('combobox', { name: 'Select conversation' });
+    const trigger = screen.getByRole('button', { name: 'Conversation history' });
     trigger.focus();
     fireEvent.keyDown(trigger, { key: 'ArrowDown' });
     fireEvent.keyDown(screen.getByRole('option', { name: /Initial reconnaissance.*4 messages/ }), { key: 'ArrowDown' });
@@ -83,7 +139,7 @@ describe('ConversationSelector', () => {
     useChatStore.setState({ isProcessing: true });
     render(<ConversationSelector />);
 
-    expect(screen.getByRole('combobox', { name: 'Select conversation' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Conversation history' })).not.toBeDisabled();
     expect(screen.getByRole('button', { name: 'New conversation' })).not.toBeDisabled();
   });
 });

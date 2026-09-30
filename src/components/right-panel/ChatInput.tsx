@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AgentConnectionSettings, AgentSettingsContainer } from '@electron/contracts/agent-settings';
 import type { AgentReasoningEffort } from '@electron/contracts/agent-runtime';
 import type { ClaudeSkillListResult } from '@electron/contracts/claude-capabilities';
@@ -181,8 +181,24 @@ export function ChatInput() {
     textareaRef.current?.focus();
   }, [focusNonce]);
 
-  useEffect(() => {
-    adjustHeight();
+  useLayoutEffect(() => {
+    const element = textareaRef.current;
+    const composer = composerRef.current;
+    if (!element || !composer) return;
+    const resize = () => {
+      element.style.height = '32px';
+      if (element.value) element.style.height = `${Math.max(32, Math.min(element.scrollHeight, 144))}px`;
+    };
+    resize();
+    let width = composer.getBoundingClientRect().width;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.width !== width) {
+        width = entry.contentRect.width;
+        resize();
+      }
+    });
+    observer.observe(composer);
+    return () => observer.disconnect();
   }, [text]);
 
   const handleSend = useCallback(async () => {
@@ -295,13 +311,6 @@ export function ChatInput() {
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
-  const adjustHeight = () => {
-    const element = textareaRef.current;
-    if (!element) return;
-    element.style.height = 'auto';
-    element.style.height = `${Math.min(element.scrollHeight, 144)}px`;
-  };
-
   const modeLabel = t(`agent.permissionMode.${permissionMode}`);
   const modeShortLabel = permissionMode === 'bypassPermissions'
     ? t('agent.permissionModeShort.bypassPermissions') : modeLabel;
@@ -318,8 +327,8 @@ export function ChatInput() {
   const effortLabel = selectedEffort ? t(`agent.effort.${selectedEffort}`) : t('agent.effort.default');
 
   return (
-    <div ref={composerRef} className={cn('agent-composer relative z-30 shrink-0 border-t border-border-subtle bg-canvas/95 p-2.5', isProcessing && 'agent-composer-processing')}>
-      <div className="rounded-xl border border-border-subtle/80 bg-panel shadow-lg shadow-black/10 transition-colors focus-within:!border-accent-blue/45 hover:border-border-strong/60">
+    <div ref={composerRef} className={cn('agent-composer relative z-30 shrink-0 bg-transparent p-2.5', isProcessing && 'agent-composer-processing')}>
+      <div className="agent-composer-card border border-border-subtle/80 bg-panel shadow-lg shadow-black/10 transition-colors focus-within:!border-accent-blue/45 hover:border-border-strong/60">
         {contextRefs.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-3">
             {contextRefs.map((ref) => (
@@ -380,7 +389,6 @@ export function ChatInput() {
               setText(activeCommand
                 ? `${activeCommand.name}${event.target.value ? ` ${event.target.value}` : ''}`
                 : event.target.value);
-              adjustHeight();
             }}
             onKeyDown={handleKeyDown}
             placeholder={activeCommand ? t('agent.commandArguments') : t('agent.placeholder')}
@@ -390,7 +398,7 @@ export function ChatInput() {
             aria-expanded={showCommandSuggestions}
             aria-controls={showCommandSuggestions ? 'agent-command-suggestions' : undefined}
             aria-activedescendant={showCommandSuggestions ? `agent-command-option-${activeCommandIndex}` : undefined}
-            className="agent-composer-input max-h-36 min-h-8 min-w-0 flex-1 resize-none rounded-md border-0 bg-transparent p-0 font-sans text-xs leading-5 text-text-primary placeholder:text-text-muted"
+            className="agent-composer-input max-h-36 min-h-8 min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent p-0 font-sans text-xs leading-5 text-text-primary placeholder:text-text-muted"
           />
         </div>
 

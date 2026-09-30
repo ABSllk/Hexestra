@@ -53,7 +53,7 @@ export function TitleBar() {
   };
 
   return <header
-    className={`relative z-[100] flex h-9 shrink-0 select-none items-center border-b border-border-subtle bg-canvas text-text-muted ${capabilities?.usesNativeTitleBar ? 'pl-20' : ''}`}
+    className={`relative z-[100] flex h-9 shrink-0 select-none items-center bg-canvas text-text-muted ${capabilities?.usesNativeTitleBar ? 'pl-20' : ''}`}
     style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     onDoubleClick={() => void windowAction('app:window:toggle-maximize')}
   >

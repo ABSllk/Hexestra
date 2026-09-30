@@ -22,6 +22,7 @@ export type IconName =
   | 'fit'
   | 'folder'
   | 'grip'
+  | 'history'
   | 'home'
   | 'image'
   | 'layers'
@@ -180,6 +181,12 @@ const ICON_PATHS: Record<IconName, ReactNode> = {
       <circle cx="15" cy="12" r=".75" fill="currentColor" stroke="none" />
       <circle cx="9" cy="18" r=".75" fill="currentColor" stroke="none" />
       <circle cx="15" cy="18" r=".75" fill="currentColor" stroke="none" />
+    </>
+  ),
+  history: (
+    <>
+      <path d="M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7" />
+      <path d="M12 7v5l3 2" />
     </>
   ),
   home: (

@@ -424,8 +424,8 @@ export function NetMapView() {
     && (selectedProjectNode.type === 'api' || selectedProjectNode.type === 'endpoint');
 
   return (
-    <section className="netmap-shell flex h-full flex-col" aria-label={`${perspective} asset relationship map`}>
-      <header className="flex shrink-0 items-center justify-between border-b border-accent-teal/10 bg-[rgb(var(--app-color-netmap-chrome)/0.95)] px-3 py-1.5">
+    <section className="netmap-shell flex h-full flex-col overflow-hidden rounded-t-xl" aria-label={`${perspective} asset relationship map`}>
+      <header className="flex shrink-0 items-center justify-between px-3 py-1.5">
         <div className="flex items-center gap-2">
           <Icon name="network" size={14} className="text-accent-teal" />
           <span className="font-mono text-xs font-semibold tracking-[0.16em] text-text-secondary select-none">
@@ -569,7 +569,7 @@ export function NetMapView() {
 
       </div>
 
-      <footer className="flex shrink-0 items-center gap-3 border-t border-accent-teal/10 bg-[rgb(var(--app-color-netmap-chrome)/0.95)] px-3 py-1 font-mono text-[11px] text-text-muted select-none">
+      <footer className="flex shrink-0 items-center gap-3 px-3 py-1 font-mono text-[11px] text-text-muted select-none">
         {Object.entries(palette.nodeColors).map(([status, color]) => (
           <div key={status} className="flex items-center gap-1.5">
             <span

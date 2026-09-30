@@ -21,7 +21,7 @@ export function ContextIndicator() {
 
   return (
     <div
-      className="flex shrink-0 items-center gap-1.5 border-b border-border-subtle/60 bg-panel/55 px-3 py-2"
+      className="flex shrink-0 items-center gap-1.5 bg-panel/55 px-3 py-2"
       title="Context shared with Claude"
     >
       <Icon name="eye" size={12} className="shrink-0 text-accent-teal" />
