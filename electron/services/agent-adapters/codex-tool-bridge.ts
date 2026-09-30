@@ -23,7 +23,7 @@ export class CodexToolBridge {
     if (this.server) return;
     this.definitions = new Map(definitions.map((definition) => [definition.name, definition]));
     const createSession = async () => {
-    const mcp = new McpServer({ name: 'hexestra', version: '0.8.0' });
+    const mcp = new McpServer({ name: 'hexestra', version: '0.8.1' });
     for (const definition of definitions) {
       mcp.registerTool(definition.name, {
         description: definition.description,

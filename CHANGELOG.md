@@ -2,6 +2,29 @@
 
 ## Unreleased / 未发布
 
+## [0.8.1] - 2026-10-01
+
+### Added / 新增
+
+- 设置页新增 Claude Code / Codex 标签，可查看和管理对应的 Skills 与 MCP 配置；Codex 托管 Skill 可复制到可编辑目录。
+  Added Claude Code / Codex tabs for managing each backend's Skills and MCP configuration, including copying managed Codex Skills into editable folders.
+- 欢迎页现在可以关闭，标签栏末尾的加号可重新打开；关闭最后一个标签时会自动显示欢迎页。
+  Made the Welcome tab closable, added a trailing button to reopen it, and restored it automatically when the last tab closes.
+
+### Changed / 变更
+
+- 统一侧栏、标签页和设置界面的卡片样式；左栏支持带动画的展开与收起，AI 历史对话改为悬浮菜单，NetMap 使用连续背景。
+  Unified card styling across sidebars, tabs, and Settings; added animated sidebar collapse, a floating conversation-history menu, and a continuous NetMap background.
+- 输入框和下拉框统一为 8px 圆角，原生下拉菜单改为与主题一致的自定义菜单，并补齐相关中文文案。
+  Standardized input and dropdown corners at 8px, replaced native dropdown popups with themed menus, and completed related Chinese copy.
+
+### Fixed / 修复
+
+- 修复 Codex 调用 Hexestra MCP 工具时被前置审批策略拒绝的问题；Hexestra 内部的逐项授权检查仍然生效，并显示具体错误信息。
+  Fixed Codex MCP calls being rejected before Hexestra's own authorization checks and surfaced concrete tool errors.
+- 修复 AI 输入框异常变高及圆角裁切、侧栏滚动轨道外溢和部分标签描边缺失的问题。
+  Fixed oversized or clipped AI input, sidebar scroll tracks escaping their panels, and missing tab outlines.
+
 ## [0.8.0] - 2026-09-27
 
 ### Added / 新增

@@ -43,7 +43,7 @@ export class CodexAppServer extends EventEmitter {
       this.fail(new Error(`Codex app-server exited (${code ?? 'unknown'})`));
     });
     try {
-      await this.request('initialize', { clientInfo: { name: 'hexestra', title: 'Hexestra', version: '0.8.0' } });
+      await this.request('initialize', { clientInfo: { name: 'hexestra', title: 'Hexestra', version: '0.8.1' } });
       this.notify('initialized', {});
     } catch (error) {
       this.close();
