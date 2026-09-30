@@ -1,3 +1,4 @@
+import { Select as StyledSelect } from '@/components/shared/Select';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   ClaudeSkillDocument,
@@ -15,18 +16,34 @@ import { useSessionStore } from '@/stores';
 import { useI18n, type TranslationKey } from '@/i18n';
 import { isClaudeCapabilityName } from '@electron/contracts/claude-capabilities';
 import YAML from 'yaml';
+import { CodexSkillsSettings } from './CodexSkillsSettings';
+import { AgentBackendTabs } from './AgentBackendTabs';
 
-const NEW_SKILL = `---
-name: new-skill
-description: Describe when Claude should use this skill
+function newSkillTemplate(name: string, t: (key: TranslationKey) => string) {
+  return `---
+name: ${name}
+description: ${t('skills.claudeTemplateDescription')}
 ---
 
-# New Skill
+# ${t('skills.new')}
 
-Add the workflow and constraints Claude should follow.
+${t('skills.claudeTemplateBody')}
 `;
+}
 
-export function SkillsSettings() {
+export function SkillsSettings({ backend: controlledBackend, onBackendChange }: {
+  backend?: 'claude' | 'codex'; onBackendChange?: (backend: 'claude' | 'codex') => void;
+} = {}) {
+  const [localBackend, setLocalBackend] = useState<'claude' | 'codex'>('claude');
+  const backend = controlledBackend ?? localBackend;
+  const setBackend = onBackendChange ?? setLocalBackend;
+  return <div className="flex h-full min-h-0 flex-col bg-canvas">
+    <AgentBackendTabs value={backend} onChange={setBackend} />
+    <div className="min-h-0 flex-1">{backend === 'claude' ? <ClaudeSkillsSettings /> : <CodexSkillsSettings />}</div>
+  </div>;
+}
+
+function ClaudeSkillsSettings() {
   const { t } = useI18n();
   const confirm = useConfirmDialog();
   const sessionId = useSessionStore((state) => state.currentSession?.id ?? null);
@@ -217,11 +234,11 @@ export function SkillsSettings() {
     let candidate = 'new-skill';
     let suffix = 2;
     while (names.has(candidate)) candidate = `new-skill-${suffix++}`;
-    const nextContent = NEW_SKILL.replaceAll('new-skill', candidate);
+    const nextContent = newSkillTemplate(candidate, t);
     setDocument({
       id: 'new',
       name: candidate,
-      description: 'New Skill',
+      description: t('skills.new'),
       scope: sessionId ? 'project' : 'global',
       enabled: true,
       sourcePath: '',
@@ -275,10 +292,10 @@ export function SkillsSettings() {
   const remove = async () => {
     if (!document || document.id === 'new') return;
     if (!await confirm({
-      title: 'Delete Skill?',
-      description: `Remove “${document.name}” and every file in its Skill directory.`,
-      details: `Scope: ${document.scope}`,
-      confirmLabel: 'Delete Skill',
+      title: t('skills.deleteTitle'),
+      description: t('skills.deleteDescription', { name: document.name }),
+      details: t('skills.deleteDetails', { scope: t(document.scope === 'global' ? 'skills.scopeGlobal' : document.scope === 'project' ? 'skills.scopeProject' : 'skills.scopeCore') }),
+      confirmLabel: t('skills.deleteConfirm'),
       tone: 'danger',
     })) return;
     setBusy('delete');
@@ -346,7 +363,7 @@ export function SkillsSettings() {
             )}
           </div>
           <Button tone="primary" leadingIcon="plus" onClick={create}>
-            New Skill
+            {t('skills.new')}
           </Button>
         </div>
       </header>
@@ -354,7 +371,7 @@ export function SkillsSettings() {
       <div className="grid min-h-0 flex-1 grid-cols-[250px_1fr]">
         <aside className="min-h-0 overflow-y-auto border-r border-border-subtle bg-panel/25 p-2">
           {!result && <p className="p-3 text-xs text-text-muted">{t('skills.loading')}</p>}
-          {result?.items.length === 0 && <EmptyList text="No global or project user Skills found." />}
+          {result?.items.length === 0 && <EmptyList text={t('skills.empty')} />}
           <div className="space-y-1">
             {result?.items.map((item) => (
               <SettingsListRow
@@ -363,7 +380,7 @@ export function SkillsSettings() {
                 onSelect={() => void select(item)}
                 ariaLabel={item.name}
                 title={item.name}
-                badge={item.scope}
+                badge={t(item.scope === 'global' ? 'skills.scopeGlobal' : item.scope === 'project' ? 'skills.scopeProject' : 'skills.scopeCore')}
                 description={item.description}
                 status={item.enabled ? 'success' : 'muted'}
                 statusLabel={item.enabled ? t('skills.enabled') : t('skills.disabled')}
@@ -410,30 +427,30 @@ export function SkillsSettings() {
             <div className="mx-auto max-w-4xl rounded-lg border border-border-subtle bg-panel/55 p-4">
               <div className="mb-4 grid grid-cols-[1fr_150px] gap-3">
                 <label>
-                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">Skill name</span>
-                  <input aria-label="Skill name" value={name} onChange={(event) => setName(event.target.value)} className="settings-input font-mono" />
+                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">{t('skills.name')}</span>
+                  <input aria-label={t('skills.name')} value={name} onChange={(event) => setName(event.target.value)} className="settings-input font-mono" />
                 </label>
                 <label>
-                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">Scope</span>
-                  <select aria-label="Skill scope" value={scope} disabled={document.id !== 'new'} onChange={(event) => setScope(event.target.value as ClaudeSkillScope)} className="settings-input">
-                    <option value="global">Global user</option>
-                    <option value="project" disabled={!sessionId}>Project user</option>
-                    <option value="core">Hexestra core</option>
-                  </select>
+                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">{t('skills.scope')}</span>
+                  <StyledSelect aria-label={t('skills.scope')} value={scope} disabled={document.id !== 'new'} onChange={(event) => setScope(event.target.value as ClaudeSkillScope)} className="settings-input">
+                    <option value="global">{t('skills.scopeGlobal')}</option>
+                    <option value="project" disabled={!sessionId}>{t('skills.scopeProject')}</option>
+                    <option value="core" disabled>{t('skills.scopeCore')}</option>
+                  </StyledSelect>
                 </label>
               </div>
               <div className="mb-4 grid gap-3 sm:grid-cols-2">
                 <MetadataField label="ATT&CK tactics" value={metadata.tactics} onChange={(value) => setMetadata((current) => ({ ...current, tactics: value }))} placeholder="TA0043" />
                 <MetadataField label="ATT&CK techniques" value={metadata.techniques} onChange={(value) => setMetadata((current) => ({ ...current, techniques: value }))} placeholder="T1595.001,T1595.002" />
-                <MetadataField label="Capabilities" value={metadata.capabilities} onChange={(value) => setMetadata((current) => ({ ...current, capabilities: value }))} placeholder="port-scanning,service-fingerprinting" />
-                <MetadataField label="Risk" value={metadata.risk} onChange={(value) => setMetadata((current) => ({ ...current, risk: value }))} placeholder="active" />
+                <MetadataField label={t('skills.capabilities')} value={metadata.capabilities} onChange={(value) => setMetadata((current) => ({ ...current, capabilities: value }))} placeholder="port-scanning,service-fingerprinting" />
+                <MetadataField label={t('skills.risk')} value={metadata.risk} onChange={(value) => setMetadata((current) => ({ ...current, risk: value }))} placeholder="active" />
               </div>
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-[11px] font-medium text-text-secondary">SKILL.md</span>
-                <span className="font-mono text-[11px] text-text-muted">{content.length.toLocaleString()} chars</span>
+                <span className="font-mono text-[11px] text-text-muted">{t('skills.chars', { count: content.length.toLocaleString() })}</span>
               </div>
               <textarea
-                aria-label="Skill markdown"
+                aria-label={t('skills.markdown')}
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
                 spellCheck={false}
@@ -446,14 +463,14 @@ export function SkillsSettings() {
                   {document.id !== 'new' && (
                     <>
                       <button onClick={() => void toggle()} disabled={Boolean(busy) || document.scope === 'core'} className="rounded border border-border-subtle px-3 py-1.5 text-xs text-text-secondary hover:border-accent-blue/30 disabled:opacity-40">
-                        {document.enabled ? 'Disable' : 'Enable'}
+                        {document.enabled ? t('skills.disable') : t('skills.enable')}
                       </button>
-                      <button onClick={() => void remove()} disabled={Boolean(busy) || document.scope === 'core'} className="rounded px-3 py-1.5 text-xs text-severity-critical hover:bg-severity-critical/10 disabled:opacity-40">Delete</button>
+                      <button onClick={() => void remove()} disabled={Boolean(busy) || document.scope === 'core'} className="rounded px-3 py-1.5 text-xs text-severity-critical hover:bg-severity-critical/10 disabled:opacity-40">{t('skills.delete')}</button>
                     </>
                   )}
                 </div>
                 <button onClick={() => void save()} disabled={Boolean(busy) || document.scope === 'core' || (!dirty && document.id !== 'new')} className="rounded border border-accent-blue/30 bg-accent-blue/15 px-3 py-1.5 text-xs font-medium text-accent-blue hover:bg-accent-blue/20 disabled:opacity-40">
-                  {busy === 'save' ? 'Saving...' : 'Save Skill'}
+                  {busy === 'save' ? t('skills.saving') : t('skills.save')}
                 </button>
               </div>
             </div>
@@ -539,7 +556,7 @@ function SkillImportReview({
         </label>
         <label>
           <span className="mb-1 block text-[11px] font-medium text-text-secondary">{t('skills.importScope')}</span>
-          <select
+          <StyledSelect
             aria-label={t('skills.importScope')}
             value={scope}
             onChange={(event) => onScopeChange(event.target.value as 'global' | 'project')}
@@ -547,7 +564,7 @@ function SkillImportReview({
           >
             <option value="global">{t('skills.scopeGlobal')}</option>
             <option value="project" disabled={!sessionId}>{t('skills.scopeProject')}</option>
-          </select>
+          </StyledSelect>
         </label>
       </div>
 
@@ -571,7 +588,7 @@ function SkillImportReview({
       <div className="min-h-0 flex-1">
         <div className="mb-1 flex items-center justify-between">
           <span className="text-[11px] font-medium text-text-secondary">{t('skills.importPreview')}</span>
-          <span className="font-mono text-[10px] text-text-muted">{preview.content.length.toLocaleString()} chars</span>
+          <span className="font-mono text-[10px] text-text-muted">{t('skills.chars', { count: preview.content.length.toLocaleString() })}</span>
         </div>
         <textarea
           aria-label={t('skills.importPreview')}

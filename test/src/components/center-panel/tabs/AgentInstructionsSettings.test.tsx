@@ -53,6 +53,8 @@ describe('AgentInstructionsSettings restriction editor', () => {
     const restrictionInput = screen.getByLabelText('Restriction');
     expect(restrictionInput).toHaveClass('settings-textarea-large');
     expect(restrictionInput).toHaveAttribute('rows', '7');
+    expect(restrictionInput.closest('.overflow-y-auto')).toContainElement(screen.getByRole('button', { name: 'Save restriction' }));
+    expect(pane.querySelector('footer')).toBeNull();
     await waitFor(() => expect(restrictionInput).toHaveFocus());
   });
 
@@ -98,11 +100,17 @@ describe('AgentInstructionsSettings restriction editor', () => {
     });
     renderSettings();
     fireEvent.click((await screen.findAllByRole('button', { name: 'Add restriction' }))[0]);
+    expect(screen.queryByRole('region', { name: 'Classification suggestion' })).not.toBeInTheDocument();
     const restrictionInput = screen.getByLabelText('Restriction');
     fireEvent.change(restrictionInput, { target: { value: 'Limit IP range scan rate.' } });
     fireEvent.blur(restrictionInput);
+    expect(invoke).not.toHaveBeenCalledWith('restrictions:classify', expect.anything(), expect.anything());
+    expect(screen.queryByRole('region', { name: 'Classification suggestion' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Classify with Agent' }));
 
     expect(await screen.findByText('Classification suggestion')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Classification suggestion' })).toBeInTheDocument();
     expect(screen.getByText('1 ATT&CK binding')).toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalledWith('restrictions:upsert', expect.anything(), expect.anything(), expect.anything());
 

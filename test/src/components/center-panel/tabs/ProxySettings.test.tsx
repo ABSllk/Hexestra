@@ -1,3 +1,4 @@
+import { selectOption } from '../../../../helpers/select';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EGRESS_PROXY_IPC } from '@electron/contracts/egress-proxy';
@@ -219,7 +220,7 @@ describe('ProxySettings', () => {
     expect(await screen.findByText('18 ms')).toBeInTheDocument();
     expect(screen.getByText('TIMEOUT')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Select proxy chain'), { target: { value: 'chain-1' } });
+    selectOption(screen.getByLabelText('Select proxy chain'), 'Two hop · 2 HOPS');
     expect(await screen.findByText('28 ms')).toBeInTheDocument();
     expect(screen.getAllByText('64 ms').length).toBeGreaterThanOrEqual(2);
 
@@ -252,7 +253,8 @@ describe('ProxySettings', () => {
     });
 
     render(<I18nProvider><ProxySettings /></I18nProvider>);
-    fireEvent.change(await screen.findByLabelText('Select proxy chain'), { target: { value: 'chain-1' } });
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith(EGRESS_PROXY_IPC.CHAINS_LIST, 'project-1'));
+    selectOption(screen.getByLabelText('Select proxy chain'), 'Two hop · 2 HOPS');
 
     const flow = screen.getByLabelText('Proxy chain traffic order');
     expect(within(flow).getByText('28 ms')).toBeInTheDocument();

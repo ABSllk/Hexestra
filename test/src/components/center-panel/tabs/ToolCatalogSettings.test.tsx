@@ -53,7 +53,7 @@ describe('ToolCatalogSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'nmap' }));
     expect(screen.getByLabelText('ID')).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Enabled' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save tool' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith(
       TOOL_CATALOG_IPC.UPDATE,

@@ -1,3 +1,4 @@
+import { Select as StyledSelect } from '@/components/shared/Select';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ATTACK_TACTICS, ATTACK_TECHNIQUES } from '@electron/contracts/tasks';
 import type { RestrictionDocumentResult, RestrictionRule, RestrictionSelector } from '@electron/services/restriction.service';
@@ -68,7 +69,6 @@ function RestrictionEditorPane({
   const [classificationError, setClassificationError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<RestrictionClassificationSuggestion | null>(null);
   const classificationInFlight = useRef(false);
-  const lastClassifiedText = useRef('');
 
   useEffect(() => {
     window.setTimeout(() => textRef.current?.focus(), 0);
@@ -91,15 +91,14 @@ function RestrictionEditorPane({
     ));
   }, [attackSelector, tacticFilter, techniqueQuery]);
 
-  const classify = async (force = false) => {
+  const classify = async () => {
     const text = editor.text.trim();
-    if (text.length < 4 || classificationInFlight.current || (!force && lastClassifiedText.current === text)) return;
+    if (text.length < 4 || classificationInFlight.current) return;
     classificationInFlight.current = true;
     setClassificationError(null);
     setClassifying(true);
     try {
       const result = await onClassify(text);
-      lastClassifiedText.current = text;
       if (textRef.current?.value.trim() === text) setSuggestion(result);
     } catch (reason) {
       setClassificationError(String(reason));
@@ -155,8 +154,7 @@ function RestrictionEditorPane({
 
       <div className={cn('min-h-0 flex-1 overflow-hidden', editorView === 'catalog' ? 'p-3' : 'p-4')}>
         {editorView === 'details' ? (
-          <div className="grid h-full min-h-0 grid-cols-[minmax(16rem,1fr)_minmax(14rem,0.72fr)] gap-4">
-            <div className="min-h-0 overflow-y-auto pr-1">
+          <div className="h-full min-h-0 overflow-y-auto pr-1">
             <label className="block text-xs font-medium text-text-secondary">
               {t('restrictions.rule')}
               <textarea
@@ -167,7 +165,6 @@ function RestrictionEditorPane({
                   setSuggestion(null);
                   setClassificationError(null);
                 }}
-                onBlur={() => void classify()}
                 rows={7}
                 placeholder={t('restrictions.rulePlaceholder')}
                 className="settings-input settings-textarea-large mt-1.5 w-full resize-y text-xs leading-5"
@@ -176,11 +173,44 @@ function RestrictionEditorPane({
 
             <div className="mt-3 flex items-center justify-between gap-3">
               <p className="text-[11px] leading-4 text-text-muted">{t('restrictions.analyzeHint')}</p>
-              <Button size="compact" leadingIcon="sparkles" disabled={editor.text.trim().length < 4 || classifying} onClick={() => void classify(true)}>
+              <Button size="compact" leadingIcon="sparkles" disabled={editor.text.trim().length < 4 || classifying} onClick={() => void classify()}>
                 {classifying ? t('restrictions.classifying') : t('restrictions.classify')}
               </Button>
             </div>
             {classificationError && <DismissibleNotice tone="error" className="mt-3" onDismiss={() => setClassificationError(null)}>{classificationError}</DismissibleNotice>}
+
+            {suggestion && (
+              <section aria-label={t('restrictions.suggestion')} className="mt-3 rounded-lg border border-accent-blue/30 bg-panel/30 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Icon name="sparkles" size={15} className="shrink-0 text-accent-blue" />
+                    <span className="text-xs font-medium text-text-secondary">{t('restrictions.suggestion')}</span>
+                    <span className="truncate text-xs text-accent-blue">{suggestion.selector.kind === 'general' ? t('restrictions.suggestGeneral') : selectorLabel(suggestion.selector)}</span>
+                    <span className="text-[11px] text-text-muted">{t('restrictions.confidence', { level: confidenceLabel })}</span>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="compact" onClick={() => setSuggestion(null)}>{t('restrictions.keepManual')}</Button>
+                    <Button size="compact" tone="primary" onClick={() => {
+                      onChange({ ...editor, selector: suggestion.selector });
+                      setSuggestion(null);
+                    }}>{t('restrictions.applySuggestion')}</Button>
+                  </div>
+                </div>
+                <details className="mt-2 text-[11px] text-text-muted">
+                  <summary className="cursor-pointer select-none">{t('restrictions.viewReason')}</summary>
+                  <p className="mt-2 leading-5">{suggestion.reason}</p>
+                  {suggestion.selector.kind === 'attack' && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {[...suggestion.matchedTactics, ...suggestion.matchedTechniques].map((item) => (
+                        <span key={item.id} className="rounded border border-accent-blue/25 bg-accent-blue/8 px-2 py-1 font-mono text-[11px] text-text-secondary" title={item.name}>
+                          {item.id} · {item.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </details>
+              </section>
+            )}
 
             <div className="mt-4">
               <div className="text-xs font-medium text-text-secondary">{t('restrictions.appliesTo')}</div>
@@ -245,44 +275,9 @@ function RestrictionEditorPane({
                 </div>
               </div>
             </div>
-            </div>
-
-            <div className={cn('flex h-full min-h-0 items-center justify-center rounded-lg border bg-panel/20 p-6', suggestion ? 'border-accent-blue/30' : 'border-dashed border-border-subtle')}>
-              <div className="max-w-xs">
-                <Icon name={suggestion ? 'sparkles' : attackSelector ? 'target' : 'shield'} size={24} className={cn('mx-auto mb-3', suggestion || attackSelector ? 'text-accent-blue' : 'text-accent-teal')} />
-                <p className="text-xs font-medium text-text-secondary">{suggestion ? t('restrictions.suggestion') : attackSelector ? t('restrictions.attackAware') : t('restrictions.noAttackFiltering')}</p>
-                {suggestion ? (
-                  <>
-                    <p className="mt-1 text-[11px] text-accent-blue">{suggestion.selector.kind === 'general' ? t('restrictions.suggestGeneral') : selectorLabel(suggestion.selector)}</p>
-                    <p className="mt-2 text-[11px] leading-5 text-text-muted">{suggestion.reason}</p>
-                    {suggestion.selector.kind === 'attack' && (
-                      <div className="mt-2 flex flex-wrap justify-center gap-1.5">
-                        {[...suggestion.matchedTactics, ...suggestion.matchedTechniques].map((item) => (
-                          <span key={item.id} className="rounded border border-accent-blue/25 bg-accent-blue/8 px-2 py-1 font-mono text-[11px] text-text-secondary" title={item.name}>
-                            {item.id} · {item.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <p className="mt-1 text-[11px] text-text-muted">{t('restrictions.confidence', { level: confidenceLabel })}</p>
-                    <div className="mt-3 flex justify-center gap-2">
-                      <Button size="compact" onClick={() => setSuggestion(null)}>{t('restrictions.keepManual')}</Button>
-                      <Button size="compact" tone="primary" onClick={() => {
-                        onChange({ ...editor, selector: suggestion.selector });
-                        setSuggestion(null);
-                      }}>{t('restrictions.applySuggestion')}</Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-1 text-[11px] leading-5 text-text-muted">
-                      {attackSelector
-                        ? t('restrictions.selectedSummary', { tactics: attackSelector.tacticIds.length, techniques: attackSelector.techniqueIds.length })
-                        : t('restrictions.appliedEverywhere')}
-                    </p>
-                  </>
-                )}
-              </div>
+            <div className="mt-4 flex justify-end gap-2 pb-1">
+              <Button onClick={onClose}>{t('common.cancel')}</Button>
+              <Button tone="primary" disabled={!editor.text.trim()} onClick={onSave}>{t('restrictions.save')}</Button>
             </div>
           </div>
         ) : attackSelector ? (
@@ -302,10 +297,10 @@ function RestrictionEditorPane({
                     <Icon name="search" size={13} className="pointer-events-none absolute left-2.5 top-2.5 text-text-muted" />
                     <input value={techniqueQuery} onChange={(event) => setTechniqueQuery(event.target.value)} aria-label={t('restrictions.searchTechniques')} placeholder={t('restrictions.searchTechniquePlaceholder')} className="settings-input w-full pl-8 text-xs" />
                   </label>
-                  <select value={tacticFilter} onChange={(event) => setTacticFilter(event.target.value)} aria-label={t('restrictions.filterTactic')} className="settings-input text-xs">
+                  <StyledSelect value={tacticFilter} onChange={(event) => setTacticFilter(event.target.value)} aria-label={t('restrictions.filterTactic')} className="settings-input text-xs">
                     <option value="all">{t('restrictions.allTactics')}</option>
                     {ATTACK_TACTICS.map((tactic) => <option key={tactic.id} value={tactic.id}>{tactic.name}</option>)}
-                  </select>
+                  </StyledSelect>
                 </div>
               )}
 
@@ -354,15 +349,6 @@ function RestrictionEditorPane({
         ) : null}
       </div>
 
-      {editorView === 'details' && (
-        <footer className="flex shrink-0 items-center justify-between gap-4 border-t border-border-subtle bg-panel/35 px-5 py-3">
-          <span className="text-[11px] text-text-muted">{t('restrictions.validationHint')}</span>
-          <div className="flex shrink-0 gap-2">
-            <Button onClick={onClose}>{t('common.cancel')}</Button>
-            <Button tone="primary" disabled={!editor.text.trim()} onClick={onSave}>{t('restrictions.save')}</Button>
-          </div>
-        </footer>
-      )}
     </section>
   );
 }
@@ -550,13 +536,13 @@ export function AgentInstructionsSettings() {
                 <Icon name="search" size={13} className="pointer-events-none absolute left-2.5 top-2.5 text-text-muted" />
                 <input value={search} onChange={(event) => setSearch(event.target.value)} aria-label={t('restrictions.search')} placeholder={t('restrictions.searchPlaceholder')} className="settings-input w-full pl-8 text-xs" />
               </label>
-              <select value={filter} onChange={(event) => setFilter(event.target.value as RestrictionFilter)} aria-label={t('restrictions.filter')} className="settings-input text-xs">
+              <StyledSelect value={filter} onChange={(event) => setFilter(event.target.value as RestrictionFilter)} aria-label={t('restrictions.filter')} className="settings-input text-xs">
                 <option value="all">{t('restrictions.allRules')}</option>
                 <option value="enabled">{t('restrictions.enabled')}</option>
                 <option value="disabled">{t('restrictions.disabled')}</option>
                 <option value="general">{t('restrictions.general')}</option>
                 <option value="attack">ATT&amp;CK</option>
-              </select>
+              </StyledSelect>
             </div>
             <p className="mt-2 text-[11px] text-text-muted">{t('restrictions.rulesInScope', { count: rules.length, scope: scope === 'global' ? t('restrictions.global') : t('restrictions.project') })}</p>
           </div>

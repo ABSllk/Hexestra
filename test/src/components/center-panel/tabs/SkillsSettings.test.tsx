@@ -19,9 +19,9 @@ describe('SkillsSettings', () => {
 
   it('creates a user Skill in the active project', async () => {
     render(<SkillsSettings />);
-    expect(await screen.findByText('No global or project user Skills found.')).toBeInTheDocument();
+    expect(await screen.findByText('No user or project Skills found.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'New Skill' }));
-    expect(screen.getByLabelText('Skill scope')).toHaveValue('project');
+    expect(screen.getByLabelText('Skill scope')).toHaveTextContent('Project');
     fireEvent.change(screen.getByLabelText('Skill markdown'), { target: { value: '# New' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Skill' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('claude:skills:save', expect.objectContaining({ scope: 'project', name: 'new-skill' })));
@@ -53,11 +53,11 @@ describe('SkillsSettings', () => {
     });
 
     render(<SkillsSettings />);
-    await screen.findByText('No global or project user Skills found.');
+    await screen.findByText('No user or project Skills found.');
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
     fireEvent.click(screen.getByRole('button', { name: 'Skill folder' }));
     expect(await screen.findByText('Review Skill import')).toBeInTheDocument();
-    expect(screen.getByLabelText('Install scope')).toHaveValue('project');
+    expect(screen.getByLabelText('Install scope')).toHaveTextContent('Project');
     fireEvent.click(screen.getByRole('button', { name: 'Import & enable' }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('claude:skills:import-apply', expect.objectContaining({
       selectionId: 'selection-1', scope: 'project', name: 'recon-helper', description: 'Recon workflow', collision: 'reject',
@@ -88,7 +88,7 @@ describe('SkillsSettings', () => {
     useSessionStore.setState({ currentSession: null });
 
     render(<SkillsSettings />);
-    await screen.findByText('No global or project user Skills found.');
+    await screen.findByText('No user or project Skills found.');
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
     fireEvent.click(screen.getByRole('button', { name: 'SKILL.md file' }));
     const importButton = await screen.findByRole('button', { name: 'Import & enable' });
@@ -128,7 +128,7 @@ describe('SkillsSettings', () => {
     });
 
     render(<SkillsSettings />);
-    await screen.findByText('No global or project user Skills found.');
+    await screen.findByText('No user or project Skills found.');
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
     fireEvent.click(screen.getByRole('button', { name: 'Skill folder' }));
     expect(await screen.findByText('Package 1 of 2')).toBeInTheDocument();

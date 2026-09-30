@@ -41,6 +41,8 @@ const INVOKE_CHANNELS = new Set([
   'agent:approve-tool', 'agent:reject-tool', 'agent:answer-question', 'agent:cancel', 'agent:clear', 'agent:status',
   'agent:history:page', 'agent:history:activities', 'agent:subagent:detail', 'agent:attention:list', 'agent:attention:read', 'agent:attention:clear',
   'agent:commands:list', 'agent:models:list', 'codex:skills:list',
+  'codex:skills:detailed', 'codex:skills:read', 'codex:skills:save', 'codex:skills:copy', 'codex:skills:toggle', 'codex:skills:delete',
+  'codex:mcp:list', 'codex:mcp:save', 'codex:mcp:toggle', 'codex:mcp:delete',
   'agent:settings:get', 'agent:settings:update', 'agent:settings:reset', 'agent:settings:test',
   'codex:diagnose',
   'claude:skills:list', 'claude:skills:read', 'claude:skills:save', 'claude:skills:toggle', 'claude:skills:delete', 'claude:skills:import-pick', 'claude:skills:import-apply',

@@ -1,6 +1,8 @@
 import { execFile } from 'child_process';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { promisify } from 'util';
 import type { AgentActivity, AgentAdapter, AgentBackendCapabilities, AgentBackendStatus, AgentCommandDiscoveryInput, AgentConversationHandle, AgentConversationOpenInput, AgentInteractionHandler, AgentModelOption, AgentQueuedInput, AgentRunEvent, AgentRunInput } from '../../contracts/agent-runtime';
 import { AgentBackendError } from '../../contracts/agent-runtime';
@@ -10,6 +12,13 @@ import { CodexAppServer } from './codex-app-server';
 import { CodexToolBridge } from './codex-tool-bridge';
 import type { SubagentRun } from '../../agent-subagent-contract';
 import type { AgentSkillDescriptor } from '../../agent-command-contract';
+import type { CodexSkillItem, CodexSkillListResult, CodexSkillSaveInput, CodexSkillCopyInput, CodexMcpItem, CodexMcpListResult, CodexMcpSaveInput } from '../../contracts/codex-capabilities';
+import YAML from 'yaml';
+import { projectUserDataPath } from '../project-registry';
+import { HEXESTRA_CORE_SKILL_NAMES } from '../pentest-skill';
+
+const CAPABILITY_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/;
+const MAX_SKILL_BYTES = 512 * 1024;
 
 const execFileAsync = promisify(execFile);
 const CONTEXT_VERSION = 'hexestra-codex-v1';
@@ -36,6 +45,10 @@ export class CodexAgentAdapter implements AgentAdapter {
   onSkillsChanged(listener: () => void) {
     this.skillsChangedListeners.add(listener);
     return () => this.skillsChangedListeners.delete(listener);
+  }
+
+  private notifySkillsChanged() {
+    for (const listener of this.skillsChangedListeners) listener();
   }
 
   async initialize() {
@@ -98,6 +111,290 @@ export class CodexAgentAdapter implements AgentAdapter {
       skills.set(skill.name, { name: skill.name, description });
     }
     return [...skills.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private runtimePath(windowsPath: string) {
+    const settings = agentSettingsService.getCodexSettings();
+    return settings.executionMode === 'wsl' ? windowsPathToWsl(windowsPath, settings.wslDistribution) : windowsPath;
+  }
+
+  private async skillRoots(cwd: string) {
+    const settings = agentSettingsService.getCodexSettings();
+    let home = os.homedir();
+    if (settings.executionMode === 'wsl') {
+      const { stdout } = await execFileAsync('wsl.exe', ['--distribution', settings.wslDistribution, '--exec', '/usr/bin/env'],
+        { timeout: 10_000, windowsHide: true, maxBuffer: 1024 * 1024 });
+      home = stdout.split(/\r?\n/).find((line) => line.startsWith('HOME='))?.slice(5) ?? '';
+      if (!home.startsWith('/')) throw new Error('Cannot locate the Codex WSL home directory');
+    }
+    const join = settings.executionMode === 'wsl' ? path.posix.join : path.join;
+    return { user: join(home, '.agents', 'skills'), repo: join(this.runtimePath(cwd), '.agents', 'skills') };
+  }
+
+  private async skillContext(input: AgentCommandDiscoveryInput) {
+    const settings = agentSettingsService.getCodexSettings();
+    const roots = await this.skillRoots(input.cwd);
+    const manifestPath = path.join(projectUserDataPath(input.cwd), 'released-skills.json');
+    let mirrored = new Set<string>();
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { names?: unknown };
+      if (Array.isArray(manifest.names)) mirrored = new Set(manifest.names.filter((name): name is string => typeof name === 'string'));
+    } catch { /* A project without Claude Skills has no release manifest. */ }
+    return { roots, mirrored, runtimeLabel: settings.executionMode === 'wsl' ? `Codex · WSL ${settings.wslDistribution}` : 'Codex · Native' };
+  }
+
+  private ownedSkillPath(skillPath: string, root: string) {
+    const api = agentSettingsService.getCodexSettings().executionMode === 'wsl' ? path.posix : path;
+    const normalizedRoot = api.normalize(root);
+    const normalized = api.normalize(skillPath);
+    const expected = api.join(normalizedRoot, api.basename(api.dirname(normalized)), 'SKILL.md');
+    const same = process.platform === 'win32' && api === path
+      ? normalized.toLowerCase() === expected.toLowerCase() : normalized === expected;
+    const inside = process.platform === 'win32' && api === path
+      ? api.dirname(api.dirname(normalized)).toLowerCase() === normalizedRoot.toLowerCase()
+      : api.dirname(api.dirname(normalized)) === normalizedRoot;
+    return same && inside;
+  }
+
+  async listSkillsDetailed(input: AgentCommandDiscoveryInput): Promise<CodexSkillListResult> {
+    const server = await this.getDiagnosticServer();
+    const { roots, mirrored, runtimeLabel } = await this.skillContext(input);
+    const result = await server.request<{ data?: Array<{ skills?: Array<{
+      name?: unknown; description?: unknown; path?: unknown; scope?: unknown; enabled?: unknown;
+      interface?: { shortDescription?: unknown };
+    }>; errors?: Array<{ path?: string; message?: string }> }> }>('skills/list',
+      { cwds: [this.runtimePath(input.cwd)], forceReload: true });
+    const entry = result.data?.[0];
+    const items: CodexSkillItem[] = (entry?.skills ?? []).flatMap((skill) => {
+      if (typeof skill.name !== 'string' || typeof skill.path !== 'string') return [];
+      const scope = skill.scope === 'user' || skill.scope === 'repo' || skill.scope === 'system' || skill.scope === 'admin'
+        ? skill.scope : 'system';
+      return [{ name: skill.name, path: skill.path, scope, enabled: skill.enabled !== false,
+        description: typeof skill.interface?.shortDescription === 'string' ? skill.interface.shortDescription
+          : typeof skill.description === 'string' ? skill.description : '',
+        editable: (scope === 'user' || scope === 'repo')
+          && this.ownedSkillPath(skill.path, scope === 'user' ? roots.user : roots.repo)
+          && !(scope === 'repo' && (mirrored.has(skill.name)
+            || HEXESTRA_CORE_SKILL_NAMES.includes(skill.name as typeof HEXESTRA_CORE_SKILL_NAMES[number]))),
+      }];
+    });
+    items.sort((a, b) => a.scope.localeCompare(b.scope) || a.name.localeCompare(b.name));
+    return { runtimeLabel, projectAvailable: true, items,
+      errors: (entry?.errors ?? []).map((error) => ({ source: error.path ?? 'Codex Skills', detail: error.message ?? 'Unknown error' })) };
+  }
+
+  async readSkill(input: AgentCommandDiscoveryInput, skillPath: string) {
+    const listed = await this.listSkillsDetailed(input);
+    const item = listed.items.find((entry) => entry.path === skillPath);
+    if (!item) throw new Error('Skill is no longer available');
+    const server = await this.getDiagnosticServer();
+    const result = await server.request<{ dataBase64: string }>('fs/readFile', { path: skillPath });
+    const content = Buffer.from(result.dataBase64, 'base64').toString('utf8');
+    if (Buffer.byteLength(content) > MAX_SKILL_BYTES) throw new Error('Skill file is too large to edit');
+    return { ...item, content };
+  }
+
+  async saveSkill(input: AgentCommandDiscoveryInput, change: CodexSkillSaveInput) {
+    if (!CAPABILITY_NAME.test(change.name)) throw new Error('Invalid skill name');
+    if (typeof change.content !== 'string' || Buffer.byteLength(change.content) > MAX_SKILL_BYTES)
+      throw new Error('Skill content exceeds the 512 KB limit');
+    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(change.content);
+    if (!frontmatter) throw new Error('SKILL.md needs YAML frontmatter');
+    const metadata = YAML.parse(frontmatter[1]) as unknown;
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)
+      || (metadata as Record<string, unknown>).name !== change.name
+      || typeof (metadata as Record<string, unknown>).description !== 'string'
+      || !(metadata as Record<string, string>).description.trim())
+      throw new Error('Skill name and description must match the SKILL.md frontmatter');
+    const { roots } = await this.skillContext(input);
+    const api = agentSettingsService.getCodexSettings().executionMode === 'wsl' ? path.posix : path;
+    const root = roots[change.scope];
+    const target = api.join(root, change.name, 'SKILL.md');
+    if (change.originalPath && change.originalPath !== target) throw new Error('Rename or scope change is not supported for an existing Skill');
+    if (change.originalPath && !this.ownedSkillPath(change.originalPath, root)) throw new Error('This Skill is managed outside the editable user/project folders');
+    const server = await this.getDiagnosticServer();
+    if (!change.originalPath) {
+      await server.request('fs/createDirectory', { path: root, recursive: true });
+      await server.request('fs/createDirectory', { path: api.dirname(target), recursive: false });
+    } else {
+      const existing = await this.listSkillsDetailed(input);
+      if (!existing.items.some((item) => item.path === change.originalPath && item.editable))
+        throw new Error('Skill is no longer available for editing');
+      const directory = await server.request<{ isSymlink: boolean }>('fs/getMetadata', { path: api.dirname(target) });
+      const file = await server.request<{ isSymlink: boolean }>('fs/getMetadata', { path: target });
+      if (directory.isSymlink || file.isSymlink) throw new Error('Symlinked Skills are read-only in this editor');
+    }
+    await server.request('fs/writeFile', { path: target, dataBase64: Buffer.from(change.content).toString('base64') });
+    this.notifySkillsChanged();
+    return target;
+  }
+
+  async copySkill(input: AgentCommandDiscoveryInput, change: CodexSkillCopyInput) {
+    if (!CAPABILITY_NAME.test(change.name)) throw new Error('Invalid skill name');
+    const listed = await this.listSkillsDetailed(input);
+    const source = listed.items.find((item) => item.path === change.sourcePath);
+    if (!source) throw new Error('Skill is no longer available');
+    const document = await this.readSkill(input, source.path);
+    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(document.content);
+    if (!frontmatter) throw new Error('The source Skill has no YAML frontmatter');
+    const metadata = YAML.parse(frontmatter[1]) as Record<string, unknown> | null;
+    if (!metadata || typeof metadata.description !== 'string' || !metadata.description.trim())
+      throw new Error('The source Skill needs a description before it can be copied');
+    const copiedContent = `---\n${YAML.stringify({ ...metadata, name: change.name }).trimEnd()}\n---\n`
+      + document.content.slice(frontmatter[0].length);
+    if (Buffer.byteLength(copiedContent) > MAX_SKILL_BYTES) throw new Error('Skill file is too large to edit');
+
+    const { roots } = await this.skillContext(input);
+    const settings = agentSettingsService.getCodexSettings();
+    const api = settings.executionMode === 'wsl' ? path.posix : path;
+    const root = roots[change.scope];
+    const targetDirectory = api.join(root, change.name);
+    const sourceDirectory = api.dirname(source.path);
+    if (api.dirname(api.resolve(targetDirectory)) !== api.resolve(root)) throw new Error('Invalid Skill destination');
+    if (targetDirectory === sourceDirectory) throw new Error('Choose another name for the copy');
+    const server = await this.getDiagnosticServer();
+    const sourceMetadata = await server.request<{ isSymlink: boolean }>('fs/getMetadata', { path: sourceDirectory });
+    if (sourceMetadata.isSymlink) throw new Error('Symlinked Skills cannot be copied');
+
+    if (settings.executionMode === 'wsl') {
+      const wsl = (...args: string[]) => execFileAsync('wsl.exe', ['--distribution', settings.wslDistribution, '--exec', ...args],
+        { timeout: 30_000, windowsHide: true, maxBuffer: 1024 * 1024 });
+      await wsl('/usr/bin/mkdir', '-p', '--', root);
+      await wsl('/usr/bin/mkdir', '--', targetDirectory);
+      try {
+        await wsl('/usr/bin/cp', '-a', '--', `${sourceDirectory}/.`, targetDirectory);
+        await server.request('fs/writeFile', { path: api.join(targetDirectory, 'SKILL.md'), dataBase64: Buffer.from(copiedContent).toString('base64') });
+      } catch (error) {
+        await wsl('/usr/bin/rm', '-rf', '--', targetDirectory);
+        throw error;
+      }
+    } else {
+      await fs.promises.mkdir(root, { recursive: true });
+      const stagingDirectory = api.join(root, `.hexestra-skill-copy-${randomUUID()}`);
+      if (api.dirname(api.resolve(stagingDirectory)) !== api.resolve(root)) throw new Error('Invalid temporary Skill destination');
+      try {
+        await fs.promises.cp(sourceDirectory, stagingDirectory, { recursive: true, force: false, errorOnExist: true });
+        await server.request('fs/writeFile', { path: api.join(stagingDirectory, 'SKILL.md'), dataBase64: Buffer.from(copiedContent).toString('base64') });
+        await fs.promises.rename(stagingDirectory, targetDirectory);
+      } catch (error) {
+        await fs.promises.rm(stagingDirectory, { recursive: true, force: true });
+        throw error;
+      }
+    }
+    this.notifySkillsChanged();
+    return api.join(targetDirectory, 'SKILL.md');
+  }
+
+  async toggleSkill(input: AgentCommandDiscoveryInput, skillPath: string, enabled: boolean) {
+    const listed = await this.listSkillsDetailed(input);
+    if (!listed.items.some((item) => item.path === skillPath)) throw new Error('Skill is no longer available');
+    const server = await this.getDiagnosticServer();
+    await server.request('skills/config/write', { path: skillPath, enabled });
+    this.notifySkillsChanged();
+  }
+
+  async deleteSkill(input: AgentCommandDiscoveryInput, skillPath: string) {
+    const listed = await this.listSkillsDetailed(input);
+    const item = listed.items.find((entry) => entry.path === skillPath);
+    if (!item?.editable) throw new Error('Only user and project Skills in their own folders can be deleted');
+    const server = await this.getDiagnosticServer();
+    const api = agentSettingsService.getCodexSettings().executionMode === 'wsl' ? path.posix : path;
+    const directory = await server.request<{ isSymlink: boolean }>('fs/getMetadata', { path: api.dirname(skillPath) });
+    if (directory.isSymlink) throw new Error('Symlinked Skills cannot be deleted in this editor');
+    await server.request('fs/remove', { path: api.dirname(skillPath), recursive: true, force: false });
+    this.notifySkillsChanged();
+  }
+
+  async listMcpServers(input?: AgentCommandDiscoveryInput): Promise<CodexMcpListResult> {
+    const server = await this.getDiagnosticServer();
+    const settings = agentSettingsService.getCodexSettings();
+    const config = await server.request<{ config?: { mcp_servers?: Record<string, unknown> };
+      origins?: Record<string, { name?: { type?: string; file?: string; dotCodexFolder?: string } }> }>('config/read',
+      { includeLayers: true, cwd: input ? this.runtimePath(input.cwd) : undefined });
+    type McpRuntimeState = { name: string; runtimeStatus?: string | null; pluginId?: string | null;
+      tools?: Record<string, unknown>; toolsError?: string | null };
+    const statusByName = new Map<string, McpRuntimeState>();
+    let cursor: string | null = null;
+    const seenCursors = new Set<string>();
+    do {
+      const page: { data?: McpRuntimeState[]; nextCursor?: string | null } = await server.request('mcpServerStatus/list',
+        { cursor, limit: 100, detail: 'toolsAndAuthOnly' });
+      for (const state of page.data ?? []) statusByName.set(state.name, state);
+      cursor = page.nextCursor ?? null;
+      if (cursor && seenCursors.has(cursor)) break;
+      if (cursor) seenCursors.add(cursor);
+    } while (cursor);
+    const displayStatus = (runtime?: string | null): CodexMcpItem['status'] => runtime === 'connected' ? 'connected'
+      : runtime === 'failed' ? 'failed' : runtime === 'authenticationRequired' ? 'needs-auth'
+        : runtime === 'disabled' ? 'disabled' : runtime === 'starting' || runtime === 'notStarted' ? 'pending' : 'unknown';
+    const items: CodexMcpItem[] = Object.entries(config.config?.mcp_servers ?? {}).flatMap(([name, raw]) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+      const state = statusByName.get(name);
+      const runtime = state?.runtimeStatus;
+      const origin = config.origins?.[`mcp_servers.${name}`]?.name ?? config.origins?.mcp_servers?.name;
+      const scope = state?.pluginId ? 'plugin' : origin?.type === 'project' ? 'project'
+        : origin?.type === 'user' || !origin ? 'user' : 'managed';
+      const api = settings.executionMode === 'wsl' ? path.posix : path;
+      const configFile = origin?.type === 'project' && origin.dotCodexFolder
+        ? api.join(origin.dotCodexFolder, 'config.toml') : origin?.type === 'user' ? origin.file ?? null : null;
+      return [{ name, definition: raw as Record<string, unknown>, scope, configFile, pluginId: state?.pluginId ?? null,
+        enabled: (raw as Record<string, unknown>).enabled !== false && runtime !== 'disabled', status: displayStatus(runtime),
+        toolCount: Object.keys(state?.tools ?? {}).length, error: state?.toolsError ?? null }];
+    });
+    const configuredNames = new Set(items.map((item) => item.name));
+    for (const state of statusByName.values()) {
+      if (configuredNames.has(state.name)) continue;
+      items.push({ name: state.name, definition: {}, scope: state.pluginId ? 'plugin' : 'managed',
+        pluginId: state.pluginId ?? null, enabled: state.runtimeStatus !== 'disabled', status: displayStatus(state.runtimeStatus),
+        toolCount: Object.keys(state.tools ?? {}).length, error: state.toolsError ?? null });
+    }
+    items.sort((a, b) => a.name.localeCompare(b.name));
+    return { runtimeLabel: settings.executionMode === 'wsl' ? `Codex · WSL ${settings.wslDistribution}` : 'Codex · Native', items };
+  }
+
+  async saveMcpServer(change: CodexMcpSaveInput, input?: AgentCommandDiscoveryInput) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(change.name)) throw new Error('MCP server name must use letters, numbers, _ or -');
+    if (change.name === 'hexestra') throw new Error('The hexestra MCP server name is reserved for project tools');
+    if (change.originalName && change.originalName !== change.name) throw new Error('Rename is not supported; create a new server instead');
+    if (!change.definition || typeof change.definition !== 'object' || Array.isArray(change.definition)) throw new Error('Invalid MCP server definition');
+    if (!(typeof change.definition.command === 'string' && change.definition.command.trim())
+      && !(typeof change.definition.url === 'string' && change.definition.url.trim()))
+      throw new Error('An MCP server needs a command or URL');
+    if (change.scope === 'project') throw new Error('Open the project .codex/config.toml in the file editor to change project MCP servers');
+    const listed = change.originalName ? await this.listMcpServers(input) : null;
+    const existing = listed?.items.find((item) => item.name === change.originalName);
+    if (existing?.scope === 'plugin') throw new Error('Plugin MCP transport is managed by its plugin; use the enable control instead');
+    if (existing?.scope === 'project') throw new Error('Open the project .codex/config.toml in the file editor to change project MCP servers');
+    const server = await this.getDiagnosticServer();
+    await server.request('config/value/write', { keyPath: `mcp_servers.${change.name}`,
+      value: omitNullConfigValues(change.definition), mergeStrategy: 'replace' });
+    await server.request('config/mcpServer/reload', undefined);
+  }
+
+  async deleteMcpServer(name: string, input?: AgentCommandDiscoveryInput) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(name)) throw new Error('This MCP server name cannot be removed from the user config editor');
+    const existing = (await this.listMcpServers(input)).items.find((item) => item.name === name);
+    if (!existing) throw new Error('MCP server is no longer available');
+    if (existing.scope !== 'user') throw new Error('Only user MCP servers can be removed here; edit project configuration in the file editor');
+    const server = await this.getDiagnosticServer();
+    await server.request('config/value/write', { keyPath: `mcp_servers.${name}`, value: null, mergeStrategy: 'replace' });
+    await server.request('config/mcpServer/reload', undefined);
+  }
+
+  async toggleMcpServer(name: string, enabled: boolean, input?: AgentCommandDiscoveryInput) {
+    if (name === 'hexestra') throw new Error('This MCP server cannot be changed here');
+    const existing = (await this.listMcpServers(input)).items.find((item) => item.name === name);
+    if (!existing) throw new Error('MCP server is no longer available');
+    if (existing.scope !== 'plugin' && !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(name))
+      throw new Error('This MCP server name cannot be changed here');
+    if (existing.scope === 'project') throw new Error('Open the project .codex/config.toml in the file editor to change this server');
+    const server = await this.getDiagnosticServer();
+    const quoted = (segment: string) => `"${segment.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    const pluginKey = existing.pluginId
+      ? `plugins.${quoted(existing.pluginId)}.mcp_servers.${quoted(name)}.enabled` : null;
+    await server.request('config/value/write', { keyPath: pluginKey ?? `mcp_servers.${name}.enabled`, value: enabled,
+      mergeStrategy: 'replace' });
+    await server.request('config/mcpServer/reload', undefined);
   }
 
   private async readModels(server: CodexAppServer, refresh = false): Promise<AgentModelOption[]> {
@@ -178,6 +475,7 @@ export class CodexAgentAdapter implements AgentAdapter {
         'mcp_servers.hexestra.url': bridge.url(host),
         'mcp_servers.hexestra.bearer_token_env_var': 'HEXESTRA_MCP_TOKEN',
         'mcp_servers.hexestra.required': true,
+        'mcp_servers.hexestra.default_tools_approval_mode': 'approve',
       }, { HEXESTRA_MCP_TOKEN: bridge.bearerToken });
       await server.start();
       const runtimeCwd = settings.executionMode === 'wsl' ? windowsPathToWsl(cwd, settings.wslDistribution) : cwd;
@@ -201,7 +499,7 @@ export class CodexAgentAdapter implements AgentAdapter {
     const server = new CodexAppServer(settings);
     server.on('message', (message: RpcMessage) => {
       if (message.method !== 'skills/changed' || this.diagnosticServer !== server) return;
-      for (const listener of this.skillsChangedListeners) listener();
+      this.notifySkillsChanged();
     });
     try {
       await server.start();
@@ -356,7 +654,7 @@ export class CodexAgentAdapter implements AgentAdapter {
         if (item.type === 'mcpToolCall' || item.type === 'commandExecution' || item.type === 'fileChange' || item.type === 'collabToolCall') {
           activities.set(id, { id, kind: 'tool', toolName: String(item.tool ?? item.type),
             status: message.method === 'item/started' ? 'running' : item.status === 'failed' || item.status === 'declined' ? 'error' : 'complete',
-            input: asRecord(item.arguments), outputSummary: String(item.error ?? item.aggregatedOutput
+            input: asRecord(item.arguments), outputSummary: codexToolSummary(item.error) || String(item.aggregatedOutput
               ?? asRecord(Array.isArray(item.result) ? item.result[0] : item.result).text ?? ''),
           });
           scheduleFlush();
@@ -456,6 +754,7 @@ export class CodexAgentAdapter implements AgentAdapter {
         'mcp_servers.hexestra.url': bridge.url(host),
         'mcp_servers.hexestra.bearer_token_env_var': 'HEXESTRA_MCP_TOKEN',
         'mcp_servers.hexestra.required': true,
+        'mcp_servers.hexestra.default_tools_approval_mode': 'approve',
         developer_instructions: input.systemInstructions,
       }, { HEXESTRA_MCP_TOKEN: bridge.bearerToken });
       await server.start();
@@ -469,6 +768,22 @@ export class CodexAgentAdapter implements AgentAdapter {
       throw codexLaunchError(error, settings);
     }
   }
+}
+
+function codexToolSummary(error: unknown): string {
+  if (error == null) return '';
+  if (typeof error === 'string') return error;
+  const message = asRecord(error).message;
+  return typeof message === 'string' ? message : JSON.stringify(error);
+}
+
+function omitNullConfigValues(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).flatMap(([key, item]) => {
+    if (item == null) return [];
+    if (Array.isArray(item)) return [[key, item.filter((entry) => entry != null)]];
+    if (typeof item === 'object') return [[key, omitNullConfigValues(item as Record<string, unknown>)]];
+    return [[key, item]];
+  }));
 }
 
 function codexLaunchError(error: unknown, settings: ReturnType<typeof agentSettingsService.getCodexSettings>): Error {

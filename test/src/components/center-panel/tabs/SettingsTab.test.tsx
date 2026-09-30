@@ -1,3 +1,4 @@
+import { openSelect, selectOption } from '../../../../helpers/select';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SettingsTab } from '@/components/center-panel/tabs/SettingsTab';
@@ -75,7 +76,7 @@ describe('SettingsTab', () => {
 
   it('loads WSL settings and renders successful connection diagnostics', async () => {
     render(<SettingsTab />);
-    fireEvent.click(screen.getByRole('button', { name: 'Connection' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Connection' }));
     expect(await screen.findByDisplayValue('Ubuntu-24.04')).toBeInTheDocument();
     expect(screen.getByDisplayValue('/usr/bin/claude')).toBeInTheDocument();
 
@@ -90,15 +91,18 @@ describe('SettingsTab', () => {
   it('shows an existing Claude model ID through its runtime alias', async () => {
     claudeModel = 'claude-sonnet-current';
     render(<SettingsTab />);
-    fireEvent.click(screen.getByRole('button', { name: 'Connection' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Connection' }));
+    await waitFor(() => expect(screen.getByLabelText('Claude model')).toBeEnabled());
+    openSelect(screen.getByLabelText('Claude model'));
     expect(await screen.findByRole('option', { name: 'Claude Sonnet' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Claude model')).toHaveValue('sonnet');
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Claude model' }), { key: 'Escape' });
+    expect(screen.getByLabelText('Claude model')).toHaveTextContent('Claude Sonnet');
     expect(screen.queryByText(/claude-sonnet-current ·/)).not.toBeInTheDocument();
   });
 
   it('switches to native mode without retaining the Linux executable', async () => {
     render(<SettingsTab />);
-    fireEvent.click(screen.getByRole('button', { name: 'Connection' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Connection' }));
     await screen.findByDisplayValue('Ubuntu-24.04');
     fireEvent.click(screen.getByRole('button', { name: 'Native' }));
 
@@ -112,7 +116,7 @@ describe('SettingsTab', () => {
 
   it('shows one backend at a time and saves the Codex draft before testing it', async () => {
     render(<SettingsTab />);
-    fireEvent.click(screen.getByRole('button', { name: 'Connection' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Connection' }));
     await screen.findByDisplayValue('/usr/bin/claude');
 
     fireEvent.click(screen.getByRole('button', { name: 'Codex' }));
@@ -121,8 +125,8 @@ describe('SettingsTab', () => {
     expect(screen.queryByRole('button', { name: 'Sign in with ChatGPT' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Make default' })).toBeInTheDocument();
-    expect(await screen.findByRole('option', { name: 'GPT-5.1 Codex' })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Codex model'), { target: { value: 'gpt-5.1-codex' } });
+    await waitFor(() => expect(screen.getByLabelText('Codex model')).toBeEnabled());
+    selectOption(screen.getByLabelText('Codex model'), 'GPT-5.1 Codex');
     const slider = screen.getByRole('slider', { name: 'Reasoning effort' });
     fireEvent.change(slider, { target: { value: '2' } });
     fireEvent.pointerUp(slider);
@@ -141,8 +145,8 @@ describe('SettingsTab', () => {
 
   it('localizes the shared backend settings in Chinese', async () => {
     render(<I18nProvider><SettingsTab /></I18nProvider>);
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Language' }), { target: { value: 'zh-CN' } });
-    fireEvent.click(await screen.findByRole('button', { name: '连接' }));
+    selectOption(await screen.findByRole('combobox', { name: 'Language' }), 'Simplified Chinese');
+    fireEvent.click(await screen.findByRole('tab', { name: '连接' }));
     expect(await screen.findByRole('group', { name: '后端' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Codex' }));
     expect(screen.getByLabelText('Codex 可执行文件')).toHaveValue('codex');
@@ -152,9 +156,9 @@ describe('SettingsTab', () => {
   it('changes the global interface language from General settings', async () => {
     render(<I18nProvider><SettingsTab /></I18nProvider>);
     const language = await screen.findByRole('combobox', { name: 'Language' });
-    fireEvent.change(language, { target: { value: 'zh-CN' } });
-    expect(await screen.findByRole('combobox', { name: '语言' })).toHaveValue('zh-CN');
-    expect(screen.getByRole('button', { name: '通用' })).toBeInTheDocument();
+    selectOption(language, 'Simplified Chinese');
+    expect(await screen.findByRole('combobox', { name: '语言' })).toHaveTextContent('简体中文');
+    expect(screen.getByRole('tab', { name: '通用' })).toBeInTheDocument();
     expect(invoke).toHaveBeenCalledWith(APP_SETTINGS_IPC.UPDATE, { language: 'zh-CN' });
   });
 
@@ -185,7 +189,7 @@ describe('SettingsTab', () => {
 
   it('records, rejects conflicting, clears, and resets shortcut overrides', async () => {
     render(<I18nProvider><SettingsTab /></I18nProvider>);
-    fireEvent.click(await screen.findByRole('button', { name: 'Shortcuts' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Shortcuts' }));
 
     const presentation = await screen.findByRole('button', { name: /Toggle presentation mode: Ctrl\+Shift\+H/ });
     fireEvent.click(presentation);

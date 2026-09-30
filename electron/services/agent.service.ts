@@ -260,6 +260,26 @@ class AgentService {
     ipcMain.handle('codex:skills:list', async (_event, sessionId?: string | null) => {
       return this.codexAdapter.listSkills(this.discoveryInput(sessionId ?? undefined));
     });
+    ipcMain.handle('codex:skills:detailed', async (_event, sessionId?: string | null) =>
+      this.codexAdapter.listSkillsDetailed(this.discoveryInput(sessionId ?? undefined)));
+    ipcMain.handle('codex:skills:read', async (_event, sessionId: string | null, skillPath: string) =>
+      this.codexAdapter.readSkill(this.discoveryInput(sessionId ?? undefined), skillPath));
+    ipcMain.handle('codex:skills:save', async (_event, input: import('../contracts/codex-capabilities').CodexSkillSaveInput) =>
+      this.codexAdapter.saveSkill(this.discoveryInput(input.sessionId ?? undefined), input));
+    ipcMain.handle('codex:skills:copy', async (_event, input: import('../contracts/codex-capabilities').CodexSkillCopyInput) =>
+      this.codexAdapter.copySkill(this.discoveryInput(input.sessionId ?? undefined), input));
+    ipcMain.handle('codex:skills:toggle', async (_event, sessionId: string | null, skillPath: string, enabled: boolean) =>
+      this.codexAdapter.toggleSkill(this.discoveryInput(sessionId ?? undefined), skillPath, enabled));
+    ipcMain.handle('codex:skills:delete', async (_event, sessionId: string | null, skillPath: string) =>
+      this.codexAdapter.deleteSkill(this.discoveryInput(sessionId ?? undefined), skillPath));
+    ipcMain.handle('codex:mcp:list', async (_event, sessionId?: string | null) =>
+      this.codexAdapter.listMcpServers(this.discoveryInput(sessionId ?? undefined)));
+    ipcMain.handle('codex:mcp:save', async (_event, input: import('../contracts/codex-capabilities').CodexMcpSaveInput) =>
+      this.codexAdapter.saveMcpServer(input, this.discoveryInput(input.sessionId ?? undefined)));
+    ipcMain.handle('codex:mcp:toggle', async (_event, name: string, enabled: boolean, sessionId?: string | null) =>
+      this.codexAdapter.toggleMcpServer(name, enabled, this.discoveryInput(sessionId ?? undefined)));
+    ipcMain.handle('codex:mcp:delete', async (_event, name: string, sessionId?: string | null) =>
+      this.codexAdapter.deleteMcpServer(name, this.discoveryInput(sessionId ?? undefined)));
 
     ipcMain.handle('agent:models:list', async (_event, backendId: string, sessionId?: string | null) => {
       if (backendId !== CLAUDE_BACKEND_ID && backendId !== 'codex') throw new Error('Unknown Agent backend');

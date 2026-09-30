@@ -37,8 +37,8 @@ export function SettingsListRow({
     <div className={cn(
       'group flex items-start gap-1 rounded-md border p-1 transition-colors duration-150',
       selected
-        ? 'border-accent-blue/35 bg-accent-blue/8'
-        : 'border-transparent hover:border-border-subtle hover:bg-raised/35',
+        ? 'border-transparent bg-accent-blue/8'
+        : 'border-transparent hover:bg-raised/35',
     )}>
       <button
         type="button"
@@ -55,7 +55,7 @@ export function SettingsListRow({
           {statusLabel && <span className="sr-only">{statusLabel}</span>}
           <span className="min-w-0 flex-1 truncate text-xs font-medium text-text-primary">{title}</span>
           {meta && <span className="shrink-0 font-mono text-[10px] text-text-muted">{meta}</span>}
-          {badge && <span className="shrink-0 rounded border border-border-subtle px-1.5 py-0.5 text-[11px] text-accent-blue">{badge}</span>}
+          {badge && <span className="shrink-0 rounded bg-raised/50 px-1.5 py-0.5 text-[11px] text-accent-blue">{badge}</span>}
         </div>
         {description && <div className="mt-1.5 line-clamp-2 break-words text-[11px] leading-4 text-text-muted">{description}</div>}
       </button>

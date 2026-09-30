@@ -1,3 +1,4 @@
+import { Select as StyledSelect } from '@/components/shared/Select';
 import { useEffect, useState, type ReactNode } from 'react';
 import type {
   AgentConnectionDiagnostic,
@@ -10,13 +11,14 @@ import type {
 import type { PlatformCapabilities } from '@electron/contracts/platform';
 import type { MitmproxyRuntimeDiagnostic } from '@electron/services/mitmproxy-runtime';
 import { TRAFFIC_IPC } from '@electron/contracts/traffic';
-import { DismissibleNotice, Icon, ReasoningEffortSlider, Surface } from '@/components/shared';
+import { DismissibleNotice, Icon, ReasoningEffortSlider, Surface, TabbedCard } from '@/components/shared';
 import { cn } from '@/lib/cn';
 import { useChatStore } from '@/stores';
 import { useTabStore, type SettingsPage } from '@/stores/useTabStore';
 import { BurpSettings } from './BurpSettings';
 import { SkillsSettings } from './SkillsSettings';
 import { McpSettings } from './McpSettings';
+import { AgentBackendTabs } from './AgentBackendTabs';
 import { ProxySettings } from './ProxySettings';
 import { AgentInstructionsSettings } from './AgentInstructionsSettings';
 import { ToolCatalogSettings } from './ToolCatalogSettings';
@@ -42,6 +44,7 @@ export function SettingsTab() {
     return isSettingsPage(value) ? value : 'general';
   });
   const [page, setPage] = useState<SettingsPage>(requestedPage);
+  const [capabilityBackend, setCapabilityBackend] = useState<AgentBackendSelection>('claude');
   const { t } = useI18n();
 
   useEffect(() => setPage(requestedPage), [requestedPage]);
@@ -53,19 +56,18 @@ export function SettingsTab() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-panel">
-      <nav aria-label={t('common.settings')} className="flex h-10 shrink-0 items-end gap-1 overflow-x-auto border-b border-border-subtle bg-canvas/40 px-5">
-        <SettingsPageButton active={page === 'general'} icon="settings" label={t('settings.general')} onClick={() => selectPage('general')} />
-        <SettingsPageButton active={page === 'shortcuts'} icon="code" label={t('settings.shortcuts')} onClick={() => selectPage('shortcuts')} />
-        <SettingsPageButton active={page === 'connection'} icon="terminal" label={t('settings.connection')} onClick={() => selectPage('connection')} />
-        <SettingsPageButton active={page === 'traffic'} icon="activity" label={t('settings.trafficRuntime')} onClick={() => selectPage('traffic')} />
-        <SettingsPageButton active={page === 'proxy'} icon="network" label={t('settings.proxy')} onClick={() => selectPage('proxy')} />
-        <SettingsPageButton active={page === 'burp'} icon="activity" label={t('settings.burp')} onClick={() => selectPage('burp')} />
-        <SettingsPageButton active={page === 'skills'} icon="sparkles" label={t('settings.skills')} onClick={() => selectPage('skills')} />
-        <SettingsPageButton active={page === 'instructions'} icon="shield" label={t('settings.restrictions')} onClick={() => selectPage('instructions')} />
-        <SettingsPageButton active={page === 'tools'} icon="terminal" label={t('settings.tools')} onClick={() => selectPage('tools')} />
-        <SettingsPageButton active={page === 'mcp'} icon="server" label={t('settings.mcp')} onClick={() => selectPage('mcp')} />
-      </nav>
+    <TabbedCard className="settings-workspace" surface="canvas" scrollable outlined label={t('common.settings')} value={page} onChange={selectPage} items={[
+      { id: 'general', icon: 'settings', label: t('settings.general') },
+      { id: 'shortcuts', icon: 'code', label: t('settings.shortcuts') },
+      { id: 'connection', icon: 'terminal', label: t('settings.connection') },
+      { id: 'traffic', icon: 'activity', label: t('settings.trafficRuntime') },
+      { id: 'proxy', icon: 'network', label: t('settings.proxy') },
+      { id: 'burp', icon: 'activity', label: t('settings.burp') },
+      { id: 'skills', icon: 'sparkles', label: t('settings.skills') },
+      { id: 'instructions', icon: 'shield', label: t('settings.restrictions') },
+      { id: 'tools', icon: 'terminal', label: t('settings.tools') },
+      { id: 'mcp', icon: 'server', label: t('settings.mcp') },
+    ]}>
       <div className="min-h-0 flex-1">
         {page === 'general' && <GeneralSettings />}
         {page === 'shortcuts' && <ShortcutsSettings />}
@@ -73,12 +75,12 @@ export function SettingsTab() {
         {page === 'traffic' && <TrafficRuntimeSettings />}
         {page === 'proxy' && <ProxySettings />}
         {page === 'burp' && <BurpSettings />}
-        {page === 'skills' && <SkillsSettings />}
+        {page === 'skills' && <SkillsSettings backend={capabilityBackend} onBackendChange={setCapabilityBackend} />}
         {page === 'instructions' && <AgentInstructionsSettings />}
         {page === 'tools' && <ToolCatalogSettings />}
-        {page === 'mcp' && <McpSettings />}
+        {page === 'mcp' && <McpSettings backend={capabilityBackend} onBackendChange={setCapabilityBackend} />}
       </div>
-    </div>
+    </TabbedCard>
   );
 }
 
@@ -226,8 +228,10 @@ function ConnectionSettings() {
   const dirty = JSON.stringify(settings) !== JSON.stringify(saved);
 
   return (
-    <div className="h-full overflow-y-auto bg-canvas">
-      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6">
+    <div className="flex h-full min-h-0 flex-col bg-canvas">
+      <AgentBackendTabs value={selectedBackend} onChange={setSelectedBackend} label={t('settings.agentBackend')} />
+      <div key={selectedBackend} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6">
         <header className="mb-6 flex items-start justify-between gap-4 border-b border-border-subtle pb-5">
           <div>
             <h1 className="text-lg font-semibold text-text-primary">{t('settings.agentConnection')}</h1>
@@ -240,20 +244,11 @@ function ConnectionSettings() {
           </span>
         </header>
 
-        <SettingsSection title={t('settings.agentBackend')} description={t('settings.agentBackendHint')}>
-          <div className="ui-segmented grid grid-cols-2" role="group" aria-label={t('settings.agentBackend')}>
-            {(['claude', 'codex'] as const).map((backendId) => (
-              <button key={backendId} type="button" aria-pressed={selectedBackend === backendId}
-                className={cn('ui-segmented-item px-3 py-1.5 text-xs', selectedBackend === backendId && 'ui-segmented-item-active')}
-                onClick={() => setSelectedBackend(backendId)}>{backendId === 'claude' ? 'Claude Code' : 'Codex'}</button>
-            ))}
-          </div>
-          <div className="flex items-center justify-between gap-3 border-t border-border-subtle pt-3 text-xs text-text-muted">
-            <span>{settings.defaultBackendId === selectedBackend ? t('settings.defaultAgent') : t('settings.defaultAgentHint')}</span>
-            {settings.defaultBackendId !== selectedBackend && <button type="button" className="ui-button ui-button-neutral"
-              onClick={() => setSettings({ ...settings, defaultBackendId: selectedBackend })}>{t('settings.makeDefaultAgent')}</button>}
-          </div>
-        </SettingsSection>
+        <div className="mb-6 flex items-center justify-between gap-3 text-xs text-text-muted">
+          <span>{settings.defaultBackendId === selectedBackend ? t('settings.defaultAgent') : t('settings.defaultAgentHint')}</span>
+          {settings.defaultBackendId !== selectedBackend && <button type="button" className="ui-button ui-button-neutral"
+            onClick={() => setSettings({ ...settings, defaultBackendId: selectedBackend })}>{t('settings.makeDefaultAgent')}</button>}
+        </div>
 
         <SettingsSection title={t('settings.executionEnvironment')} description={t('settings.executionEnvironmentDescription')}>
           <div className={`grid gap-3 ${capabilities?.supportsWsl ? 'grid-cols-2' : 'grid-cols-1'}`}>
@@ -319,7 +314,7 @@ function ConnectionSettings() {
 
         <SettingsSection title={t('settings.agentOptions')} description={t('settings.agentOptionsHint')}>
           <Field label={t('settings.model')} hint={selectedBackend === 'codex' ? t('settings.codexModelHint') : t('settings.claudeModelHint')}>
-            <select
+            <StyledSelect
               aria-label={selectedBackend === 'codex' ? t('settings.codexModel') : t('settings.claudeModel')}
               value={selectedModelOption?.id ?? selectedSettings.model ?? ''}
               disabled={modelRuntimeChanged}
@@ -338,7 +333,7 @@ function ConnectionSettings() {
               {selectedSettings.model && !selectedModelOption &&
                 <option value={selectedSettings.model} disabled>{selectedSettings.model} · {t('agent.modelUnavailable')}</option>}
               {modelCatalog.models.map((model) => <option key={model.id} value={model.id}>{model.displayName}</option>)}
-            </select>
+            </StyledSelect>
             {modelCatalog.loading && <p className="mt-1 text-[11px] text-text-muted">{t('agent.loadingModels')}</p>}
             {modelRuntimeChanged && <p className="mt-1 text-[11px] text-text-muted">{t('settings.saveRuntimeForModels')}</p>}
             {modelCatalog.error && <p className="mt-1 text-[11px] text-status-error">{t('agent.modelsError')}: {modelCatalog.error}</p>}
@@ -402,6 +397,7 @@ function ConnectionSettings() {
             </button>
           </div>
         </footer>
+      </div>
       </div>
     </div>
   );
@@ -494,7 +490,7 @@ function GeneralSettings() {
           <span className="rounded border border-border-subtle bg-panel px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-text-muted">{t('settings.global')}</span>
         </header>
         <SettingsSection title={t('settings.language')} description={t('settings.languageHint')}>
-          <select
+          <StyledSelect
             aria-label={t('settings.language')}
             className="settings-input"
             value={language}
@@ -505,7 +501,7 @@ function GeneralSettings() {
           >
             <option value="en">{t('settings.languageEnglish')}</option>
             <option value="zh-CN">{t('settings.languageChinese')}</option>
-          </select>
+          </StyledSelect>
         </SettingsSection>
         <SettingsSection title={t('settings.theme')} description={t('settings.themeHint')}>
           <div className="ui-segmented grid grid-cols-3" role="group" aria-label={t('settings.theme')}>
@@ -535,25 +531,6 @@ function GeneralSettings() {
   );
 }
 
-function SettingsPageButton({ active, icon, label, onClick }: { active: boolean; icon: 'settings' | 'terminal' | 'activity' | 'network' | 'sparkles' | 'server' | 'file' | 'shield' | 'code'; label: string; onClick: () => void }) {
-  return (
-    <button
-      aria-pressed={active}
-      onClick={onClick}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onClick();
-        }
-      }}
-      className={cn('flex min-h-9 shrink-0 items-center gap-2 border-b-2 px-3 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-focus', active ? 'border-accent-blue text-text-primary' : 'border-transparent text-text-muted hover:text-text-secondary')}
-    >
-      <Icon name={icon} size={13} />
-      {label}
-    </button>
-  );
-}
-
 function isSettingsPage(value: unknown): value is SettingsPage {
   return value === 'general' || value === 'shortcuts' || value === 'connection' || value === 'traffic' || value === 'proxy' || value === 'burp' || value === 'skills' || value === 'mcp' || value === 'instructions' || value === 'tools';
 }
@@ -575,7 +552,7 @@ function SettingsSection({ title, description, children }: { title: string; desc
         <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
         <p className="mt-1 text-[11px] leading-4 text-text-muted">{description}</p>
       </div>
-      <Surface className="p-4">
+      <Surface className="settings-section-surface p-4">
         <div className="space-y-4">{children}</div>
       </Surface>
     </section>
@@ -600,7 +577,7 @@ function modelRuntimeKey(settings: AgentConnectionSettings | CodexConnectionSett
 
 function RuntimeCard({ active, icon, title, detail, onClick }: { active: boolean; icon: 'terminal' | 'code'; title: string; detail: string; onClick: () => void }) {
   return (
-    <button aria-label={title} aria-pressed={active} onClick={onClick} className={cn('flex min-h-16 items-start gap-3 rounded-lg border p-3 text-left transition-colors focus-visible:ring-2 focus-visible:ring-focus', active ? 'border-accent-blue/50 bg-accent-blue/10' : 'border-border-subtle bg-panel/50 hover:border-border-strong')}>
+    <button aria-label={title} aria-pressed={active} onClick={onClick} className={cn('flex min-h-16 items-start gap-3 rounded-lg border p-3 text-left transition-colors focus-visible:ring-2 focus-visible:ring-focus', active ? 'border-accent-blue/40 bg-accent-blue/10' : 'border-border-subtle bg-panel/50 hover:border-border-strong hover:bg-raised/50')}>
       <Icon name={icon} size={16} className={active ? 'text-accent-blue' : 'text-text-muted'} />
       <span>
         <span className="block text-xs font-medium text-text-primary">{title}</span>

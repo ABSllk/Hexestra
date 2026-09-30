@@ -1,3 +1,4 @@
+import { Select as StyledSelect } from '@/components/shared/Select';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ClaudeMcpDescriptor,
@@ -11,6 +12,8 @@ import { Button, DismissibleNotice, Icon, SettingsListRow, useConfirmDialog } fr
 import { cn } from '@/lib/cn';
 import { useSessionStore } from '@/stores';
 import { useI18n } from '@/i18n';
+import { CodexMcpSettings } from './CodexMcpSettings';
+import { AgentBackendTabs } from './AgentBackendTabs';
 
 const NEW_MCP = {
   type: 'stdio',
@@ -18,7 +21,19 @@ const NEW_MCP = {
   args: ['-y', 'your-mcp-server'],
 };
 
-export function McpSettings() {
+export function McpSettings({ backend: controlledBackend, onBackendChange }: {
+  backend?: 'claude' | 'codex'; onBackendChange?: (backend: 'claude' | 'codex') => void;
+} = {}) {
+  const [localBackend, setLocalBackend] = useState<'claude' | 'codex'>('claude');
+  const backend = controlledBackend ?? localBackend;
+  const setBackend = onBackendChange ?? setLocalBackend;
+  return <div className="flex h-full min-h-0 flex-col bg-canvas">
+    <AgentBackendTabs value={backend} onChange={setBackend} />
+    <div className="min-h-0 flex-1">{backend === 'claude' ? <ClaudeMcpSettings /> : <CodexMcpSettings />}</div>
+  </div>;
+}
+
+function ClaudeMcpSettings() {
   const { t } = useI18n();
   const confirm = useConfirmDialog();
   const sessionId = useSessionStore((state) => state.currentSession?.id ?? null);
@@ -41,14 +56,14 @@ export function McpSettings() {
     try {
       const raw = await window.hexestra.invoke<unknown>('claude:mcp:status', sessionId);
       const next = normalizeClaudeMcpRuntimeStatusResult(raw);
-      if (!next) throw new Error('Claude returned an invalid MCP status response');
+      if (!next) throw new Error(t('mcp.invalidStatus'));
       if (requestId === healthRequestRef.current) setRuntimeStatus(next);
     } catch (reason) {
       if (requestId === healthRequestRef.current) setHealthError(String(reason));
     } finally {
       if (requestId === healthRequestRef.current) setHealthBusy(false);
     }
-  }, [sessionId]);
+  }, [sessionId, t]);
 
   const load = useCallback(async (preferredId?: string) => {
     setBusy('load');
@@ -129,10 +144,10 @@ export function McpSettings() {
     let definition: Record<string, unknown>;
     try {
       const value = JSON.parse(json) as unknown;
-      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Definition must be a JSON object');
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(t('mcp.invalidObject'));
       definition = value as Record<string, unknown>;
     } catch (reason) {
-      setError(`Invalid JSON: ${reason instanceof Error ? reason.message : String(reason)}`);
+      setError(t('mcp.invalidJson', { error: reason instanceof Error ? reason.message : String(reason) }));
       return;
     }
     setBusy('save');
@@ -155,10 +170,10 @@ export function McpSettings() {
   const remove = async () => {
     if (!selected || selected.id === 'new') return;
     if (!await confirm({
-      title: 'Delete MCP server?',
-      description: `Remove “${selected.name}” from ${selected.scope} scope.`,
-      details: 'This removes the saved MCP definition from Hexestra.',
-      confirmLabel: 'Delete Server',
+      title: t('mcp.deleteTitle'),
+      description: t('mcp.deleteDescription', { name: selected.name, scope: t(selected.scope === 'user' ? 'mcp.scopeUser' : selected.scope === 'project' ? 'mcp.scopeProject' : 'mcp.scopeLocal') }),
+      details: t('mcp.deleteDetails'),
+      confirmLabel: t('mcp.deleteConfirm'),
       tone: 'danger',
     })) return;
     setBusy('delete');
@@ -205,7 +220,7 @@ export function McpSettings() {
             {healthBusy ? t('mcp.checking') : t('mcp.checkConnections')}
           </Button>
           <Button tone="primary" leadingIcon="plus" onClick={create}>
-            Add Server
+            {t('mcp.add')}
           </Button>
         </div>
       </header>
@@ -228,14 +243,14 @@ export function McpSettings() {
                 onSelect={() => select(item)}
                 ariaLabel={item.name}
                 title={<span className="font-mono text-[11px] text-text-secondary">{item.name}</span>}
-                badge={<span className="uppercase tracking-wide text-text-muted">{item.scope}</span>}
+                badge={<span className="uppercase tracking-wide text-text-muted">{t(item.scope === 'user' ? 'mcp.scopeUser' : item.scope === 'project' ? 'mcp.scopeProject' : 'mcp.scopeLocal')}</span>}
                 status={item.effective
                   ? mcpListStatus(runtimeStatusByName.get(item.name) ?? null, healthBusy, Boolean(healthError))
                   : 'warning'}
                 description={(
                   <>
-                    <span className="block truncate font-mono">{mcpSummary(item.definition)}</span>
-                    {!item.effective && <span className="mt-1 block text-severity-medium">Overridden by {item.shadowedBy}</span>}
+                    <span className="block truncate font-mono">{mcpSummary(item.definition, t('mcp.customConfig'))}</span>
+                    {!item.effective && <span className="mt-1 block text-severity-medium">{t('mcp.overriddenBy', { scope: item.shadowedBy ? t(item.shadowedBy === 'user' ? 'mcp.scopeUser' : item.shadowedBy === 'project' ? 'mcp.scopeProject' : 'mcp.scopeLocal') : '' })}</span>}
                     {item.effective && (
                       <McpConnectionStatus
                         status={runtimeStatusByName.get(item.name) ?? null}
@@ -267,27 +282,27 @@ export function McpSettings() {
             <div className="mx-auto max-w-4xl rounded-lg border border-border-subtle bg-panel/55 p-4">
               <div className="mb-4 grid grid-cols-[1fr_150px] gap-3">
                 <label>
-                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">Server name</span>
-                  <input aria-label="MCP server name" value={name} onChange={(event) => setName(event.target.value)} className="settings-input font-mono" />
+                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">{t('mcp.name')}</span>
+                  <input aria-label={t('mcp.nameAria')} value={name} onChange={(event) => setName(event.target.value)} className="settings-input font-mono" />
                 </label>
                 <label>
-                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">Scope</span>
-                  <select aria-label="MCP scope" value={scope} disabled={selected.id !== 'new'} onChange={(event) => setScope(event.target.value as ClaudeMcpScope)} className="settings-input">
-                    <option value="user">User</option>
-                    <option value="project" disabled={!result?.projectAvailable}>Project</option>
-                    <option value="local" disabled={!result?.projectAvailable}>Local</option>
-                  </select>
+                  <span className="mb-1 block text-[11px] font-medium text-text-secondary">{t('mcp.scope')}</span>
+                  <StyledSelect aria-label={t('mcp.scopeAria')} value={scope} disabled={selected.id !== 'new'} onChange={(event) => setScope(event.target.value as ClaudeMcpScope)} className="settings-input">
+                    <option value="user">{t('mcp.scopeUser')}</option>
+                    <option value="project" disabled={!result?.projectAvailable}>{t('mcp.scopeProject')}</option>
+                    <option value="local" disabled={!result?.projectAvailable}>{t('mcp.scopeLocal')}</option>
+                  </StyledSelect>
                 </label>
               </div>
               <div className="mb-2 rounded border border-severity-medium/20 bg-severity-medium/5 px-3 py-2 text-[11px] leading-4 text-severity-medium">
-                MCP definitions can contain credentials in <span className="font-mono">env</span> or <span className="font-mono">headers</span>. They are shown because this is a local configuration editor.
+                {t('mcp.credentialsHint')}
               </div>
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-[11px] font-medium text-text-secondary">Server definition</span>
+                <span className="text-[11px] font-medium text-text-secondary">{t('mcp.definition')}</span>
                 <span className="font-mono text-[11px] text-text-muted">JSON</span>
               </div>
               <textarea
-                aria-label="MCP JSON definition"
+                aria-label={t('mcp.jsonDefinition')}
                 value={json}
                 onChange={(event) => setJson(event.target.value)}
                 spellCheck={false}
@@ -297,10 +312,10 @@ export function McpSettings() {
               {error && <DismissibleNotice tone="error" className="mt-3" onDismiss={() => setError(null)}>{error}</DismissibleNotice>}
               <div className="mt-4 flex items-center justify-between border-t border-border-subtle pt-4">
                 <div>
-                  {selected.id !== 'new' && <button onClick={() => void remove()} disabled={Boolean(busy)} className="rounded px-3 py-1.5 text-xs text-severity-critical hover:bg-severity-critical/10 disabled:opacity-40">Delete</button>}
+                  {selected.id !== 'new' && <button onClick={() => void remove()} disabled={Boolean(busy)} className="rounded px-3 py-1.5 text-xs text-severity-critical hover:bg-severity-critical/10 disabled:opacity-40">{t('mcp.delete')}</button>}
                 </div>
                 <button onClick={() => void save()} disabled={Boolean(busy) || (!dirty && selected.id !== 'new')} className="rounded border border-accent-blue/30 bg-accent-blue/15 px-3 py-1.5 text-xs font-medium text-accent-blue hover:bg-accent-blue/20 disabled:opacity-40">
-                  {busy === 'save' ? 'Saving...' : 'Save Server'}
+                  {busy === 'save' ? t('mcp.saving') : t('mcp.save')}
                 </button>
               </div>
             </div>
@@ -311,13 +326,13 @@ export function McpSettings() {
   );
 }
 
-function mcpSummary(definition: Record<string, unknown>) {
+function mcpSummary(definition: Record<string, unknown>, fallback: string) {
   if (typeof definition.url === 'string') return definition.url;
   if (typeof definition.command === 'string') {
     const args = Array.isArray(definition.args) ? definition.args.filter((item) => typeof item === 'string').join(' ') : '';
     return `${definition.command}${args ? ` ${args}` : ''}`;
   }
-  return 'Custom MCP configuration';
+  return fallback;
 }
 
 function McpConnectionStatus({
@@ -369,7 +384,7 @@ function McpConnectionStatus({
       <div className="flex items-center gap-1.5 font-medium uppercase tracking-wide">
         {showDot && <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dot, state === 'pending' && 'animate-pulse motion-reduce:animate-none')} />}
         <span>{label}</span>
-        {status?.scope && <span className="font-normal normal-case tracking-normal opacity-70">· {status.scope}</span>}
+        {status?.scope && <span className="font-normal normal-case tracking-normal opacity-70">· {t(status.scope === 'user' ? 'mcp.scopeUser' : status.scope === 'project' ? 'mcp.scopeProject' : 'mcp.scopeLocal')}</span>}
       </div>
       {detail && <p className="mt-0.5 line-clamp-2 break-all text-left font-normal normal-case tracking-normal opacity-85">{detail}</p>}
     </div>

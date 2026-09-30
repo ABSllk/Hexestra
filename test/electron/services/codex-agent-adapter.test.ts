@@ -1,9 +1,16 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import type { AgentRunInput } from '@electron/contracts/agent-runtime';
 
 const rpc = vi.hoisted(() => ({ calls: [] as Array<{ method: string; params: unknown }>, failStart: false,
   server: null as null | { emit: (event: string, message: unknown) => void },
+  launchConfigs: [] as Array<Record<string, unknown>>,
+  skillsOverride: null as null | Array<{ name: string; path: string; scope: string; enabled: boolean }>,
+  mcpProjectOrigin: false,
+  pluginStatus: false,
   executionMode: 'native' as 'native' | 'wsl' }));
 
 vi.mock('@electron/services/agent-settings.service', () => ({ agentSettingsService: {
@@ -25,18 +32,37 @@ vi.mock('@electron/services/agent-adapters/codex-tool-bridge', () => ({
 vi.mock('@electron/services/agent-adapters/codex-app-server', async () => {
   const { EventEmitter } = await import('events');
   return { CodexAppServer: class extends EventEmitter {
-    constructor(...args: unknown[]) { super(); void args; rpc.server = this; }
+    constructor(...args: unknown[]) { super(); rpc.launchConfigs.push(args[2] as Record<string, unknown>); rpc.server = this; }
     async start() { if (rpc.failStart) throw new Error('spawn codex ENOENT'); }
     close() {}
     async request(method: string, params: unknown) {
       rpc.calls.push({ method, params });
+      if (method === 'fs/getMetadata') return { isSymlink: false };
+      if (method === 'fs/readFile') {
+        const fs = await import('fs');
+        return { dataBase64: fs.readFileSync((params as { path: string }).path).toString('base64') };
+      }
+      if (method === 'fs/writeFile') {
+        const fs = await import('fs');
+        const file = params as { path: string; dataBase64: string };
+        fs.writeFileSync(file.path, Buffer.from(file.dataBase64, 'base64'));
+        return {};
+      }
       if (method === 'account/read') return { account: { type: 'chatgpt' } };
+      if (method === 'skills/list' && rpc.skillsOverride) return { data: [{ skills: rpc.skillsOverride }] };
       if (method === 'skills/list') return { data: [{ skills: [
         { name: 'recon-helper', description: 'Recon from disk', enabled: true,
           interface: { shortDescription: 'Run reconnaissance' } },
         { name: 'disabled-skill', description: 'Disabled', enabled: false },
         { name: 'bad name', description: 'Invalid token', enabled: true },
       ] }] };
+      if (method === 'config/read') return { origins: rpc.mcpProjectOrigin ? {
+        'mcp_servers.probe': { name: { type: 'project', dotCodexFolder: 'C:/work/project/.codex' } },
+      } : undefined, config: { mcp_servers: {
+        probe: { command: 'echo', args: ['ok'], tool_timeout_sec: null },
+      } } };
+      if (method === 'mcpServerStatus/list') return { data: [{ name: 'probe', runtimeStatus: 'connected', tools: { ping: {} }, toolsError: null },
+        ...(rpc.pluginStatus ? [{ name: 'plugin-tools', pluginId: 'sample.plugin@test', runtimeStatus: 'connected', tools: { search: {} }, toolsError: null }] : [])] };
       if (method === 'model/list') {
         const cursor = (params as { cursor?: string | null }).cursor;
         return cursor ? { data: [{ model: 'gpt-next', displayName: 'GPT Next', hidden: false }], nextCursor: null }
@@ -58,6 +84,16 @@ vi.mock('@electron/services/agent-adapters/codex-app-server', async () => {
       if (method === 'turn/start') {
         const threadId = (params as { threadId: string }).threadId;
         const prompt = (params as { input: Array<{ text?: string }> }).input[0]?.text;
+        if (prompt === 'Tool-error') {
+          queueMicrotask(() => {
+            this.emit('message', { method: 'item/completed', params: { threadId, turnId: 'turn-1', item: {
+              id: 'tool-error', type: 'mcpToolCall', tool: 'hexestra.restriction_list', status: 'failed',
+              error: { message: 'MCP tool call requires approval, but approval policy is never' },
+            } } });
+            this.emit('message', { method: 'turn/completed', params: { threadId, turn: { id: 'turn-1', status: 'completed' } } });
+          });
+          return { turn: { id: 'turn-1' } };
+        }
         if (prompt === 'Wait for cancellation') {
           return { turn: { id: 'turn-1' } };
         }
@@ -96,6 +132,73 @@ function input(overrides: Partial<AgentRunInput> = {}): AgentRunInput {
 const interactions = { authorizeTool: vi.fn(), requestAnswers: vi.fn() };
 
 describe('Codex Agent adapter protocol', () => {
+  it('reads Codex MCP config and strips nullable defaults before writing TOML', async () => {
+    rpc.calls.length = 0;
+    const adapter = new CodexAgentAdapter();
+    const listed = await adapter.listMcpServers();
+    expect(listed.items).toMatchObject([{ name: 'probe', status: 'connected', toolCount: 1 }]);
+    await adapter.saveMcpServer({ name: 'probe', originalName: 'probe', definition: listed.items[0].definition });
+    expect(rpc.calls.find((call) => call.method === 'config/value/write')?.params).toEqual({
+      keyPath: 'mcp_servers.probe', value: { command: 'echo', args: ['ok'] }, mergeStrategy: 'replace',
+    });
+    expect(rpc.calls.some((call) => call.method === 'config/mcpServer/reload')).toBe(true);
+    await adapter.deleteMcpServer('probe');
+    expect(rpc.calls.filter((call) => call.method === 'config/value/write').at(-1)?.params).toEqual({
+      keyPath: 'mcp_servers.probe', value: null, mergeStrategy: 'replace',
+    });
+  });
+
+  it('reads project MCP layers without attempting unsupported project config RPC writes', async () => {
+    rpc.mcpProjectOrigin = true;
+    rpc.calls.length = 0;
+    try {
+      const adapter = new CodexAgentAdapter();
+      const listed = await adapter.listMcpServers({ cwd: 'C:/work/project' });
+      expect(rpc.calls.find((call) => call.method === 'config/read')?.params)
+        .toEqual({ includeLayers: true, cwd: 'C:/work/project' });
+      expect(listed.items[0]).toMatchObject({ name: 'probe', scope: 'project', configFile: path.join('C:/work/project/.codex', 'config.toml') });
+      await expect(adapter.saveMcpServer({ name: 'probe', originalName: 'probe', scope: 'project', definition: listed.items[0].definition },
+        { cwd: 'C:/work/project' })).rejects.toThrow('file editor');
+      expect(rpc.calls.some((call) => call.method === 'config/value/write')).toBe(false);
+    } finally {
+      rpc.mcpProjectOrigin = false;
+    }
+  });
+
+  it('includes plugin-provided MCP servers and controls their enabled state', async () => {
+    rpc.pluginStatus = true;
+    rpc.calls.length = 0;
+    try {
+      const adapter = new CodexAgentAdapter();
+      const listed = await adapter.listMcpServers();
+      expect(listed.items).toContainEqual(expect.objectContaining({ name: 'plugin-tools', scope: 'plugin', pluginId: 'sample.plugin@test', toolCount: 1 }));
+      await adapter.toggleMcpServer('plugin-tools', false);
+      expect(rpc.calls.filter((call) => call.method === 'config/value/write').at(-1)?.params)
+        .toEqual({ keyPath: 'plugins."sample.plugin@test".mcp_servers."plugin-tools".enabled', value: false, mergeStrategy: 'replace' });
+    } finally {
+      rpc.pluginStatus = false;
+    }
+  });
+
+  it('copies a managed Skill and its resources into an editable project folder', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hexestra-skill-copy-'));
+    const source = path.join(root, 'system', 'managed-skill');
+    fs.mkdirSync(path.join(source, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(source, 'SKILL.md'), '---\nname: managed-skill\ndescription: Managed skill\n---\n\nSee scripts/run.sh\n');
+    fs.writeFileSync(path.join(source, 'scripts', 'run.sh'), 'echo ready\n');
+    rpc.skillsOverride = [{ name: 'managed-skill', path: path.join(source, 'SKILL.md'), scope: 'system', enabled: true }];
+    try {
+      const adapter = new CodexAgentAdapter();
+      const copied = await adapter.copySkill({ cwd: root }, { sourcePath: path.join(source, 'SKILL.md'), scope: 'repo', name: 'managed-skill-copy' });
+      expect(copied).toBe(path.join(root, '.agents', 'skills', 'managed-skill-copy', 'SKILL.md'));
+      expect(fs.readFileSync(copied, 'utf8')).toContain('name: managed-skill-copy');
+      expect(fs.readFileSync(path.join(path.dirname(copied), 'scripts', 'run.sh'), 'utf8')).toBe('echo ready\n');
+    } finally {
+      rpc.skillsOverride = null;
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('explains how to recover when the configured Codex executable is absent', async () => {
     rpc.failStart = true;
     try {
@@ -142,6 +245,7 @@ describe('Codex Agent adapter protocol', () => {
   });
   it('projects App Server text and completion into generic Agent events', async () => {
     rpc.calls.length = 0;
+    rpc.launchConfigs.length = 0;
     const adapter = new CodexAgentAdapter();
     const events = [];
     for await (const event of adapter.runTurn(input({ reasoningEffort: 'high' }), interactions)) events.push(event);
@@ -149,7 +253,22 @@ describe('Codex Agent adapter protocol', () => {
     expect(events.find((event) => event.type === 'turn_completed')).toMatchObject({ content: 'hello', backendMessageId: 'turn-1' });
     expect(rpc.calls.find((call) => call.method === 'thread/start')?.params).toMatchObject({ sandbox: 'read-only', approvalPolicy: 'never' });
     expect(rpc.calls.find((call) => call.method === 'turn/start')?.params).toMatchObject({ sandboxPolicy: { type: 'readOnly' }, effort: 'high' });
+    expect(rpc.launchConfigs.at(-1)).toMatchObject({
+      'mcp_servers.hexestra.default_tools_approval_mode': 'approve',
+      'mcp_servers.hexestra.required': true,
+    });
     await adapter.disposeConversation('project-1', 'main');
+  });
+
+  it('shows the actual Codex MCP error instead of an object placeholder', async () => {
+    const adapter = new CodexAgentAdapter();
+    const events = [];
+    for await (const event of adapter.runTurn(input({ conversationId: 'tool-error', prompt: 'Tool-error' }), interactions)) events.push(event);
+    expect(events.find((event) => event.type === 'turn_completed')).toMatchObject({ activities: [
+      { id: 'tool-error', kind: 'tool', status: 'error',
+        outputSummary: 'MCP tool call requires approval, but approval policy is never' },
+    ] });
+    await adapter.disposeConversation('project-1', 'tool-error');
   });
 
   it('keeps each Codex message around tool activity instead of replacing earlier text', async () => {

@@ -179,7 +179,7 @@ export function ShortcutsSettings() {
                           }}
                           onKeyDown={(event) => recording && record(command.id, event)}
                           onBlur={() => recording && setRecordingId(null)}
-                          className={`flex min-h-8 min-w-36 items-center justify-center gap-1 rounded-md border px-2 font-mono text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${recording ? 'border-accent-blue bg-accent-blue/10 text-accent-blue' : 'border-border-subtle bg-canvas text-text-secondary hover:border-border-strong hover:bg-raised'}`}
+                          className={`flex min-h-8 min-w-36 items-center justify-center gap-1 rounded-md px-2 font-mono text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${recording ? 'bg-accent-blue/10 text-accent-blue' : 'bg-canvas text-text-secondary hover:bg-raised'}`}
                         >
                           {recording ? (
                             <span>{t('shortcuts.pressShortcut')}</span>

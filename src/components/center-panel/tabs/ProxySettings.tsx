@@ -1,3 +1,4 @@
+import { Select as StyledSelect } from '@/components/shared/Select';
 import {
   useEffect,
   useRef,
@@ -243,7 +244,7 @@ export function ProxySettings() {
         <section aria-labelledby="proxy-runtime-title">
           <SectionHeader
             id="proxy-runtime-title"
-            title={zh ? '运行时' : 'Runtime'}
+            title={zh ? '代理引擎' : 'Runtime'}
           />
           <Surface className="overflow-hidden">
             <div className="grid gap-4 p-4">
@@ -302,7 +303,7 @@ export function ProxySettings() {
                     disabled={busy}
                     onClick={() => void (isRuntimeOnline ? proxy.stop() : proxy.start()).catch(() => undefined)}
                   >
-                    {isRuntimeOnline ? (zh ? '停止 Runtime' : 'Stop runtime') : (zh ? '启动 Runtime' : 'Start runtime')}
+                    {isRuntimeOnline ? (zh ? '停止引擎' : 'Stop runtime') : (zh ? '启动引擎' : 'Start runtime')}
                   </Button>
                 )}
                 <Button
@@ -349,7 +350,7 @@ export function ProxySettings() {
                     leadingIcon="activity"
                     disabled={busy || proxy.nodes.length === 0 || !proxy.diagnostic?.supported}
                     onClick={() => void proxy.testNodes().catch(() => undefined)}
-                    title={!proxy.diagnostic?.supported ? (zh ? '请先选择可用的 Mihomo Runtime' : 'Select a working Mihomo runtime first') : undefined}
+                    title={!proxy.diagnostic?.supported ? (zh ? '请先选择可用的 Mihomo 引擎' : 'Select a working Mihomo runtime first') : undefined}
                   >
                     {proxy.busy === 'node-test' ? (zh ? '测速中…' : 'Testing…') : (zh ? '测速' : 'Test')}
                   </Button>
@@ -393,14 +394,14 @@ export function ProxySettings() {
                     {mode !== 'uri' && <Field id="proxy-node-name" label={zh ? '名称（可选）' : 'Name (optional)'} value={name} onChange={setName} />}
                     {mode === 'form' && (
                       <FormField label={zh ? '协议' : 'Protocol'} htmlFor="proxy-node-protocol">
-                        <select
+                        <StyledSelect
                           id="proxy-node-protocol"
                           className="ui-control h-8 w-full px-2.5 text-xs text-text-primary"
                           value={form.protocol}
                           onChange={(event) => setForm({ ...form, protocol: event.target.value as EgressProxyProtocol, username: '', password: '' })}
                         >
                           {PROTOCOLS.map((protocol) => <option key={protocol}>{protocol}</option>)}
-                        </select>
+                        </StyledSelect>
                       </FormField>
                     )}
 
@@ -542,7 +543,7 @@ export function ProxySettings() {
                   <span className="font-mono text-[11px] text-text-muted">{proxy.chains.length}</span>
                 </div>
                 <div className="min-w-40 flex-1 sm:max-w-64">
-                  <select
+                  <StyledSelect
                     aria-label={zh ? '选择代理链' : 'Select proxy chain'}
                     className="ui-control h-7 w-full px-2 text-[11px] text-text-secondary"
                     value={editingChainId ?? ''}
@@ -555,7 +556,7 @@ export function ProxySettings() {
                     {proxy.chains.map((chain) => (
                       <option key={chain.id} value={chain.id}>{chain.name} · {chain.nodeIds.length} HOPS</option>
                     ))}
-                  </select>
+                  </StyledSelect>
                 </div>
                 {editingChain && proxy.status?.activeChainId === editingChain.id && (
                   <span className="flex items-center gap-1 text-[11px] text-status-success"><Icon name="circle" size={8} />{zh ? '活动' : 'Active'}</span>

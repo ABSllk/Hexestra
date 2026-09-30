@@ -1,3 +1,4 @@
+import { Select as StyledSelect, MultiSelect as StyledMultiSelect } from '@/components/shared/Select';
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ATTACK_TACTICS, ATTACK_TECHNIQUES } from '@electron/contracts/tasks';
 import {
@@ -189,11 +190,11 @@ export function ToolCatalogSettings() {
             </label>
             <label>
               <span className="sr-only">{t('tools.filter')}</span>
-              <select value={filter} onChange={(event) => setFilter(event.target.value as ToolFilter)} className="ui-control min-h-8 w-full text-xs">
+              <StyledSelect value={filter} onChange={(event) => setFilter(event.target.value as ToolFilter)} className="ui-control min-h-8 w-full text-xs">
                 <option value="all">{t('tools.all')}</option>
                 <option value="enabled">{t('tools.enabled')}</option>
                 <option value="disabled">{t('tools.disabled')}</option>
-              </select>
+              </StyledSelect>
             </label>
           </div>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
@@ -252,14 +253,14 @@ export function ToolCatalogSettings() {
                   <textarea aria-label={t('tools.descriptionField')} value={draft.description} onChange={(event) => updateDraft('description', event.target.value)} rows={3} className="ui-control w-full resize-y px-2.5 py-2 text-xs" />
                 </Field>
                 <Field label={t('tools.risk')}>
-                  <select aria-label={t('tools.risk')} value={draft.risk} onChange={(event) => updateDraft('risk', event.target.value as ToolCatalogRecord['risk'])} className="ui-control min-h-8 w-full text-xs">
+                  <StyledSelect aria-label={t('tools.risk')} value={draft.risk} onChange={(event) => updateDraft('risk', event.target.value as ToolCatalogRecord['risk'])} className="ui-control min-h-8 w-full text-xs">
                     {TOOL_RISKS.map((risk) => <option key={risk} value={risk}>{risk === 'passive' ? t('tools.riskPassive') : risk === 'active' ? t('tools.riskActive') : t('tools.riskDestructive')}</option>)}
-                  </select>
+                  </StyledSelect>
                 </Field>
                 <Field label={t('tools.channel')}>
-                  <select aria-label={t('tools.channel')} value={draft.channel} onChange={(event) => updateDraft('channel', event.target.value as ToolCatalogRecord['channel'])} className="ui-control min-h-8 w-full text-xs">
+                  <StyledSelect aria-label={t('tools.channel')} value={draft.channel} onChange={(event) => updateDraft('channel', event.target.value as ToolCatalogRecord['channel'])} className="ui-control min-h-8 w-full text-xs">
                     {TOOL_CHANNELS.map((channel) => <option key={channel} value={channel}>{channel === 'agent-runtime' ? t('tools.channelAgentRuntime') : channel === 'electron' ? t('tools.channelElectron') : channel === 'mcp' ? t('tools.channelMcp') : t('tools.channelDocker')}</option>)}
-                  </select>
+                  </StyledSelect>
                 </Field>
                 <Field label={t('tools.capabilities')} className="col-span-2">
                   <TagEditor label={t('tools.capabilities')} values={draft.capabilities} onChange={(values) => updateDraft('capabilities', values)} placeholder={t('tools.capabilityPlaceholder')} removeLabel={t('tools.removeTag')} />
@@ -305,16 +306,9 @@ function Field({ label, hint, className, children }: { label: string; hint?: str
 
 function MultiSelect({ label, values, options, onChange }: { label: string; values: string[]; options: Array<{ value: string; label: string }>; onChange: (values: string[]) => void }) {
   return (
-    <select
-      aria-label={label}
-      multiple
-      size={8}
-      value={values}
-      onChange={(event) => onChange(Array.from(event.currentTarget.selectedOptions, (option) => option.value))}
-      className="ui-control min-h-40 w-full py-1 font-mono text-[11px]"
-    >
+    <StyledMultiSelect aria-label={label} size={8} value={values} onChange={(event) => onChange(Array.from(event.currentTarget.selectedOptions, (option) => option.value))} className="min-h-40 w-full py-1 font-mono text-[11px]">
       {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-    </select>
+    </StyledMultiSelect>
   );
 }
 
