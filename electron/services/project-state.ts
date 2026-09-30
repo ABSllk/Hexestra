@@ -159,7 +159,7 @@ export function createConversationBranch(
 export function createDefaultWorkspace(): ProjectWorkspaceState {
   return {
     tabs: [
-      { id: 'welcome-0', type: 'welcome', title: 'Welcome', closable: false },
+      { id: 'welcome-0', type: 'welcome', title: 'Welcome', closable: true },
       { id: 'terminal-1', type: 'terminal', title: 'Terminal', closable: true },
     ],
     activeTabId: 'terminal-1',
@@ -272,7 +272,12 @@ function normalizeWorkspace(value: Record<string, unknown>): ProjectWorkspaceSta
   const tabs = Array.isArray(value.tabs)
     ? value.tabs.flatMap(normalizeTab).slice(0, MAX_TABS)
     : [];
-  if (tabs.length === 0) return defaults;
+  if (tabs.length === 0) {
+    if (Array.isArray(value.tabs) && value.tabs.length === 0) {
+      return { tabs: [defaults.tabs[0]], activeTabId: defaults.tabs[0].id, nextTabNumber: 1 };
+    }
+    return defaults;
+  }
   const requestedActive = typeof value.activeTabId === 'string' ? value.activeTabId : null;
   const activeTabId = tabs.some((tab) => tab.id === requestedActive)
     ? requestedActive
@@ -498,7 +503,7 @@ function normalizeTab(value: unknown): PersistedProjectTab[] {
     id: value.id,
     type: value.type,
     title: typeof value.title === 'string' ? value.title.slice(0, 200) : value.type,
-    closable: value.type === 'welcome' ? false : value.closable !== false,
+    closable: value.type === 'welcome' || value.closable !== false,
     data: isRecord(value.data) ? sanitizeTabData(value.type, value.data) : undefined,
   }];
 }

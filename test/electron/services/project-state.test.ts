@@ -8,6 +8,14 @@ import {
 } from '@electron/services/project-state';
 
 describe('project state', () => {
+  it('normalizes legacy Welcome as closable and restores Welcome for an empty workspace', () => {
+    const state = normalizeProjectState({ version: 10, workspace: { tabs: [{ id: 'welcome-0', type: 'welcome', title: 'Welcome', closable: false }], activeTabId: 'welcome-0', nextTabNumber: 1 } });
+    expect(state.workspace.tabs[0].closable).toBe(true);
+    const empty = normalizeProjectState({ version: 10, workspace: { tabs: [], activeTabId: null, nextTabNumber: 5 } });
+    expect(empty.workspace.tabs).toHaveLength(1);
+    expect(empty.workspace.tabs[0]).toMatchObject({ type: 'welcome', closable: true });
+    expect(empty.workspace.activeTabId).toBe(empty.workspace.tabs[0].id);
+  });
   it('migrates legacy projects with proxy enforcement disabled and normalizes v8 chains', () => {
     expect(normalizeProjectState({ version: 7 }).proxy).toEqual({ enabled: false, activeChainId: null, chains: [] });
     const state = normalizeProjectState({

@@ -1,3 +1,4 @@
+import { selectOption } from '../../../helpers/select';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SHELL_IPC } from '@electron/contracts/shell';
@@ -60,12 +61,12 @@ describe('ShellsTab', () => {
   it('separates WebShell endpoint input mode from the target OS shell flavor', async () => {
     render(<ShellsTab />);
     fireEvent.click(screen.getByRole('button', { name: /Connection/i }));
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'webshell' } });
+    selectOption(screen.getAllByRole('combobox')[0], 'WebShell');
 
-    expect(await screen.findByLabelText('WebShell command mode')).toHaveValue('auto');
+    expect(await screen.findByLabelText('WebShell command mode')).toHaveTextContent('Auto detect');
     expect(screen.getByText('Shell flavor')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('WebShell command mode'), { target: { value: 'php_eval' } });
-    expect(screen.getByLabelText('WebShell command mode')).toHaveValue('php_eval');
+    selectOption(screen.getByLabelText('WebShell command mode'), 'PHP eval');
+    expect(screen.getByLabelText('WebShell command mode')).toHaveTextContent('PHP eval');
   });
 
   it('shows the resolved WebShell endpoint mode on a live session', async () => {

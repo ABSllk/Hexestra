@@ -1,3 +1,4 @@
+import { selectOption } from '../../../../helpers/select';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useNetMapStore, useSessionStore, useTabStore } from '@/stores';
@@ -21,7 +22,7 @@ describe('RecordDetailTab', () => {
     render(<RecordDetailTab tabId="record-1" />);
     expect(screen.getByRole('heading', { name: 'Admin lead' })).toBeInTheDocument();
     expect(screen.getByDisplayValue('Useful project knowledge.')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Finding kind'), { target: { value: 'hypothesis' } });
+    selectOption(screen.getByLabelText('Finding kind'), 'hypothesis');
     expect(useSessionStore.getState().upsertFinding).toHaveBeenCalledWith(expect.objectContaining({ id: 'finding-1', kind: 'hypothesis' }));
   });
 

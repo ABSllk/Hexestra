@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { FourPanelLayout } from './FourPanelLayout';
 import { StatusBar } from './StatusBar';
-import { LeftPanelContainer } from '@/components/left-panel/LeftPanelContainer';
+import { LeftPanelContainer, LeftPanelNavigation } from '@/components/left-panel/LeftPanelContainer';
 import { TabContainer } from '@/components/center-panel/TabContainer';
 import { AIChatSidebar } from '@/components/right-panel/AIChatSidebar';
 import { NetMapView } from '@/components/bottom-panel/NetMapView';
@@ -159,6 +159,7 @@ export function AppShell() {
       {/* Main resizable layout */}
       <div className="flex-1 min-h-0">
         <FourPanelLayout
+          leftNavigation={<LeftPanelNavigation />}
           leftPanel={<ErrorBoundary label="Left panel" compact><LeftPanelContainer /></ErrorBoundary>}
           centerPanel={<ErrorBoundary label="Workspace" compact><TabContainer /></ErrorBoundary>}
           rightPanel={<ErrorBoundary label="AI sidebar" compact><AIChatSidebar /></ErrorBoundary>}

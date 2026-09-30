@@ -24,6 +24,7 @@ export function TabBar() {
   const activeTabId = useTabStore((s) => s.activeTabId);
   const setActiveTab = useTabStore((s) => s.setActiveTab);
   const closeTab = useTabStore((s) => s.closeTab);
+  const openTab = useTabStore((s) => s.openTab);
 
   useEffect(() => {
     const activeTab = tabListRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
@@ -39,14 +40,12 @@ export function TabBar() {
     event.preventDefault();
   };
 
-  if (tabs.length === 0) return null;
-
   return (
     <div
       ref={tabListRef}
       role="tablist"
       aria-label={t('tabs.workspace')}
-      className="tab-bar shrink-0 gap-0.5 border-border-subtle bg-panel px-2 pt-1"
+      className="tab-bar shrink-0 gap-1 bg-canvas px-2 py-1.5"
       onWheel={handleWheel}
     >
       {tabs.map((tab) => {
@@ -87,10 +86,10 @@ export function TabBar() {
             }
           }}
           className={cn(
-            'group flex min-h-8 w-40 flex-none cursor-pointer select-none items-center gap-1.5 rounded-t-md border border-b-0 px-3 py-1.5 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-focus',
+            'group relative flex h-9 min-h-9 w-40 flex-none cursor-pointer select-none items-center gap-1.5 rounded-xl px-3 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-focus',
             activeTabId === tab.id
-              ? 'border-border-subtle bg-panel text-text-primary shadow-sm shadow-black/10'
-              : 'border-transparent bg-transparent text-text-muted hover:border-border-subtle/60 hover:bg-raised/60 hover:text-text-secondary',
+              ? 'bg-raised/75 text-text-primary'
+              : 'bg-transparent text-text-muted hover:bg-raised/50 hover:text-text-secondary',
           )}
         >
           <Icon name={TAB_ICONS[tab.type] ?? 'file'} size={14} />
@@ -102,7 +101,7 @@ export function TabBar() {
                 event.stopPropagation();
                 closeTab(tab.id);
               }}
-              className="ui-icon-button h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              className={cn('ui-icon-button h-6 w-6 transition-opacity group-hover:opacity-100 focus-visible:opacity-100', activeTabId === tab.id ? 'opacity-100' : 'opacity-0')}
             >
               <Icon name="close" size={12} />
             </button>
@@ -110,6 +109,15 @@ export function TabBar() {
         </div>
         );
       })}
+      <button
+        type="button"
+        aria-label={t('tabs.newWelcome')}
+        title={t('tabs.newWelcome')}
+        onClick={() => openTab({ type: 'welcome', title: 'Welcome', closable: true })}
+        className="ui-icon-button h-9 w-9 shrink-0 self-center"
+      >
+        <Icon name="plus" size={16} />
+      </button>
     </div>
   );
 }

@@ -49,7 +49,8 @@ describe('TaskTreeTab', () => {
 
     expect(screen.getByRole('tree', { name: 'ATT&CK task tree' })).toBeInTheDocument();
     expect(screen.getByText('Enumerate services')).toBeInTheDocument();
-    expect(screen.getByText('0%')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Coverage' })).not.toBeInTheDocument();
   });
 
   it('selects tasks and collapses tactic groups', () => {

@@ -1,3 +1,4 @@
+import { openSelect } from '../../../helpers/select';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionFileEntry } from '@/types';
@@ -88,8 +89,9 @@ describe('SessionFilesTab', () => {
       }])
       : Promise.resolve(undefined));
     render(<SessionFilesTab />);
+    openSelect(screen.getByRole('combobox', { name: 'File source' }));
     expect(screen.getByRole('option', { name: 'Project' })).toBeInTheDocument();
     expect(await screen.findByRole('option', { name: 'Staging SSH · SSH' })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'File source' })).toHaveValue('project');
+    expect(screen.getByRole('combobox', { name: 'File source' })).toHaveTextContent('Project');
   });
 });

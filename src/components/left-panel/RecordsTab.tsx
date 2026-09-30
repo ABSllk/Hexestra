@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ContextMenu, useConfirmDialog, type ContextMenuItem } from '@/components/shared';
+import { ContextMenu, TabbedCard, useConfirmDialog, type ContextMenuItem } from '@/components/shared';
 import { useNetMapStore, useSessionStore, useTabStore } from '@/stores';
 import { openRecordTab } from '@/stores/useTabStore';
 import { RECORDS_IPC, type RecordExportResult } from '@electron/contracts/records';
@@ -67,10 +67,7 @@ export function RecordsTab() {
     setMenu({ kind, recordId, x: event.clientX, y: event.clientY, target: event.currentTarget });
   };
 
-  return <div className="flex h-full min-h-0 flex-col">
-    <div className="grid min-w-0 shrink-0 grid-cols-4 gap-0.5 border-b border-border-subtle bg-panel/50 p-1.5">
-      {items.map((item) => <button key={item.id} aria-label={`${item.label} ${item.count}`} title={item.label} onClick={() => setView(item.id)} className={`ui-segmented-item flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-center text-[11px] leading-tight ${view === item.id ? 'ui-segmented-item-active' : ''}`}><span className="block max-w-full truncate">{item.label}</span><span className="font-mono opacity-65">{item.count}</span></button>)}
-    </div>
+  return <TabbedCard items={items} value={view} onChange={setView} label="Records">
     <div className="min-h-0 flex-1">
       {view === 'findings' && <FindingsTab showHeader={false} onRecordContextMenu={showMenu('finding')} />}
       {view === 'vulnerabilities' && <VulnerabilitiesTab onRecordContextMenu={showMenu('vulnerability')} />}
@@ -78,7 +75,7 @@ export function RecordsTab() {
       {view === 'reports' && <ReportRecords records={reports} onRecordContextMenu={showMenu('report')} />}
     </div>
     <ContextMenu open={!!menu} x={menu?.x ?? 0} y={menu?.y ?? 0} items={menuItems} returnFocus={menu?.target} onClose={() => setMenu(null)} />
-  </div>;
+  </TabbedCard>;
 }
 
 function EvidenceRecords({ records, onRecordContextMenu }: { records: EvidenceRecord[]; onRecordContextMenu: (event: React.MouseEvent<HTMLButtonElement>, recordId: string) => void }) {

@@ -42,7 +42,7 @@ describe('RecordsTab', () => {
 
   it('browses managed Evidence and selects its linked asset', () => {
     render(<RecordsTab />);
-    fireEvent.click(screen.getByRole('button', { name: /Evidence 1/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Evidence 1/i }));
     expect(screen.getByText('HTTP response')).not.toHaveAttribute('data-presentation-sensitive');
     expect(screen.getByText('192.0.2.10 / curl')).toHaveAttribute('data-presentation-sensitive');
     fireEvent.click(screen.getByText('HTTP response'));
@@ -53,7 +53,7 @@ describe('RecordsTab', () => {
 
   it('renders managed Report Markdown', () => {
     render(<RecordsTab />);
-    fireEvent.click(screen.getByRole('button', { name: /Reports 1/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Reports 1/i }));
     fireEvent.click(screen.getByText('Final report'));
     expect(useTabStore.getState().activeTab()).toMatchObject({ type: 'record', data: { recordKind: 'report', recordId: 'report-1' } });
     expect(screen.queryByRole('heading', { name: 'Result' })).not.toBeInTheDocument();
@@ -68,7 +68,7 @@ describe('RecordsTab', () => {
       [/Evidence 1/i, 'HTTP response'],
       [/Reports 1/i, 'Final report'],
     ] as const) {
-      fireEvent.click(screen.getByRole('button', { name: tabName }));
+      fireEvent.click(screen.getByRole('tab', { name: tabName }));
       fireEvent.contextMenu(screen.getByText(recordTitle));
       expect(screen.getByRole('menuitem', { name: 'Open details' })).toBeInTheDocument();
       expect(screen.getByRole('menuitem', { name: 'Copy as JSON' })).toBeInTheDocument();

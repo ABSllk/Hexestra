@@ -1,3 +1,4 @@
+import { Select as StyledSelect } from '@/components/shared/Select';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ContextMenu, DismissibleNotice, Icon, useConfirmDialog, type ContextMenuItem } from '@/components/shared';
 import { cn } from '@/lib/cn';
@@ -247,14 +248,14 @@ export function TrafficSidebar() {
   const dismissPersistentNotice = (message: string) => setDismissedPersistentNotices((current) => current.includes(message) ? current : [...current, message]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-canvas/45">
-      <header className="shrink-0 border-b border-border-subtle/80 p-2">
+    <div className="traffic-sidebar flex h-full min-h-0 flex-col bg-panel">
+      <header className="shrink-0 p-2">
         <div className="mb-2 flex items-center gap-2">
           <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary">{t('nav.traffic')}</span>
           <button type="button" className="ui-icon-button ml-auto text-text-muted hover:text-severity-high" disabled={busy} aria-label={t('traffic.clearHistory')} title={t('traffic.clearHistory')} onClick={clearHistory}>
             <Icon name="trash" size={12} />
           </button>
-          <span className={cn('rounded border px-1.5 py-0.5 font-mono text-[11px]', runtime === 'ready' ? 'border-accent-teal/35 text-accent-teal' : runtime === 'blocked' || runtime === 'error' ? 'border-severity-high/35 text-severity-high' : 'border-border-subtle text-text-muted')}>{runtime.toUpperCase()}</span>
+          <span className={cn('px-1.5 py-0.5 font-mono text-[11px]', runtime === 'ready' ? 'text-accent-teal' : runtime === 'blocked' || runtime === 'error' ? 'text-severity-high' : 'text-text-muted')}>{runtime.toUpperCase()}</span>
         </div>
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1.5">
           <button
@@ -284,7 +285,7 @@ export function TrafficSidebar() {
       {persistentNoticeVisible(mirrorOfflineWarning) && <DismissibleNotice tone="warning" variant="banner" className="px-2 text-[11px]" onDismiss={() => dismissPersistentNotice(mirrorOfflineWarning!)}>{mirrorOfflineWarning}</DismissibleNotice>}
       {persistentNoticeVisible(burpMcpWarning) && <DismissibleNotice tone="warning" variant="banner" className="px-2 text-[11px]" onDismiss={() => dismissPersistentNotice(burpMcpWarning!)}>{burpMcpWarning}</DismissibleNotice>}
 
-      <div className="shrink-0 space-y-1.5 border-b border-border-subtle/70 p-2">
+      <div className="shrink-0 space-y-1.5 p-2">
         <div className="flex items-center gap-1.5">
           <Icon name="search" size={11} className="shrink-0 text-text-muted" />
           <input aria-label={t('traffic.search')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('traffic.searchPlaceholder')} className="ui-control min-w-0 flex-1 px-2 py-1 text-[11px]" />
@@ -292,9 +293,9 @@ export function TrafficSidebar() {
         </div>
         <FilterRow label={t('traffic.status')} values={[{ id: 'all', label: t('traffic.all') }, { id: 'paused', label: t('traffic.paused') }, { id: 'completed', label: t('traffic.completed') }, { id: 'failed', label: t('traffic.failed') }]} active={status} onChange={(value) => setStatus(value as StatusFilter)} />
         <div className="grid grid-cols-1 gap-1.5">
-          <select aria-label="Traffic source filter" className="ui-control min-w-0 px-1 py-1 text-[11px]" value={source} onChange={(event) => setSource(event.target.value as SourceFilter)}>
+          <StyledSelect aria-label="Traffic source filter" className="ui-control min-w-0 px-1 py-1 text-[11px]" value={source} onChange={(event) => setSource(event.target.value as SourceFilter)}>
             <option value="all">{t('traffic.allSources')}</option><option value="browser">{t('traffic.browser')}</option><option value="replay">{t('traffic.replay')}</option>
-          </select>
+          </StyledSelect>
         </div>
         {(host || parentFlowId) && <button className="flex w-full items-center justify-between rounded bg-accent-blue/8 px-2 py-1 text-[11px] text-accent-blue" onClick={() => { setHost(''); setParentFlowId(''); }}><span className="truncate">{host ? `Host: ${host}` : `Replays of ${parentFlowId}`}</span><Icon name="close" size={10} /></button>}
       </div>
@@ -305,7 +306,6 @@ export function TrafficSidebar() {
         {flows.items.length < flows.total && <button className="ui-control mt-1 w-full py-1.5 text-[11px]" disabled={busy} onClick={() => void loadFlows(true)}>{t('traffic.loadMore')} · {flows.total - flows.items.length}</button>}
       </div>
 
-      <footer className="shrink-0 border-t border-border-subtle/70 px-2 py-1.5 text-[11px] leading-3 text-text-muted">{t('traffic.storageWarning')}</footer>
       <ContextMenu open={!!menu} x={menu?.x ?? 0} y={menu?.y ?? 0} items={menuItems} returnFocus={menu?.target} onClose={() => setMenu(null)} />
     </div>
   );
@@ -316,7 +316,7 @@ function FilterRow({ label, values, active, onChange }: { label: string; values:
 }
 
 function InterceptToggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
-  return <label className={cn('ui-control flex items-center gap-1.5 px-2 py-1 text-[11px] text-text-muted', disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer')}><input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} /><span className="truncate">{label}</span></label>;
+  return <label className={cn('flex items-center gap-1.5 px-2 py-1 text-[11px] text-text-muted', disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer')}><input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} /><span className="truncate">{label}</span></label>;
 }
 
 function TrafficListItem({ flow, active, onOpen, onContextMenu }: { flow: TrafficSummary; active: boolean; onOpen: () => void; onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void }) {

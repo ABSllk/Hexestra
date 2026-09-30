@@ -52,7 +52,7 @@ export function WelcomeTab() {
   };
 
   return (
-    <div className="flex h-full select-none flex-col items-center justify-start overflow-y-auto bg-panel py-8">
+    <div className="flex h-full select-none flex-col items-center justify-start overflow-y-auto bg-canvas py-8">
       <img
         src={resolvedTheme === 'dark' ? hexestraDarkLogo : hexestraLightLogo}
         alt="Hexestra"

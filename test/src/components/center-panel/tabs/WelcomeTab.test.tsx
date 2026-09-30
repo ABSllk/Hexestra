@@ -66,13 +66,13 @@ describe('WelcomeTab folder projects', () => {
     const view = render(<AppPreferencesProvider><WelcomeTab /></AppPreferencesProvider>);
 
     const logo = await screen.findByRole('img', { name: 'Hexestra' });
-    expect(logo).toHaveAttribute('src', expect.stringContaining('hexestra-logo-dark'));
+    await waitFor(() => expect(logo).toHaveAttribute('src', expect.stringContaining('hexestra-logo-dark')));
     expect(screen.queryByText('AI-assisted penetration testing integrated environment')).not.toBeInTheDocument();
 
     view.unmount();
     theme = 'light';
     render(<AppPreferencesProvider><WelcomeTab /></AppPreferencesProvider>);
-    expect(await screen.findByRole('img', { name: 'Hexestra' })).toHaveAttribute('src', expect.stringContaining('hexestra-logo-light'));
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Hexestra' })).toHaveAttribute('src', expect.stringContaining('hexestra-logo-light')));
   });
 
   it('opens a selected folder and makes it the active project', async () => {

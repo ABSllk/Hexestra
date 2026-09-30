@@ -5,7 +5,10 @@ export type LeftPanelView = 'targets' | 'tasktree' | 'records' | 'files' | 'traf
 interface AppStore {
   // Left panel
   leftPanelView: LeftPanelView;
+  isLeftPanelOpen: boolean;
   setLeftPanelView: (view: LeftPanelView) => void;
+  toggleLeftPanelView: (view: LeftPanelView) => void;
+  setLeftPanelOpen: (open: boolean) => void;
 
   // Bottom panel
   isNetMapVisible: boolean;
@@ -15,7 +18,13 @@ interface AppStore {
 
 export const useAppStore = create<AppStore>((set) => ({
   leftPanelView: 'targets',
-  setLeftPanelView: (view) => set({ leftPanelView: view }),
+  isLeftPanelOpen: true,
+  setLeftPanelView: (view) => set({ leftPanelView: view, isLeftPanelOpen: true }),
+  toggleLeftPanelView: (view) => set((state) => ({
+    leftPanelView: view,
+    isLeftPanelOpen: view === state.leftPanelView ? !state.isLeftPanelOpen : true,
+  })),
+  setLeftPanelOpen: (open) => set({ isLeftPanelOpen: open }),
 
   isNetMapVisible: true,
   toggleNetMap: () => set((s) => ({ isNetMapVisible: !s.isNetMapVisible })),

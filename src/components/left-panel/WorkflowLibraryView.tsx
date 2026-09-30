@@ -61,7 +61,7 @@ export function WorkflowLibraryView() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-canvas">
+    <div className="flex min-h-0 flex-1 flex-col bg-panel">
       <div className="shrink-0 border-b border-border-subtle bg-panel/50 px-2.5 py-2">
         <div className="flex items-center gap-1.5">
           <label className="relative min-w-0 flex-1"><Icon name="search" size={12} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" /><input aria-label={t('workflow.search')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('workflow.search')} className="h-8 w-full rounded border border-border-subtle bg-panel px-7 text-[11px] text-text-primary outline-none focus:border-accent-blue/60" /></label>

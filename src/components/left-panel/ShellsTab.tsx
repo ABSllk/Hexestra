@@ -1,3 +1,4 @@
+import { Select as StyledSelect } from '@/components/shared/Select';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DismissibleNotice, Icon, useConfirmDialog } from '@/components/shared';
 import { useSessionStore, useTabStore } from '@/stores';
@@ -236,7 +237,8 @@ export function ShellsTab() {
   }
 
   return (
-    <div className="flex min-h-full flex-col gap-3 p-2 text-[11px]">
+    <div className="shells-sidebar h-full min-h-0 py-2">
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto px-2 text-[11px]">
       <div className="flex min-w-0 gap-1">
         <button className="ui-control flex min-w-0 flex-1 items-center justify-center gap-1 truncate" onClick={() => {
           setProfileDraft(DEFAULT_PROFILE);
@@ -442,13 +444,13 @@ export function ShellsTab() {
             )}
             {session.state === 'quarantined' && (
               <div className="mt-1.5 flex gap-1 pl-3.5">
-                <select className="ui-control min-w-0 flex-1 px-1 text-[11px]" defaultValue="" onChange={(event) => {
+                <StyledSelect className="ui-control min-w-0 flex-1 px-1 text-[11px]" defaultValue="" onChange={(event) => {
                   if (event.target.value) void run(`bind-${session.id}`, () => window.hexestra.invoke(SHELL_IPC.REVERSE_BIND, projectId, session.id, event.target.value));
                 }}>
                   <option value="">Bind to Scope asset…</option>
                   {isLoopbackShellPeer(session.peer?.address) && <option value={LOCAL_OPERATOR_ASSET_ID}>This Hexestra device · loopback</option>}
                   {bindableAssets.map((asset) => <option key={asset.id} value={asset.id}>{asset.label}</option>)}
-                </select>
+                </StyledSelect>
                 <button className="ui-icon-button" title="Reject connection" onClick={() => void run(`reject-${session.id}`, () => window.hexestra.invoke(SHELL_IPC.REVERSE_REJECT, projectId, session.id))}><Icon name="close" size={11} /></button>
               </div>
             )}
@@ -456,6 +458,7 @@ export function ShellsTab() {
           </div>
         ))}
       </ShellSection>
+    </div>
     </div>
   );
 }
@@ -480,32 +483,32 @@ function ProfileEditor({ draft, profiles, credentials, assets, supportsWsl, secr
   return (
     <div className="space-y-2 rounded border border-border-subtle bg-canvas p-2">
       <div className="flex items-center justify-between text-text-secondary"><span>{draft.id ? 'Edit connection' : 'New connection'}</span><button onClick={onCancel}><Icon name="close" size={11} /></button></div>
-      <select className="ui-control h-7 w-full px-2" value={kind} onChange={(event) => set('kind', event.target.value as ShellProfileKind)}>
+      <StyledSelect className="ui-control h-7 w-full px-2" value={kind} onChange={(event) => set('kind', event.target.value as ShellProfileKind)}>
         <option value="ssh">SSH</option><option value="webshell">WebShell</option><option value="local">Local</option>{supportsWsl && <option value="wsl">WSL</option>}
-      </select>
+      </StyledSelect>
       <input className="ui-control h-7 w-full px-2" placeholder="Name" value={draft.name ?? ''} onChange={(event) => set('name', event.target.value)} />
-      <select className="ui-control h-7 w-full px-2" value={draft.assetId ?? ''} onChange={(event) => set('assetId', event.target.value || undefined)}>
+      <StyledSelect className="ui-control h-7 w-full px-2" value={draft.assetId ?? ''} onChange={(event) => set('assetId', event.target.value || undefined)}>
         <option value="">No linked asset</option>{assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.label}</option>)}
-      </select>
+      </StyledSelect>
       {kind === 'ssh' && <>
         <div className="grid grid-cols-[1fr_62px] gap-1"><input className="ui-control h-7 px-2" placeholder="Host" value={draft.host ?? ''} onChange={(event) => set('host', event.target.value)} /><input className="ui-control h-7 px-2" type="number" min={1} max={65535} value={draft.port ?? 22} onChange={(event) => set('port', Number(event.target.value))} /></div>
         <input className="ui-control h-7 w-full px-2" placeholder="Username" value={draft.username ?? ''} onChange={(event) => set('username', event.target.value)} />
-        <select className="ui-control h-7 w-full px-2" value={draft.authMethod ?? 'password'} onChange={(event) => set('authMethod', event.target.value as ShellProfile['authMethod'])}>
+        <StyledSelect className="ui-control h-7 w-full px-2" value={draft.authMethod ?? 'password'} onChange={(event) => set('authMethod', event.target.value as ShellProfile['authMethod'])}>
           <option value="password">Password</option><option value="private_key">Private key</option><option value="keyboard_interactive">Keyboard interactive</option>
-        </select>
-        {credentials.length > 0 && <select className="ui-control h-7 w-full px-2" value={draft.credentialId ?? ''} onChange={(event) => set('credentialId', event.target.value || undefined)}><option value="">New credential below</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select>}
+        </StyledSelect>
+        {credentials.length > 0 && <StyledSelect className="ui-control h-7 w-full px-2" value={draft.credentialId ?? ''} onChange={(event) => set('credentialId', event.target.value || undefined)}><option value="">New credential below</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</StyledSelect>}
         {draft.authMethod === 'private_key' ? <textarea className="ui-control min-h-20 w-full resize-y p-2 font-mono text-[11px]" placeholder="Paste OpenSSH or PEM private key" value={secret} onChange={(event) => onSecret(event.target.value)} /> : <input className="ui-control h-7 w-full px-2" type="password" placeholder={draft.credentialId ? 'Leave blank to keep saved credential' : 'Password'} value={secret} onChange={(event) => onSecret(event.target.value)} />}
         {draft.authMethod === 'private_key' && <input className="ui-control h-7 w-full px-2" type="password" placeholder="Private-key passphrase (optional)" value={passphrase} onChange={(event) => onPassphrase(event.target.value)} />}
-        <select className="ui-control h-7 w-full px-2" value={draft.jumpProfileId ?? ''} onChange={(event) => set('jumpProfileId', event.target.value || undefined)}><option value="">No jump host</option>{profiles.filter((item) => item.kind === 'ssh' && item.id !== draft.id && !item.jumpProfileId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-        <select className="ui-control h-7 w-full px-2" value={draft.assetRole ?? 'target'} onChange={(event) => set('assetRole', event.target.value as ShellProfile['assetRole'])}><option value="target">Target</option><option value="infrastructure">Infrastructure / jump only</option></select>
+        <StyledSelect className="ui-control h-7 w-full px-2" value={draft.jumpProfileId ?? ''} onChange={(event) => set('jumpProfileId', event.target.value || undefined)}><option value="">No jump host</option>{profiles.filter((item) => item.kind === 'ssh' && item.id !== draft.id && !item.jumpProfileId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</StyledSelect>
+        <StyledSelect className="ui-control h-7 w-full px-2" value={draft.assetRole ?? 'target'} onChange={(event) => set('assetRole', event.target.value as ShellProfile['assetRole'])}><option value="target">Target</option><option value="infrastructure">Infrastructure / jump only</option></StyledSelect>
       </>}
       {kind === 'webshell' && <WebShellEditor draft={draft} onChange={onChange} />}
       {supportsWsl && kind === 'wsl' && <input className="ui-control h-7 w-full px-2" placeholder="WSL distribution (optional)" value={draft.wslDistribution ?? ''} onChange={(event) => set('wslDistribution', event.target.value)} />}
       <label className="block text-[10px] uppercase tracking-wide text-text-muted">Shell flavor</label>
-      <select className="ui-control h-7 w-full px-2" value={draft.shellFlavor ?? (kind === 'wsl' ? 'posix' : kind === 'local' ? 'powershell' : 'auto')} onChange={(event) => set('shellFlavor', event.target.value as ShellProfile['shellFlavor'])}>
+      <StyledSelect className="ui-control h-7 w-full px-2" value={draft.shellFlavor ?? (kind === 'wsl' ? 'posix' : kind === 'local' ? 'powershell' : 'auto')} onChange={(event) => set('shellFlavor', event.target.value as ShellProfile['shellFlavor'])}>
         <option value="auto">Auto detect</option><option value="posix">POSIX</option><option value="powershell">PowerShell</option><option value="cmd">cmd.exe</option>
         {kind !== 'webshell' && <option value="raw">Raw / unknown</option>}
-      </select>
+      </StyledSelect>
       <button disabled={busy} className="h-7 w-full rounded border border-accent-blue/50 bg-accent-blue/10 text-accent-blue disabled:opacity-50" onClick={onSave}>{busy ? 'Saving…' : 'Save connection'}</button>
     </div>
   );
@@ -551,20 +554,20 @@ function WebShellEditor({ draft, onChange }: {
     <div className="grid grid-cols-[1fr_1fr] gap-1">
       <div>
         <label className="block text-[10px] uppercase tracking-wide text-text-muted">Adapter</label>
-        <select aria-label="WebShell adapter" className="ui-control h-7 w-full px-2" value={adapterId} onChange={(event) => setAdapter(event.target.value as WebShellAdapterId)}>
+        <StyledSelect aria-label="WebShell adapter" className="ui-control h-7 w-full px-2" value={adapterId} onChange={(event) => setAdapter(event.target.value as WebShellAdapterId)}>
           <option value="generic">Generic HTTP</option>
           <option value="antsword.v2.php">AntSword-compatible PHP</option>
-        </select>
+        </StyledSelect>
       </div>
       <div>
         <label className="block text-[10px] uppercase tracking-wide text-text-muted">Runtime</label>
-        <select aria-label="WebShell runtime" className="ui-control h-7 w-full px-2" value={options.runtime ?? (adapterId === 'antsword.v2.php' ? 'php' : 'auto')} onChange={(event) => update({ runtime: event.target.value as typeof options.runtime })} disabled={adapterId === 'antsword.v2.php'}>
+        <StyledSelect aria-label="WebShell runtime" className="ui-control h-7 w-full px-2" value={options.runtime ?? (adapterId === 'antsword.v2.php' ? 'php' : 'auto')} onChange={(event) => update({ runtime: event.target.value as typeof options.runtime })} disabled={adapterId === 'antsword.v2.php'}>
           <option value="auto">Auto detect</option>
           <option value="php">PHP</option>
           <option value="jsp">JSP</option>
           <option value="jspx">JSPX</option>
           <option value="aspx">ASPX</option>
-        </select>
+        </StyledSelect>
       </div>
     </div>
     {adapterId === 'antsword.v2.php' && (
@@ -577,11 +580,11 @@ function WebShellEditor({ draft, onChange }: {
           </div>
           <div>
             <label className="block text-[10px] uppercase tracking-wide text-text-muted">Encoder</label>
-            <select aria-label="AntSword encoder" className="ui-control h-7 w-full px-2" value={options.antsword?.encoder ?? 'raw'} onChange={(event) => update({ antsword: { passwordParameter: options.antsword?.passwordParameter ?? 'ant', encoder: event.target.value as 'raw' | 'base64' | 'hex' } })}>
+            <StyledSelect aria-label="AntSword encoder" className="ui-control h-7 w-full px-2" value={options.antsword?.encoder ?? 'raw'} onChange={(event) => update({ antsword: { passwordParameter: options.antsword?.passwordParameter ?? 'ant', encoder: event.target.value as 'raw' | 'base64' | 'hex' } })}>
               <option value="raw">Raw</option>
               <option value="base64">Base64</option>
               <option value="hex">Hex</option>
-            </select>
+            </StyledSelect>
           </div>
         </div>
       </div>
@@ -594,9 +597,9 @@ function WebShellEditor({ draft, onChange }: {
     <textarea aria-label="WebShell headers" className="ui-control min-h-14 w-full resize-y p-2 font-mono text-[11px]" value={headersText} onChange={(event) => update({ headers: parseHeaderText(event.target.value) })} />
     {adapterId === 'generic' && (
     <div className="grid grid-cols-[90px_1fr_1fr] gap-1">
-      <div><label className="block text-[10px] uppercase tracking-wide text-text-muted">Method</label><select aria-label="WebShell method" className="ui-control h-7 w-full px-2" value={options.method} onChange={(event) => update({ method: event.target.value as typeof options.method })}><option value="GET">GET</option><option value="POST">POST</option></select></div>
-      <div><label className="block text-[10px] uppercase tracking-wide text-text-muted">Body</label><select aria-label="WebShell body kind" className="ui-control h-7 w-full px-2" value={options.bodyKind} onChange={(event) => { const bodyKind = event.target.value as WebShellBodyKind; update({ bodyKind, bodyTemplate: bodyKind === 'none' ? undefined : options.bodyTemplate }); }}><option value="none">None / URL</option><option value="form">Form URL encoded</option><option value="json">JSON</option><option value="raw">Raw text</option></select></div>
-      <div><label className="block text-[10px] uppercase tracking-wide text-text-muted">Input mode</label><select aria-label="WebShell command mode" className="ui-control h-7 w-full px-2" value={options.commandMode} onChange={(event) => update({ commandMode: event.target.value as WebShellCommandMode })}><option value="auto">Auto detect</option><option value="os">OS command</option><option value="php_eval">PHP eval</option></select></div>
+      <div><label className="block text-[10px] uppercase tracking-wide text-text-muted">Method</label><StyledSelect aria-label="WebShell method" className="ui-control h-7 w-full px-2" value={options.method} onChange={(event) => update({ method: event.target.value as typeof options.method })}><option value="GET">GET</option><option value="POST">POST</option></StyledSelect></div>
+      <div><label className="block text-[10px] uppercase tracking-wide text-text-muted">Body</label><StyledSelect aria-label="WebShell body kind" className="ui-control h-7 w-full px-2" value={options.bodyKind} onChange={(event) => { const bodyKind = event.target.value as WebShellBodyKind; update({ bodyKind, bodyTemplate: bodyKind === 'none' ? undefined : options.bodyTemplate }); }}><option value="none">None / URL</option><option value="form">Form URL encoded</option><option value="json">JSON</option><option value="raw">Raw text</option></StyledSelect></div>
+      <div><label className="block text-[10px] uppercase tracking-wide text-text-muted">Input mode</label><StyledSelect aria-label="WebShell command mode" className="ui-control h-7 w-full px-2" value={options.commandMode} onChange={(event) => update({ commandMode: event.target.value as WebShellCommandMode })}><option value="auto">Auto detect</option><option value="os">OS command</option><option value="php_eval">PHP eval</option></StyledSelect></div>
     </div>
     )}
     {adapterId === 'generic' && options.bodyKind !== 'none' && <>
@@ -609,13 +612,13 @@ function WebShellEditor({ draft, onChange }: {
     </p>
     )}
     <div className="grid grid-cols-[1fr_1fr] gap-1">
-      <div><label className="block text-[10px] uppercase tracking-wide text-text-muted">Response extraction</label><select aria-label="WebShell response extraction" className="ui-control h-7 w-full px-2" value={options.responseExtract} onChange={(event) => update({ responseExtract: event.target.value as WebShellResponseExtract })}><option value="body">Full body</option><option value="between">Between delimiters</option><option value="regex">Regex capture</option></select></div>
-      <div><label className="block text-[10px] uppercase tracking-wide text-text-muted">Encoding</label><select aria-label="WebShell response encoding" className="ui-control h-7 w-full px-2" value={options.responseEncoding} onChange={(event) => update({ responseEncoding: event.target.value as WebShellResponseEncoding })}><option value="auto">Auto / UTF-8</option><option value="utf-8">UTF-8</option><option value="gb18030">GB18030</option></select></div>
+      <div><label className="block text-[10px] uppercase tracking-wide text-text-muted">Response extraction</label><StyledSelect aria-label="WebShell response extraction" className="ui-control h-7 w-full px-2" value={options.responseExtract} onChange={(event) => update({ responseExtract: event.target.value as WebShellResponseExtract })}><option value="body">Full body</option><option value="between">Between delimiters</option><option value="regex">Regex capture</option></StyledSelect></div>
+      <div><label className="block text-[10px] uppercase tracking-wide text-text-muted">Encoding</label><StyledSelect aria-label="WebShell response encoding" className="ui-control h-7 w-full px-2" value={options.responseEncoding} onChange={(event) => update({ responseEncoding: event.target.value as WebShellResponseEncoding })}><option value="auto">Auto / UTF-8</option><option value="utf-8">UTF-8</option><option value="gb18030">GB18030</option></StyledSelect></div>
     </div>
     {options.responseExtract === 'between' && <div className="grid grid-cols-[1fr_1fr] gap-1"><input aria-label="WebShell response start delimiter" className="ui-control h-7 px-2 font-mono text-[11px]" placeholder="Start delimiter" value={options.responseStart ?? ''} onChange={(event) => update({ responseStart: event.target.value })} /><input aria-label="WebShell response end delimiter" className="ui-control h-7 px-2 font-mono text-[11px]" placeholder="End delimiter" value={options.responseEnd ?? ''} onChange={(event) => update({ responseEnd: event.target.value })} /></div>}
     {options.responseExtract === 'regex' && <input aria-label="WebShell response regex" className="ui-control h-7 w-full px-2 font-mono text-[11px]" placeholder="Regex with one capture group" value={options.responseRegex ?? ''} onChange={(event) => update({ responseRegex: event.target.value })} />}
     <label className="flex items-center gap-2 text-[11px] text-text-muted"><input type="checkbox" checked={options.allowInvalidTls} onChange={(event) => update({ allowInvalidTls: event.target.checked })} /> Allow invalid TLS certificates</label>
-    <select aria-label="WebShell asset role" className="ui-control h-7 w-full px-2" value={draft.assetRole ?? 'target'} onChange={(event) => onChange({ ...draft, assetRole: event.target.value as ShellProfile['assetRole'] })}><option value="target">Target / Agent commands allowed</option><option value="infrastructure">Infrastructure / Agent commands disabled</option></select>
+    <StyledSelect aria-label="WebShell asset role" className="ui-control h-7 w-full px-2" value={draft.assetRole ?? 'target'} onChange={(event) => onChange({ ...draft, assetRole: event.target.value as ShellProfile['assetRole'] })}><option value="target">Target / Agent commands allowed</option><option value="infrastructure">Infrastructure / Agent commands disabled</option></StyledSelect>
   </div>;
 }
 
@@ -647,9 +650,9 @@ function ListenerEditor({ draft, interfaces, onChange, onCancel, onSave, busy }:
   return <div className="space-y-2 rounded border border-border-subtle bg-canvas p-2">
     <div className="flex items-center justify-between text-text-secondary"><span>New reverse listener</span><button onClick={onCancel}><Icon name="close" size={11} /></button></div>
     <input className="ui-control h-7 w-full px-2" placeholder="Name" value={draft.name ?? ''} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
-    <select className="ui-control h-7 w-full px-2" value={draft.bindAddress ?? ''} onChange={(event) => onChange({ ...draft, bindAddress: event.target.value })}><option value="">Choose a concrete interface…</option>{interfaces.map((item) => <option key={`${item.name}-${item.address}`} value={item.address}>{item.name} · {item.address}</option>)}</select>
+    <StyledSelect className="ui-control h-7 w-full px-2" value={draft.bindAddress ?? ''} onChange={(event) => onChange({ ...draft, bindAddress: event.target.value })}><option value="">Choose a concrete interface…</option>{interfaces.map((item) => <option key={`${item.name}-${item.address}`} value={item.address}>{item.name} · {item.address}</option>)}</StyledSelect>
     <input className="ui-control h-7 w-full px-2" type="number" min={1} max={65535} value={draft.port ?? 4444} onChange={(event) => onChange({ ...draft, port: Number(event.target.value) })} />
-    <select className="ui-control h-7 w-full px-2" value={draft.shellFlavor ?? 'raw'} onChange={(event) => onChange({ ...draft, shellFlavor: event.target.value as ReverseListenerProfile['shellFlavor'] })}><option value="raw">Unknown/raw</option><option value="posix">POSIX</option><option value="powershell">PowerShell</option><option value="cmd">cmd.exe</option></select>
+    <StyledSelect className="ui-control h-7 w-full px-2" value={draft.shellFlavor ?? 'raw'} onChange={(event) => onChange({ ...draft, shellFlavor: event.target.value as ReverseListenerProfile['shellFlavor'] })}><option value="raw">Unknown/raw</option><option value="posix">POSIX</option><option value="powershell">PowerShell</option><option value="cmd">cmd.exe</option></StyledSelect>
     <p className="text-[11px] leading-3 text-text-muted">Hexestra never changes the firewall or creates a public tunnel.</p>
     <button disabled={busy} className="h-7 w-full rounded border border-accent-purple/50 bg-accent-purple/10 text-accent-purple disabled:opacity-50" onClick={onSave}>{busy ? 'Saving…' : 'Save listener'}</button>
   </div>;

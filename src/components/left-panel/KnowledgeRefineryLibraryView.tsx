@@ -74,7 +74,7 @@ export function KnowledgeRefineryLibraryView() {
     } catch (reason) { setActionError(String(reason)); }
   };
 
-  return <div className="flex min-h-0 flex-1 flex-col bg-canvas">
+  return <div className="flex min-h-0 flex-1 flex-col bg-panel">
     <div className="shrink-0 border-b border-border-subtle bg-panel/50 p-2.5">
       <div className="ui-segmented grid grid-cols-2" role="tablist" aria-label={t('refinery.title')}>
         <button type="button" role="tab" aria-selected={view === 'sources'} onClick={() => setView('sources')} className={cn('ui-segmented-item min-h-8 text-[11px]', view === 'sources' && 'ui-segmented-item-active')}>{t('refinery.sources')} <span className="ml-1 font-mono opacity-60">{sources.length}</span></button>

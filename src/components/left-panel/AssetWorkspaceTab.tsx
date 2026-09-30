@@ -1,5 +1,6 @@
+import { Select as StyledSelect } from '@/components/shared/Select';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ContextMenu, Icon, StatusBadge, type ContextMenuItem } from '@/components/shared';
+import { ContextMenu, Icon, StatusBadge, TabbedCard, type ContextMenuItem } from '@/components/shared';
 import { useAppStore, useChatStore, useNetMapStore, usePentestTreeStore, useSessionStore } from '@/stores';
 import { openBrowserTab } from '@/stores/useTabStore';
 import { assetBrowserUrl, assetJsonPayload, assetPrimaryValue, buildAssetRescanPlan } from '@/lib/assetActions';
@@ -89,29 +90,17 @@ export function AssetWorkspaceTab() {
   useEffect(() => {
     if (!filtersExpanded) return;
     const collapseOutside = (event: PointerEvent) => {
-      if (!filtersRef.current?.contains(event.target as Node)) setFiltersExpanded(false);
+      const ownerId = (event.target as Element).closest?.('[data-select-owner]')?.getAttribute('data-select-owner');
+      const owner = ownerId ? document.getElementById(ownerId) : null;
+      if (!filtersRef.current?.contains(event.target as Node) && !(owner && filtersRef.current?.contains(owner))) setFiltersExpanded(false);
     };
     window.addEventListener('pointerdown', collapseOutside);
     return () => window.removeEventListener('pointerdown', collapseOutside);
   }, [filtersExpanded]);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b border-border-subtle bg-panel/50 p-2">
-        <div className="ui-segmented mb-2 grid min-w-0 grid-cols-3 select-none">
-          {(['inventory', 'changes', 'scope'] as const).map((option) => (
-            <button
-              key={option}
-              title={t(option === 'inventory' ? 'assets.inventory' : option === 'changes' ? 'assets.changes' : 'assets.scope')}
-              onClick={() => setView(option)}
-              className={`ui-segmented-item min-w-0 px-1 py-1 text-center font-mono text-[11px] uppercase leading-tight tracking-wider ${view === option ? 'ui-segmented-item-active' : ''}`}
-            >
-              <span className="block min-w-0 truncate">
-                {t(option === 'inventory' ? 'assets.inventory' : option === 'changes' ? 'assets.changes' : 'assets.scope')}
-              </span>
-            </button>
-          ))}
-        </div>
+    <TabbedCard items={(['inventory', 'changes', 'scope'] as const).map((id) => ({ id, label: t(id === 'inventory' ? 'assets.inventory' : id === 'changes' ? 'assets.changes' : 'assets.scope') }))} value={view} onChange={setView} label={t('nav.assets')}>
+      <div className={view === 'inventory' ? 'shrink-0 p-2' : 'hidden'}>
         {view === 'inventory' && <div ref={filtersRef}>
           <label className={`ui-control flex h-7 items-center gap-2 px-2 ${filtersExpanded ? '!border-accent-blue/35' : ''} hover:!bg-panel/55 select-none`}>
             <Icon name="search" size={12} />
@@ -153,7 +142,7 @@ export function AssetWorkspaceTab() {
                 event.preventDefault();
                 setMenu({ nodeId: node.id, x: event.clientX, y: event.clientY, target: event.currentTarget });
               }}
-              className={`ui-hover-row mx-1.5 my-0.5 w-[calc(100%-0.75rem)] px-2.5 py-2 text-left ${selectedNodeId === node.id ? '!border-accent-blue/30 !bg-accent-blue/10 shadow-sm shadow-black/10' : ''}`}
+              className={`ui-hover-row mx-1.5 my-0.5 w-[calc(100%-0.75rem)] px-2.5 py-2 text-left ${selectedNodeId === node.id ? '!border-transparent !bg-accent-blue/10' : ''}`}
             >
               <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5 select-none"><span data-presentation-sensitive className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-text-primary">{node.label}</span><span className="flex shrink-0 items-center gap-1.5">{node.scopeAnnotation && <ScopeAnnotationBadge annotation={node.scopeAnnotation} />}<StatusBadge status={node.status} /></span></div>
               <div className="flex min-w-0 items-center gap-2 text-[11px] text-text-muted select-none"><span className="shrink-0 uppercase text-accent-teal select-none">{node.type}</span><span data-presentation-sensitive className="min-w-0 flex-1 truncate">{assetPrimaryValue(node, target, asset)}</span>{node.portCount > 0 && <span className="shrink-0">{node.portCount} ports</span>}</div>
@@ -175,12 +164,12 @@ export function AssetWorkspaceTab() {
         returnFocus={menu?.target}
         onClose={() => setMenu(null)}
       />
-    </div>
+    </TabbedCard>
   );
 }
 
 function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
-  return <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="ui-control h-7 min-w-0 px-1 text-[11px] uppercase text-text-secondary">{options.map((option) => <option key={option} value={option}>{option}</option>)}</select>;
+  return <StyledSelect aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="ui-control h-7 min-w-0 px-1 text-[11px] uppercase text-text-secondary">{options.map((option) => <option key={option} value={option}>{option}</option>)}</StyledSelect>;
 }
 
 function EmptyAssets({ hasAny }: { hasAny: boolean }) {
@@ -225,7 +214,7 @@ function ScopePanel() {
   const scopeEmpty = (session.scope?.allowRules.length ?? 0) === 0 && (session.scope?.excludeRules.length ?? 0) === 0;
   return <div className="min-h-0 flex-1 overflow-y-auto p-3">
     {scopeEmpty && <div className="mb-3 rounded border border-border-subtle bg-panel/40 p-2.5"><div className="mb-1 text-2xs font-medium text-text-secondary">No Scope annotations</div><p className="mb-2 text-[11px] leading-relaxed text-text-muted">Labels guide the Agent; tools and commands remain available.</p><button disabled={isProcessing} onClick={() => void askAgent()} className="flex w-full items-center justify-center gap-1.5 rounded border border-accent-blue/40 bg-accent-blue/10 px-2 py-1.5 text-2xs text-accent-blue disabled:opacity-40"><Icon name="sparkles" size={11} />{isProcessing ? 'Agent is working…' : 'Ask Agent to maintain labels'}</button></div>}
-    <label className="mb-3 block"><span className="mb-1 block text-2xs font-medium text-text-secondary">Scope mode</span><select aria-label="Scope mode" value={mode} onChange={(event) => setMode(event.target.value as SessionScope['mode'])} className="settings-input w-full"><option value="blacklist">Blacklist — show excluded assets</option><option value="whitelist">Whitelist — show authorized assets</option></select></label>
+    <label className="mb-3 block"><span className="mb-1 block text-2xs font-medium text-text-secondary">Scope mode</span><StyledSelect aria-label="Scope mode" value={mode} onChange={(event) => setMode(event.target.value as SessionScope['mode'])} className="settings-input w-full"><option value="blacklist">Blacklist — show excluded assets</option><option value="whitelist">Whitelist — show authorized assets</option></StyledSelect></label>
     <p className="mb-3 text-2xs leading-relaxed text-text-muted">One IP, domain, URL, or CIDR per line. Rules annotate registered assets and their structural descendants.</p>
     <ScopeField label="Authorized rules" value={included} onChange={setIncluded} placeholder={'example.com\n192.0.2.0/24'} />
     <ScopeField label="Excluded rules" value={excluded} onChange={setExcluded} placeholder={'auth.example.com\n192.0.2.200'} />

@@ -1,9 +1,9 @@
+import { Select as StyledSelect } from '@/components/shared/Select';
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Icon, type IconName } from "@/components/shared";
+import { Icon, TabbedCard, type IconName } from "@/components/shared";
 import { cn } from "@/lib/cn";
 import { usePentestTreeStore, useSessionStore } from "@/stores";
 import {
-  calculateOverallProgress,
   groupTasksByTactic,
   groupTasksByTechnique,
 } from "@/stores/usePentestTreeStore";
@@ -36,93 +36,16 @@ export function TaskTreeTab() {
   const focusedTaskId = usePentestTreeStore((state) => state.focusedTaskId);
   const pttStatus = usePentestTreeStore((state) => state.pttStatus);
   const rebuildPtt = usePentestTreeStore((state) => state.rebuildPtt);
-  const [coverageView, setCoverageView] = useState(false);
   const [collapsedTechniques, setCollapsedTechniques] = useState<string[]>([]);
   const [panelView, setPanelView] = useState<
     "tasks" | "workflows" | "refinery"
   >("tasks");
   const { t } = useI18n();
-  const objectives = tasks.filter(
-    (task): task is PentestObjective => task.kind === "objective",
-  );
   const tasksByTactic = useMemo(() => groupTasksByTactic(tasks), [tasks]);
   const tasksByTechnique = useMemo(() => groupTasksByTechnique(tasks), [tasks]);
-  const progress = useMemo(() => calculateOverallProgress(tasks), [tasks]);
 
   return (
-    <div className="flex h-full flex-col bg-canvas text-text-primary">
-      <div className="shrink-0 border-b border-border-subtle bg-panel/70 px-3 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 rounded border border-border-subtle bg-panel p-0.5">
-            <button
-              type="button"
-              aria-pressed={panelView === "tasks"}
-              onClick={() => setPanelView("tasks")}
-              className={cn(
-                "rounded px-2 py-1 text-[10px]",
-                panelView === "tasks"
-                  ? "bg-raised text-text-primary"
-                  : "text-text-muted hover:text-text-primary",
-              )}
-            >
-              {t("taskTree.tasks")}
-            </button>
-            <button
-              type="button"
-              aria-pressed={panelView === "workflows"}
-              onClick={() => setPanelView("workflows")}
-              className={cn(
-                "rounded px-2 py-1 text-[10px]",
-                panelView === "workflows"
-                  ? "bg-raised text-accent-blue"
-                  : "text-text-muted hover:text-text-primary",
-              )}
-            >
-              {t("taskTree.workflows")}
-            </button>
-            <button
-              type="button"
-              aria-pressed={panelView === "refinery"}
-              onClick={() => setPanelView("refinery")}
-              className={cn(
-                "rounded px-2 py-1 text-[10px]",
-                panelView === "refinery"
-                  ? "bg-raised text-accent-blue"
-                  : "text-text-muted hover:text-text-primary",
-              )}
-            >
-              {t("taskTree.refinery")}
-            </button>
-          </div>
-          {panelView === "tasks" && (
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono text-[10px] text-text-muted">
-                {objectives.length}
-              </span>
-              <button
-                aria-pressed={coverageView}
-                onClick={() => setCoverageView((value) => !value)}
-                className="rounded border border-border-subtle px-2 py-1 text-[10px] text-accent-blue hover:bg-accent-blue/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-              >
-                {coverageView ? "Tasks only" : "Coverage"}
-              </button>
-            </div>
-          )}
-        </div>
-        {panelView === "tasks" && (
-          <div className="mt-2 flex items-center gap-2">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-raised">
-              <div
-                className="h-full bg-accent-blue transition-all"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <span className="font-mono text-[10px] text-text-muted">
-              {progress}%
-            </span>
-          </div>
-        )}
-      </div>
+    <TabbedCard items={([{ id: "tasks", label: t("taskTree.tasks") }, { id: "workflows", label: t("taskTree.workflows") }, { id: "refinery", label: t("taskTree.refinery") }] as const).map((item) => ({ ...item }))} value={panelView} onChange={setPanelView} label={t("nav.tasks")}>
       {panelView === "workflows" ? (
         <WorkflowLibraryView />
       ) : panelView === "refinery" ? (
@@ -167,7 +90,7 @@ export function TaskTreeTab() {
                     .filter((id): id is string => Boolean(id)),
                 ),
               ];
-              if (!coverageView && tacticObjectives.length === 0) return null;
+              if (tacticObjectives.length === 0) return null;
               const expanded = expandedTactics.includes(tactic.id);
               const done = tacticObjectives.filter(
                 (task) => task.status === "completed",
@@ -301,7 +224,7 @@ export function TaskTreeTab() {
           )}
         </>
       )}
-    </div>
+    </TabbedCard>
   );
 }
 
@@ -901,7 +824,7 @@ function TaskDetail({
             />
           </Field>
           <Field label="Tactic">
-            <select
+            <StyledSelect
               value={primaryTactic}
               onChange={(event) => {
                 const nextTactic = event.target.value;
@@ -918,10 +841,10 @@ function TaskDetail({
                   {tactic.id} · {tactic.name}
                 </option>
               ))}
-            </select>
+            </StyledSelect>
           </Field>
           <Field label="Technique">
-            <select
+            <StyledSelect
               value={techniques}
               onChange={(event) => setTechniques(event.target.value)}
               className="settings-input mt-1 w-full font-mono text-2xs"
@@ -936,7 +859,7 @@ function TaskDetail({
                   {technique.id} · {technique.name}
                 </option>
               ))}
-            </select>
+            </StyledSelect>
           </Field>
           <Field label="Target asset IDs (advisory)">
             <input

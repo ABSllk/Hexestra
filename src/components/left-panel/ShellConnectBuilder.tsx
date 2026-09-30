@@ -1,3 +1,4 @@
+import { Select as StyledSelect } from '@/components/shared/Select';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DismissibleNotice, Icon } from '@/components/shared';
 import { useChatStore } from '@/stores';
@@ -162,26 +163,26 @@ export function ShellConnectBuilder({ projectId, listener, onClose }: {
 
       <label className="block text-[11px] text-text-muted">
         Runtime template
-        <select
+        <StyledSelect
           aria-label="Runtime template"
           className="ui-control mt-1 h-7 w-full px-2 text-[11px]"
           value={templateId}
           onChange={(event) => setTemplateId(event.target.value as ShellConnectTemplateId)}
         >
           {templates.map((template) => <option key={template.id} value={template.id}>{template.label} · {template.target}</option>)}
-        </select>
+        </StyledSelect>
       </label>
 
       <label className="block text-[11px] text-text-muted">
         Obfuscation
-        <select
+        <StyledSelect
           aria-label="Obfuscation"
           className="ui-control mt-1 h-7 w-full px-2 text-[11px]"
           value={obfuscation}
           onChange={(event) => setObfuscation(event.target.value as ShellConnectObfuscation)}
         >
           {OBFUSCATION_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-        </select>
+        </StyledSelect>
       </label>
 
       {selectedTemplate && (

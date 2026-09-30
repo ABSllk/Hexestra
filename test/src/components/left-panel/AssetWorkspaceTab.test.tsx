@@ -36,7 +36,7 @@ describe('AssetWorkspaceTab', () => {
     expect(screen.getAllByLabelText('Search assets')).toHaveLength(1);
     fireEvent.change(screen.getByLabelText('Search assets'), { target: { value: 'missing' } });
     expect(screen.getByText('No matching assets')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'changes' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'changes' }));
     expect(screen.getByText('domain api.example.com')).toBeInTheDocument();
     expect(screen.getByText(/subfinder/i)).toBeInTheDocument();
   });
@@ -48,7 +48,7 @@ describe('AssetWorkspaceTab', () => {
     fireEvent.change(search, { target: { value: 'api' } });
     expect(screen.getByLabelText('Filter asset type')).toBeInTheDocument();
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'changes' }));
+    fireEvent.pointerDown(screen.getByRole('tab', { name: 'changes' }));
 
     expect(screen.queryByLabelText('Filter asset type')).not.toBeInTheDocument();
     expect(search).toHaveValue('api');
@@ -56,7 +56,7 @@ describe('AssetWorkspaceTab', () => {
 
   it('edits project scope from the same workspace', () => {
     render(<AssetWorkspaceTab />);
-    fireEvent.click(screen.getByRole('button', { name: 'scope' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'scope' }));
     fireEvent.change(screen.getByLabelText('Excluded rules'), { target: { value: 'auth.example.com' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Scope' }));
     expect(useSessionStore.getState().updateScope).toHaveBeenCalledWith(expect.objectContaining({ excludeRules: ['auth.example.com'] }));
@@ -162,7 +162,7 @@ describe('AssetWorkspaceTab', () => {
   it('asks the Agent to define an empty project scope', () => {
     useSessionStore.setState({ currentSession: { ...session, scope: { mode: 'blacklist', allowRules: [], excludeRules: [] } } });
     render(<AssetWorkspaceTab />);
-    fireEvent.click(screen.getByRole('button', { name: 'scope' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'scope' }));
     fireEvent.click(screen.getByRole('button', { name: 'Ask Agent to maintain labels' }));
     expect(useChatStore.getState().sendMessage).toHaveBeenCalledWith(expect.stringContaining('scope_update'));
   });

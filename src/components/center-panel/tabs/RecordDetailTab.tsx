@@ -1,3 +1,4 @@
+import { Select as StyledSelect } from '@/components/shared/Select';
 import { useEffect, useState } from 'react';
 import { MarkdownContent } from '@/components/right-panel/AgentTimelineMessage';
 import { useNetMapStore, useSessionStore, useTabStore } from '@/stores';
@@ -103,8 +104,8 @@ function Page({ title, eyebrow, subtitle, children }: { title: string; eyebrow: 
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) { return <section><h2 className="mb-2 text-[11px] uppercase tracking-widest text-text-muted">{title}</h2>{children}</section>; }
-function Select({ label, value, values, onChange }: { label: string; value: string; values: readonly string[]; onChange: (value: string) => void }) { return <label><span className="mb-1 block text-[11px] uppercase tracking-wide text-text-muted">{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="h-9 w-full rounded border border-border-subtle bg-panel px-2 text-xs text-text-secondary">{values.map((item) => <option key={item}>{item}</option>)}</select></label>; }
-function StatusButtons({ values, value, onChange }: { values: readonly string[]; value: string; onChange: (value: string) => void }) { return <div className="flex flex-wrap gap-2">{values.map((item) => <button key={item} onClick={() => onChange(item)} className={`rounded border px-3 py-1.5 text-[11px] uppercase ${item === value ? 'border-accent-blue bg-accent-blue/10 text-accent-blue' : 'border-border-subtle text-text-muted hover:text-text-secondary'}`}>{item}</button>)}</div>; }
+function Select({ label, value, values, onChange }: { label: string; value: string; values: readonly string[]; onChange: (value: string) => void }) { return <label><span className="mb-1 block text-[11px] uppercase tracking-wide text-text-muted">{label}</span><StyledSelect aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="h-9 w-full rounded border border-border-subtle bg-panel px-2 text-xs text-text-secondary">{values.map((item) => <option key={item}>{item}</option>)}</StyledSelect></label>; }
+function StatusButtons({ values, value, onChange }: { values: readonly string[]; value: string; onChange: (value: string) => void }) { return <div className="flex flex-wrap gap-2">{values.map((item) => <button key={item} aria-pressed={item === value} onClick={() => onChange(item)} className={`rounded-full border border-transparent px-3 py-1.5 text-[11px] uppercase ${item === value ? 'bg-accent-blue/10 text-accent-blue' : 'text-text-muted hover:bg-raised/45 hover:text-text-secondary'}`}>{item}</button>)}</div>; }
 function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);

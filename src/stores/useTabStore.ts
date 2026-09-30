@@ -38,7 +38,7 @@ interface TabStore {
 }
 
 const DEFAULT_WORKSPACE: ProjectWorkspaceState = {
-  tabs: [{ id: 'welcome-0', type: 'welcome', title: 'Welcome', closable: false }],
+  tabs: [{ id: 'welcome-0', type: 'welcome', title: 'Welcome', closable: true }],
   activeTabId: 'welcome-0',
   nextTabNumber: 1,
 };
@@ -64,13 +64,15 @@ export const useTabStore = create<TabStore>((set, get) => ({
     const idx = tabs.findIndex((t) => t.id === tabId);
     const newTabs = tabs.filter((t) => t.id !== tabId);
 
+    if (newTabs.length === 0) {
+      const id = `welcome-${get().nextTabNumber}`;
+      set({ tabs: [{ id, type: 'welcome', title: 'Welcome', closable: true }], activeTabId: id, nextTabNumber: get().nextTabNumber + 1 });
+      return;
+    }
+
     let newActive = activeTabId;
     if (activeTabId === tabId) {
-      if (newTabs.length === 0) {
-        newActive = null;
-      } else {
-        newActive = newTabs[Math.min(idx, newTabs.length - 1)].id;
-      }
+      newActive = newTabs[Math.min(idx, newTabs.length - 1)].id;
     }
 
     set({ tabs: newTabs, activeTabId: newActive });
@@ -78,7 +80,10 @@ export const useTabStore = create<TabStore>((set, get) => ({
 
   setActiveTab: (tabId) => set({ activeTabId: tabId }),
 
-  closeAllTabs: () => set({ tabs: [], activeTabId: null }),
+  closeAllTabs: () => {
+    const id = `welcome-${get().nextTabNumber}`;
+    set({ tabs: [{ id, type: 'welcome', title: 'Welcome', closable: true }], activeTabId: id, nextTabNumber: get().nextTabNumber + 1 });
+  },
 
   closeOtherTabs: (tabId) =>
     set((s) => ({
@@ -96,12 +101,16 @@ export const useTabStore = create<TabStore>((set, get) => ({
       tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, data: { ...t.data, ...data } } : t)),
     })),
 
-  hydrateProject: (projectId, workspace) => set({
-    projectId,
-    tabs: workspace.tabs.map((tab) => ({ ...tab })),
-    activeTabId: workspace.activeTabId,
-    nextTabNumber: workspace.nextTabNumber,
-  }),
+  hydrateProject: (projectId, workspace) => {
+    const tabs = workspace.tabs.map((tab) => ({ ...tab, closable: tab.type === 'welcome' ? true : tab.closable }));
+    const id = `welcome-${workspace.nextTabNumber}`;
+    set({
+      projectId,
+      tabs: tabs.length ? tabs : [{ id, type: 'welcome', title: 'Welcome', closable: true }],
+      activeTabId: tabs.length ? workspace.activeTabId : id,
+      nextTabNumber: workspace.nextTabNumber + (tabs.length ? 0 : 1),
+    });
+  },
 
   resetProject: () => set({
     projectId: null,

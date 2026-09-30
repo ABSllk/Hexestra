@@ -26,6 +26,7 @@ export function EditorTab({ tabId }: { tabId: string }) {
   const activeSessionId = useSessionStore((state) => state.currentSession?.id);
   const remoteFile = tab?.data?.fileSource === 'remote';
   const filePath = tab?.data?.filePath as string | undefined;
+  const allowMissing = tab?.data?.allowMissing === true;
   const sessionId = (tab?.data?.sessionId as string | undefined) ?? activeSessionId;
   const projectId = tab?.data?.projectId as string | undefined;
   const shellSessionId = tab?.data?.shellSessionId as string | undefined;
@@ -98,9 +99,13 @@ export function EditorTab({ tabId }: { tabId: string }) {
       setDirty(false);
       setStatus('ready');
     };
-    void read().catch(() => !cancelled && setStatus(remoteFile ? 'disconnected' : 'error'));
+    void read().catch((error: unknown) => {
+      if (cancelled) return;
+      if (!remoteFile && allowMissing && /ENOENT|not found/i.test(String(error))) setStatus('ready');
+      else setStatus(remoteFile ? 'disconnected' : 'error');
+    });
     return () => { cancelled = true; };
-  }, [filePath, projectId, refreshRemoteAvailability, remoteFile, sessionId, shellSessionId, tabId, updateTabData]);
+  }, [allowMissing, filePath, projectId, refreshRemoteAvailability, remoteFile, sessionId, shellSessionId, tabId, updateTabData]);
 
   useEffect(() => {
     if (!remoteFile || !projectId || !shellSessionId || !window.hexestra) return;

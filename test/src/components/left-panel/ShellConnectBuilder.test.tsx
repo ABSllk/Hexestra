@@ -1,3 +1,4 @@
+import { selectOption } from '../../../helpers/select';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatStore } from '@/stores';
@@ -99,7 +100,7 @@ describe('ShellConnectBuilder', () => {
     render(<ShellConnectBuilder projectId="project-1" listener={listener} onClose={vi.fn()} />);
     await screen.findByLabelText('Generated connection command');
     const obfuscationSelect = screen.getByLabelText('Obfuscation');
-    fireEvent.change(obfuscationSelect, { target: { value: 'base64' } });
+    selectOption(obfuscationSelect, 'Base64');
     await waitFor(() => expect(invoke).toHaveBeenCalledWith(
       SHELL_IPC.CONNECT_COMMAND_BUILD,
       expect.objectContaining({ obfuscation: 'base64' }),

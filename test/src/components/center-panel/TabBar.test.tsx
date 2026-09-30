@@ -7,7 +7,7 @@ describe('TabBar overflow behavior', () => {
   beforeEach(() => {
     useTabStore.setState({
       tabs: [
-        { id: 'welcome-0', type: 'welcome', title: 'Welcome', closable: false },
+        { id: 'welcome-0', type: 'welcome', title: 'Welcome', closable: true },
         { id: 'terminal-1', type: 'terminal', title: 'Short', closable: true },
         { id: 'editor-2', type: 'editor', title: 'A much longer tab title', closable: true },
       ],
@@ -22,6 +22,15 @@ describe('TabBar overflow behavior', () => {
     for (const tab of screen.getAllByRole('tab')) {
       expect(tab).toHaveClass('w-40', 'flex-none');
     }
+  });
+
+  it('closes Welcome and creates an active, closable Welcome from the trailing add button', () => {
+    render(<TabBar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Close Welcome' }));
+    expect(useTabStore.getState().tabs.some((tab) => tab.type === 'welcome')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'New welcome tab' }));
+    expect(useTabStore.getState().activeTab()).toMatchObject({ type: 'welcome', closable: true });
+    expect(screen.getByRole('tab', { name: /Welcome/ })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('converts a vertical wheel gesture into horizontal scrolling when tabs overflow', () => {

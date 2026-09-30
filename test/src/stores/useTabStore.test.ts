@@ -4,6 +4,28 @@ import { openKnowledgeRefineryTab, openTrafficFlowTab, serializeProjectWorkspace
 describe('useTabStore project workspaces', () => {
   beforeEach(() => useTabStore.getState().resetProject());
 
+  it('automatically opens Welcome after the last tab or all tabs are closed', () => {
+    const store = useTabStore.getState();
+    store.closeTab('welcome-0');
+    const state = useTabStore.getState();
+    expect(state.tabs).toHaveLength(1);
+    expect(state.activeTab()).toMatchObject({ type: 'welcome', closable: true });
+    expect(state.nextTabNumber).toBe(2);
+    store.openTab({ type: 'settings', title: 'Settings', closable: true });
+    store.closeAllTabs();
+    expect(useTabStore.getState().tabs).toHaveLength(1);
+    expect(useTabStore.getState().activeTab()).toMatchObject({ type: 'welcome', closable: true });
+  });
+
+  it('restores legacy Welcome as closable and repairs empty workspaces', () => {
+    const store = useTabStore.getState();
+    store.hydrateProject('legacy', { tabs: [{ id: 'welcome-0', type: 'welcome', title: 'Welcome', closable: false }], activeTabId: 'welcome-0', nextTabNumber: 1 });
+    expect(useTabStore.getState().activeTab()?.closable).toBe(true);
+    store.hydrateProject('empty', { tabs: [], activeTabId: null, nextTabNumber: 8 });
+    expect(useTabStore.getState().activeTab()).toMatchObject({ id: 'welcome-8', type: 'welcome', closable: true });
+    expect(useTabStore.getState().nextTabNumber).toBe(9);
+  });
+
   it('replaces the complete workspace when switching projects', () => {
     useTabStore.getState().hydrateProject('project-a', {
       tabs: [{ id: 'terminal-1', type: 'terminal', title: 'A terminal', closable: true }],
