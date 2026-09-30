@@ -18,32 +18,35 @@ An AI-native penetration testing workbench where you and AI agents work together
 
 ## Why Hexestra?
 
-- **Rich integrations.** Built-in browser, terminals, HTTP/HTTPS traffic capture, interception and replay, NetMap asset topology, shell management, payload generation, Burp Suite integration, and more.
-- **AI-native.** Optimized for Claude Code and Codex CLI so agents can directly operate Hexestra's features and components.
-- **Custom workflows.** An ATT&CK-based rules and workflow system for penetration testing. Import PDF, DOCX, or Markdown documents and let agents turn them into your own rules, workflows, and skills, saving time spent tuning prompts.
-- **Cross-session memory.** Key assessment details—including assets, traffic, tasks, and evidence—live in a separate memory system that you can review and pick up in a new conversation.
-- **You stay in control.** Agent actions are controllable and traceable, making it easy to review the action chain and guard against unauthorized actions.
-- **Quick to get started.** Most work can be done by talking with an Agent, with little to learn and no need to change how you work.
+Hexestra aims to make penetration testing smoother for you and your agent. To do that, we've built a harness designed for penetration testing:
 
-## Demo
+- **Integrated tools.** Connect Claude Code or Codex CLI to the browser, terminals, managed shells, HTTP/HTTPS capture, interception and replay, payload generation, and Burp Suite. The agent can operate them directly.
 
-<div align="center">
+<p align="center"><img src="docs/images/kanxue/01-overview.png" alt="Hexestra workbench showing assets, actions, agent chat, and NetMap" width="960"><br><em>Workbench overview: assets, actions, agent chat, and NetMap together.</em></p>
 
-<img src="docs/images/hexestra-tour-poster.png" alt="Hexestra workbench with targets, welcome page, AI chat, and NetMap" width="960">
+<p align="center"><img src="docs/images/kanxue/02-tools.png" alt="Traffic tools showing an order request, response, and agent activity" width="960"><br><em>Inspect requests and responses, then replay them, save evidence, or ask the agent.</em></p>
 
-*Workbench overview: targets, welcome page, AI chat, and NetMap.*
+- **Task-aware memory.** Hexestra records the target, assets, scope, rules, available tools, and earlier results for the current task. The agent can keep track of progress through long sessions and across conversations.
 
-<img src="docs/images/hexestra-demo-shell.png" alt="AI verifies unauthorized access to an order in the attack shell" width="960">
+<p align="center"><img src="docs/images/kanxue/03-memory.png" alt="Record view retaining findings, evidence, and vulnerabilities across conversations" width="960"><br><em>Record keeps findings, evidence, and vulnerabilities available in a new conversation.</em></p>
 
-*The Agent can run commands in the Shell.*
+- **Task tree.** The agent plans before acting, breaks goals into steps, and updates their status as work progresses. See what's done, what's blocked, and what comes next without digging through chat history.
 
-<img src="docs/images/hexestra-demo-finding.png" alt="Confirmed order authorization vulnerability with related evidence" width="960">
+<p align="center"><img src="docs/images/kanxue/04-task-tree.png" alt="Task tree showing goals, completed steps, and the active task" width="960"><br><em>See completed steps, current progress, and what's next in the task tree.</em></p>
 
-*The Agent automatically generates vulnerability details. This is a demonstration; actual findings are much more detailed.*
+- **NetMap.** As the agent discovers assets, it builds a map of their relationships. Switch between network, domain, and application views to inspect hosts, services, endpoints, and identities.
 
-*The screenshots are captured directly from the app, and the demo was tested in a fictional local lab. [Watch the full video](docs/images/hexestra-tour.mp4).*
+<p align="center"><img src="docs/images/kanxue/05-netmap.png" alt="NetMap linking the application, order endpoints, and identity" width="960"><br><em>NetMap links the application, endpoints, and identity.</em></p>
 
-</div>
+- **Rules and workflows.** Match testing rules and methods to the project and current task. Import PDF, DOCX, or Markdown documents and have the agent distill them into reusable rules, skills, and workflows.
+
+<p align="center"><img src="docs/images/kanxue/06-rules.png" alt="Project rules matched to ATT&CK tasks" width="960"><br><em>Bind project rules to the relevant ATT&CK tasks.</em></p>
+
+<p align="center"><img src="docs/images/kanxue/07-document-workflow.png" alt="Example document refinery candidates for rules, skills, and workflows" width="960"><br><em>Document refinery example: rules, skills, and workflows ready for review.</em></p>
+
+*These screenshots are from the app using a fictional local lab. Some chat and record content is demo data.*
+
+Hexestra is designed to fit your existing workflow, with lightweight and flexible customization. We're also considering a plugin system for the future.
 
 ## Get started
 

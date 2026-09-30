@@ -18,32 +18,35 @@
 
 ## 为什么选择 Hexestra？
 
-- **丰富集成：** 内置浏览器、终端、HTTP/HTTPS 抓包、拦截与重放、NetMap 资产拓扑图、Shell管理、Payload生成和Burp Suite接入等一系列常用功能。
-- **AI原生：** 接入 Claude Code 或 Codex CLI 并经过特殊优化，让所有功能和组件都可被Agent直接操控。
-- **自定义工作流：** 根据ATT&CK框架，打造了针对于渗透测试的规则和工作流系统，可导入 PDF、DOCX、Markdown 格式文档，Agent会将其提炼为您专属的规则，工作流和技能，无需费时调教AI。
-- **跨会话记忆：** 渗透测试中的资产、流量、任务、证据等关键信息会做为独立的记忆系统，不仅便于人类阅读，打开新的对话窗口也可继续任务。
-- **高度可控：** Agent行为高度可控且可追踪，可快速帮助人类梳理操作链，且无需担心越权行为。
-- **快速上手：** 开箱即用，上手简单，大部分工作都可通过与Agent对话完成，无需额外学习也无需改变工作习惯。
+Hexestra 的核心目的是让你和 Agent 的渗透过程更加顺畅，因此，我们开发了一套针对渗透任务的 Harness 系统：
 
-## 产品演示
+- **工具集成：** 接入 Claude Code 或 Codex CLI，集成浏览器、终端、Shell 管理、HTTP/HTTPS 抓包、拦截与重放、Payload 生成和 Burp Suite 且它们都可被 Agent 直接操控。
 
-<div align="center">
+<p align="center"><img src="docs/images/kanxue/01-overview.png" alt="Hexestra 工作台总览：资产、操作入口、Agent 对话和 NetMap" width="960"><br><em>工作台总览：资产、操作入口、Agent 对话和 NetMap 同屏。</em></p>
 
-<img src="docs/images/hexestra-tour-poster-zh-CN.png" alt="Hexestra 工作台同屏展示目标、欢迎页、AI 对话和 NetMap" width="960">
+<p align="center"><img src="docs/images/kanxue/02-tools.png" alt="Hexestra 流量工具展示订单请求、响应和 Agent 操作" width="960"><br><em>在同一工作台查看请求与响应，并重放、保存证据或交给 Agent。</em></p>
 
-*工作台总览：目标、欢迎页、AI 对话和 NetMap 同屏展示。*
+- **记忆系统：** 系统会自动记录当前任务的目标、资产、范围、规则、可用工具和已有结果，在长上下文和跨对话场景中，Agent 依然清楚任务进度。
 
-<img src="docs/images/hexestra-demo-shell-zh-CN.png" alt="AI 在攻击机终端验证订单越权访问" width="960">
+<p align="center"><img src="docs/images/kanxue/03-memory.png" alt="Record 界面保存线索、证据和漏洞，新对话仍可查看" width="960"><br><em>Record 保存线索、证据与漏洞；换个对话，项目记录仍在。</em></p>
 
-*Agent可操控Shell执行命令*
+- **任务树：** Agent 行动前先规划，将目标拆成步骤，并随进展更新状态。已完成什么、遇到什么阻碍、下一步做什么，一眼就能看清，不必去翻阅聊天记录。
 
-<img src="docs/images/hexestra-demo-finding-zh-CN.png" alt="已确认的订单越权访问漏洞及关联证据" width="960">
+<p align="center"><img src="docs/images/kanxue/04-task-tree.png" alt="任务树展示目标、已完成步骤和当前任务" width="960"><br><em>任务树展示已完成步骤、当前进度和下一步。</em></p>
 
-*Agent自动生成的漏洞信息（此处仅做演示，实际情况会十分详细）*
+- **NetMap：** Agent 发现资产后会自动构建资产关系拓扑图；从网络、域名和应用视角查看主机、服务、接口与身份之间的关系。
 
-*图片直接截自应用，测试于虚构本地靶场。[播放完整视频](docs/images/hexestra-tour-zh-CN.mp4)。*
+<p align="center"><img src="docs/images/kanxue/05-netmap.png" alt="NetMap 展示应用、订单接口和访问身份的关系" width="960"><br><em>NetMap 将应用、接口与身份连成图。</em></p>
 
-</div>
+- **规则系统：** 按项目和当前任务匹配测试规则与方法。导入 PDF、DOCX 或 Markdown 文档，让 Agent 提炼为可复用的规则、技能和工作流。
+
+<p align="center"><img src="docs/images/kanxue/06-rules.png" alt="项目规则按 ATT&CK 任务匹配" width="960"><br><em>项目规则可以绑定到对应的 ATT&CK 任务。</em></p>
+
+<p align="center"><img src="docs/images/kanxue/07-document-workflow.png" alt="文档提炼规则、技能和工作流候选项的演示" width="960"><br><em>文档提炼演示：规则、技能与工作流候选项等待审阅。</em></p>
+
+*以上截图来自应用中的虚构本地靶场，部分对话和记录使用演示数据。*
+
+同时，Hexestra 尽力于保留你原有的工作流，而非让你重新学习一套新的工作模式，因此，我们保证了它的高度自定义和轻量化，在未来，我们还会考虑引入插件系统。
 
 ## 开始使用
 
