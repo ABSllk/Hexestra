@@ -78,6 +78,29 @@ describe('AgentInteractionCard', () => {
     }));
   });
 
+  it('renders native Codex choices and a masked free-text question', async () => {
+    render(<AgentInteractionCard request={{ ...questionRequest, questions: [
+      { id: 'access', question: 'How should I proceed?', header: 'Access', multiSelect: false,
+        isOther: false, options: [
+          { label: 'Anonymous', description: 'Test without signing in' },
+          { label: 'Account', description: 'Use a test account' },
+        ] },
+      { id: 'note', question: 'How should I proceed?', header: 'Note', multiSelect: false,
+        isOther: true, isSecret: true, options: [] },
+    ] }} />);
+
+    expect(screen.getByLabelText('Agent question')).toBeInTheDocument();
+    expect(screen.queryByText('Other')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByDisplayValue('Anonymous'));
+    const secret = screen.getAllByLabelText('Custom answer for How should I proceed?')[0];
+    expect(secret).toHaveAttribute('type', 'password');
+    fireEvent.change(secret, { target: { value: 'private note' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answers' }));
+    await waitFor(() => expect(answerUserQuestion).toHaveBeenCalledWith('question-1', {
+      access: 'Anonymous', note: 'private note',
+    }));
+  });
+
   it('lets the operator cancel a clarifying question', () => {
     render(<AgentInteractionCard request={{ ...questionRequest, questions: [questionRequest.questions[0]] }} />);
 

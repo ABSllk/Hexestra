@@ -3,7 +3,7 @@ import { EventEmitter } from 'events';
 import type { CodexConnectionSettings } from '../../contracts/agent-settings';
 import { windowsPathToWsl } from '../wsl-agent-runtime';
 
-type RpcMessage = { id?: number; method?: string; params?: unknown; result?: unknown; error?: { message?: string } };
+type RpcMessage = { id?: number | string; method?: string; params?: unknown; result?: unknown; error?: { message?: string } };
 
 export class CodexAppServer extends EventEmitter {
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -69,7 +69,7 @@ export class CodexAppServer extends EventEmitter {
     });
   }
 
-  respond(id: number, result: unknown) {
+  respond(id: number | string, result: unknown) {
     this.child?.stdin.write(`${JSON.stringify({ id, result })}\n`);
   }
 

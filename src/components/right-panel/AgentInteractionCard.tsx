@@ -68,7 +68,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>(() =>
-    Object.fromEntries(request.questions.map(({ question }) => [question, emptyDraft()])),
+    Object.fromEntries(request.questions.map((question) => [questionKey(question), emptyDraft()])),
   );
 
   const answers = useMemo(
@@ -78,7 +78,8 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
 
   const selectOption = (question: AskUserQuestion, label: string) => {
     setDrafts((current) => {
-      const draft = current[question.question] ?? emptyDraft();
+      const key = questionKey(question);
+      const draft = current[key] ?? emptyDraft();
       const selected = question.multiSelect
         ? draft.selected.includes(label)
           ? draft.selected.filter((candidate) => candidate !== label)
@@ -86,7 +87,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
         : [label];
       return {
         ...current,
-        [question.question]: {
+        [key]: {
           ...draft,
           selected,
           ...(question.multiSelect ? {} : { customActive: false }),
@@ -97,10 +98,11 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
 
   const setCustomActive = (question: AskUserQuestion, active: boolean) => {
     setDrafts((current) => {
-      const draft = current[question.question] ?? emptyDraft();
+      const key = questionKey(question);
+      const draft = current[key] ?? emptyDraft();
       return {
         ...current,
-        [question.question]: {
+        [key]: {
           ...draft,
           customActive: active,
           ...(!question.multiSelect && active ? { selected: [] } : {}),
@@ -111,10 +113,11 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
 
   const setCustom = (question: AskUserQuestion, custom: string) => {
     setDrafts((current) => {
-      const draft = current[question.question] ?? emptyDraft();
+      const key = questionKey(question);
+      const draft = current[key] ?? emptyDraft();
       return {
         ...current,
-        [question.question]: {
+        [key]: {
           ...draft,
           custom,
           customActive: true,
@@ -138,7 +141,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
 
   return (
     <section
-      aria-label="Claude question"
+      aria-label="Agent question"
       className="border-t border-accent-blue/25 bg-canvas p-3"
     >
       <div className="mb-3 flex items-start gap-2">
@@ -146,9 +149,9 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
           <Icon name="message" size={13} className="text-accent-blue" />
         </div>
         <div>
-          <p className="text-xs font-semibold text-text-primary">Claude needs your input</p>
+          <p className="text-xs font-semibold text-text-primary">Agent needs your input</p>
           <p className="mt-0.5 text-[11px] leading-relaxed text-text-muted">
-            The Agent is paused. Your answers will be returned to the active Claude turn.
+            Your answer will be sent to the active Agent conversation.
           </p>
           {request.agentType && (
             <p className="mt-0.5 text-[11px] text-accent-blue">
@@ -160,9 +163,9 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
 
       <div className="space-y-4">
         {request.questions.map((question, questionIndex) => {
-          const draft = drafts[question.question] ?? emptyDraft();
+          const draft = drafts[questionKey(question)] ?? emptyDraft();
           return (
-            <fieldset key={question.question} className="min-w-0">
+            <fieldset key={questionKey(question)} className="min-w-0">
               <legend className="mb-2 w-full">
                 <span className="mr-2 rounded border border-border-subtle bg-panel px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-accent-blue">
                   {question.header}
@@ -209,7 +212,7 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
                   );
                 })}
 
-                <label className={draft.customActive
+                {(question.isOther !== false || question.options.length === 0) && <label className={draft.customActive
                   ? 'block rounded-md border border-accent-blue/35 bg-accent-blue/10 p-2'
                   : 'block rounded-md border border-border-subtle/70 bg-panel/45 p-2 hover:border-border-strong'}
                 >
@@ -221,17 +224,18 @@ function AskUserQuestionCard({ request }: { request: AskUserQuestionRequest }) {
                       onChange={(event) => setCustomActive(question, event.target.checked)}
                       type={question.multiSelect ? 'checkbox' : 'radio'}
                     />
-                    Other
+                    {question.options.length === 0 ? 'Answer' : 'Other'}
                   </span>
                   <input
                     aria-label={`Custom answer for ${question.question}`}
                     className="mt-1.5 w-full rounded border border-border-subtle bg-panel px-2 py-1.5 text-[11px] text-text-primary outline-none placeholder:text-text-muted/60 focus:border-accent-blue/50"
                     onChange={(event) => setCustom(question, event.target.value)}
                     onFocus={() => setCustomActive(question, true)}
+                    type={question.isSecret ? 'password' : 'text'}
                     placeholder="Type your own answer"
                     value={draft.custom}
                   />
-                </label>
+                </label>}
               </div>
             </fieldset>
           );
@@ -268,13 +272,17 @@ function emptyDraft(): AnswerDraft {
   return { selected: [], customActive: false, custom: '' };
 }
 
+function questionKey(question: AskUserQuestion): string {
+  return question.id ?? question.question;
+}
+
 function buildAnswers(
   questions: AskUserQuestion[],
   drafts: Record<string, AnswerDraft>,
 ): AskUserQuestionAnswers | null {
   const answers: AskUserQuestionAnswers = {};
   for (const question of questions) {
-    const draft = drafts[question.question] ?? emptyDraft();
+    const draft = drafts[questionKey(question)] ?? emptyDraft();
     const custom = draft.custom.trim();
     const values = question.multiSelect
       ? [...draft.selected, ...(draft.customActive && custom ? [custom] : [])]
@@ -282,7 +290,7 @@ function buildAnswers(
         ? custom ? [custom] : []
         : draft.selected.slice(0, 1);
     if (values.length === 0) return null;
-    answers[question.question] = values.join(', ');
+    answers[questionKey(question)] = values.join(', ');
   }
   return answers;
 }

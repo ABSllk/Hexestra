@@ -4,8 +4,10 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
+import { z } from 'zod';
 import type { AgentActivity, AgentAdapter, AgentBackendCapabilities, AgentBackendStatus, AgentCommandDiscoveryInput, AgentConversationHandle, AgentConversationOpenInput, AgentInteractionHandler, AgentModelOption, AgentQueuedInput, AgentRunEvent, AgentRunInput } from '../../contracts/agent-runtime';
 import { AgentBackendError } from '../../contracts/agent-runtime';
+import type { AskUserQuestion } from '../../agent-interaction-contract';
 import { agentSettingsService } from '../agent-settings.service';
 import { windowsPathToWsl } from '../wsl-agent-runtime';
 import { CodexAppServer } from './codex-app-server';
@@ -23,9 +25,27 @@ const MAX_SKILL_BYTES = 512 * 1024;
 const execFileAsync = promisify(execFile);
 const CONTEXT_VERSION = 'hexestra-codex-v1';
 type RecordValue = Record<string, unknown>;
-type RpcMessage = { id?: number; method?: string; params?: unknown };
+type RpcMessage = { id?: number | string; method?: string; params?: unknown };
 type Runtime = { server: CodexAppServer; bridge: CodexToolBridge; threadId: string | null; cwd: string;
   fingerprint: string; settings: ReturnType<typeof agentSettingsService.getCodexSettings> };
+
+const codexUserInputSchema = z.object({
+  itemId: z.string().min(1),
+  questions: z.array(z.object({
+    id: z.string().min(1),
+    header: z.string(),
+    question: z.string().min(1),
+    isOther: z.boolean().default(true),
+    isSecret: z.boolean().default(false),
+    options: z.array(z.object({ label: z.string(), description: z.string() })).nullish(),
+  })).min(1).superRefine((questions, context) => {
+    const ids = new Set<string>();
+    questions.forEach(({ id }, index) => {
+      if (ids.has(id)) context.addIssue({ code: 'custom', path: [index, 'id'], message: 'Question IDs must be unique' });
+      ids.add(id);
+    });
+  }),
+});
 
 export class CodexAgentAdapter implements AgentAdapter {
   readonly id = 'codex';
@@ -579,6 +599,11 @@ export class CodexAgentAdapter implements AgentAdapter {
     let turnError: string | null = null;
     const activities = new Map<string, AgentActivity>();
     const subagents = new Map<string, SubagentRun>();
+    const pendingUserInputs = new Set<Promise<void>>();
+    let turnCompleted = false;
+    const closeCompletedTurn = () => {
+      if (turnCompleted && pendingUserInputs.size === 0) queue.close();
+    };
     let activeTextId: string | null = null;
     let textSequence = 0;
     const combinedText = () => [...activities.values()]
@@ -596,15 +621,45 @@ export class CodexAgentAdapter implements AgentAdapter {
     const scheduleFlush = () => { if (!flushTimer) flushTimer = setTimeout(flush, 50); };
     const onMessage = (message: RpcMessage) => {
       const params = asRecord(message.params);
-      if (typeof message.id === 'number') {
+      if (params.threadId && params.threadId !== runtime!.threadId) return;
+      if (turnId && params.turnId && params.turnId !== turnId) return;
+      if (typeof message.id === 'number' || typeof message.id === 'string') {
+        if (message.method === 'item/tool/requestUserInput' || message.method === 'tool/requestUserInput') {
+          const parsed = codexUserInputSchema.safeParse(message.params);
+          if (!parsed.success) {
+            server.respond(message.id, { answers: {} });
+            return;
+          }
+          const requestId = message.id;
+          const questions: AskUserQuestion[] = parsed.data.questions.map((question) => ({
+            id: question.id,
+            header: question.header,
+            question: question.question,
+            options: question.options ?? [],
+            multiSelect: false,
+            isOther: question.isOther,
+            isSecret: question.isSecret,
+          }));
+          const pending = interactions.requestAnswers({
+            toolName: 'AskUserQuestion', input: params, toolUseId: parsed.data.itemId,
+            signal: input.signal, questions,
+          }).then((answers) => {
+            server.respond(requestId, { answers: Object.fromEntries(parsed.data.questions.map(({ id }) => [
+              id, { answers: [answers[id]] },
+            ])) });
+          }).catch(() => server.respond(requestId, { answers: {} })).finally(() => {
+            pendingUserInputs.delete(pending);
+            closeCompletedTurn();
+          });
+          pendingUserInputs.add(pending);
+          return;
+        }
         const response = message.method?.includes('requestApproval') ? { decision: 'decline' }
           : message.method === 'item/permissions/requestApproval' ? { permissions: [] }
-          : message.method === 'tool/requestUserInput' ? { answers: {} } : { action: 'decline', content: null };
+          : { action: 'decline', content: null };
         server.respond(message.id, response);
         return;
       }
-      if (params.threadId && params.threadId !== runtime!.threadId) return;
-      if (turnId && params.turnId && params.turnId !== turnId) return;
       const item = asRecord(params.item);
       const id = String(item.id ?? params.itemId ?? '');
       if (message.method === 'error') {
@@ -672,7 +727,8 @@ export class CodexAgentAdapter implements AgentAdapter {
         if (turn.status === 'completed') {
           queue.push({ type: 'turn_completed', content: combinedText(), activities: [...activities.values()], backendMessageId: turnId ?? undefined,
             projectId: input.projectId, branchId: input.conversationId, inputId: input.inputId, source: input.source });
-          queue.close();
+          turnCompleted = true;
+          closeCompletedTurn();
         } else {
           queue.fail(new AgentBackendError(String(asRecord(turn.error).message ?? turnError ?? `Codex turn ${turn.status}`), this.id,
             turn.status === 'interrupted' ? 'cancelled' : 'runtime'));

@@ -1730,6 +1730,10 @@ class AgentService {
       const timeout = input.timeoutMs
         ? setTimeout(() => finish(deny('The human approval request timed out.')), input.timeoutMs)
         : undefined;
+      if (input.signal.aborted) {
+        onAbort();
+        return;
+      }
       input.signal.addEventListener('abort', onAbort, { once: true });
       this.pendingPermissions.set(input.requestId, {
         resolve: finish,
@@ -1823,6 +1827,9 @@ class AgentService {
       decisionClassification: 'user_temporary',
     });
     this.attentionItems.delete(requestId);
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send('agent:attention:resolved', { id: requestId });
+    }
     this.emitStatus();
   }
 

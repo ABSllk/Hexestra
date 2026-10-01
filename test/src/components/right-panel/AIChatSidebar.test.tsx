@@ -44,7 +44,7 @@ describe('AIChatSidebar interaction layout', () => {
     expect(workspace).toContainElement(composer);
     expect(dock).toHaveClass('max-h-[60%]', 'overflow-y-auto', 'shrink-0', 'z-20');
     expect(dock.compareDocumentPosition(composer as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Claude question' })).not.toHaveClass('max-h-[58vh]');
+    expect(screen.getByRole('region', { name: 'Agent question' })).not.toHaveClass('max-h-[58vh]');
   });
 
   it('keeps conversation controls in the title bar without a separate history row', () => {

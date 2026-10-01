@@ -52,4 +52,15 @@ describe('AskUserQuestion contract', () => {
       'Not requested': 'Anything',
     })).toThrow('Unexpected answer');
   });
+
+  it('uses Codex question IDs when validating native answers', () => {
+    const questions = parseAskUserQuestionInput({ questions: [{
+      ...input.questions[0], id: 'access-path', isOther: false,
+    }] });
+    expect(parseAskUserQuestionAnswers(questions, { 'access-path': 'Web' }))
+      .toEqual({ 'access-path': 'Web' });
+    expect(() => parseAskUserQuestionAnswers(questions, {
+      'Which path should I test first?': 'Web',
+    })).toThrow('Missing answer');
+  });
 });

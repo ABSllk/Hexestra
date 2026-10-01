@@ -6,6 +6,7 @@ import path from 'path';
 import type { AgentRunInput } from '@electron/contracts/agent-runtime';
 
 const rpc = vi.hoisted(() => ({ calls: [] as Array<{ method: string; params: unknown }>, failStart: false,
+  responses: [] as Array<{ id: number | string; result: unknown }>,
   server: null as null | { emit: (event: string, message: unknown) => void },
   launchConfigs: [] as Array<Record<string, unknown>>,
   skillsOverride: null as null | Array<{ name: string; path: string; scope: string; enabled: boolean }>,
@@ -35,6 +36,12 @@ vi.mock('@electron/services/agent-adapters/codex-app-server', async () => {
     constructor(...args: unknown[]) { super(); rpc.launchConfigs.push(args[2] as Record<string, unknown>); rpc.server = this; }
     async start() { if (rpc.failStart) throw new Error('spawn codex ENOENT'); }
     close() {}
+    respond(id: number | string, result: unknown) {
+      rpc.responses.push({ id, result });
+      if (id === 'question-1') queueMicrotask(() => this.emit('message', { method: 'turn/completed', params: {
+        threadId: 'thread-new', turn: { id: 'turn-1', status: 'completed' },
+      } }));
+    }
     async request(method: string, params: unknown) {
       rpc.calls.push({ method, params });
       if (method === 'fs/getMetadata') return { isSymlink: false };
@@ -95,6 +102,29 @@ vi.mock('@electron/services/agent-adapters/codex-app-server', async () => {
           return { turn: { id: 'turn-1' } };
         }
         if (prompt === 'Wait for cancellation') {
+          return { turn: { id: 'turn-1' } };
+        }
+        if (prompt === 'Ask operator') {
+          queueMicrotask(() => this.emit('message', { id: 'question-1', method: 'item/tool/requestUserInput', params: {
+            threadId, turnId: 'turn-1', itemId: 'input-item-1', isBlocking: true,
+            questions: [
+              { id: 'access', header: 'Access', question: 'How should I proceed?', isOther: false, isSecret: false,
+                options: [{ label: 'Anonymous', description: 'Test without signing in' },
+                  { label: 'Account', description: 'Use a test account' }] },
+              { id: 'note', header: 'Note', question: 'How should I proceed?', isOther: true, isSecret: true, options: null },
+            ],
+          } }));
+          return { turn: { id: 'turn-1' } };
+        }
+        if (prompt === 'Ask asynchronously') {
+          queueMicrotask(() => {
+            this.emit('message', { id: 'async-question', method: 'item/tool/requestUserInput', params: {
+              threadId, turnId: 'turn-1', itemId: 'async-item', isBlocking: false,
+              questions: [{ id: 'choice', header: 'Path', question: 'Choose a path', isOther: false, isSecret: false,
+                options: [{ label: 'Anonymous', description: 'Public route' }, { label: 'Account', description: 'Test account' }] }],
+            } });
+            this.emit('message', { method: 'turn/completed', params: { threadId, turn: { id: 'turn-1', status: 'completed' } } });
+          });
           return { turn: { id: 'turn-1' } };
         }
         if (prompt === 'Multi-message') {
@@ -258,6 +288,46 @@ describe('Codex Agent adapter protocol', () => {
       'mcp_servers.hexestra.required': true,
     });
     await adapter.disposeConversation('project-1', 'main');
+  });
+
+  it('routes native Codex questions to the operator and returns answers by question ID', async () => {
+    rpc.responses.length = 0;
+    const requestAnswers = vi.fn(async () => ({ access: 'Anonymous', note: 'Use the public page only' }));
+    const adapter = new CodexAgentAdapter();
+    for await (const _event of adapter.runTurn(input({ conversationId: 'question', prompt: 'Ask operator' }), {
+      authorizeTool: vi.fn(), requestAnswers,
+    })) { /* consume */ }
+    expect(requestAnswers).toHaveBeenCalledWith(expect.objectContaining({
+      toolUseId: 'input-item-1',
+      questions: [
+        expect.objectContaining({ id: 'access', isOther: false, options: expect.any(Array) }),
+        expect.objectContaining({ id: 'note', isSecret: true, options: [] }),
+      ],
+    }));
+    expect(rpc.responses).toContainEqual({ id: 'question-1', result: { answers: {
+      access: { answers: ['Anonymous'] }, note: { answers: ['Use the public page only'] },
+    } } });
+    await adapter.disposeConversation('project-1', 'question');
+  });
+
+  it('keeps an asynchronous Codex question open after the turn completes', async () => {
+    rpc.responses.length = 0;
+    let provideAnswer!: (answers: Record<string, string>) => void;
+    const requestAnswers = vi.fn(() => new Promise<Record<string, string>>((resolve) => { provideAnswer = resolve; }));
+    const adapter = new CodexAgentAdapter();
+    let finished = false;
+    const running = (async () => {
+      for await (const _event of adapter.runTurn(input({ conversationId: 'async-question', prompt: 'Ask asynchronously' }), {
+        authorizeTool: vi.fn(), requestAnswers,
+      })) { /* consume */ }
+      finished = true;
+    })();
+    await vi.waitFor(() => expect(requestAnswers).toHaveBeenCalledOnce());
+    expect(finished).toBe(false);
+    provideAnswer({ choice: 'Anonymous' });
+    await running;
+    expect(rpc.responses).toContainEqual({ id: 'async-question', result: { answers: { choice: { answers: ['Anonymous'] } } } });
+    await adapter.disposeConversation('project-1', 'async-question');
   });
 
   it('shows the actual Codex MCP error instead of an object placeholder', async () => {

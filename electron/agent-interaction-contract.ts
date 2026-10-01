@@ -7,10 +7,13 @@ const askUserQuestionOptionSchema = z.object({
 });
 
 const askUserQuestionSchema = z.object({
+  id: z.string().trim().min(1).max(200).optional(),
   question: z.string().trim().min(1).max(2_000),
   header: z.string().trim().min(1).max(12),
   options: z.array(askUserQuestionOptionSchema).min(2).max(4),
   multiSelect: z.boolean(),
+  isOther: z.boolean().optional(),
+  isSecret: z.boolean().optional(),
 }).superRefine(({ options }, context) => {
   const seen = new Set<string>();
   options.forEach(({ label }, index) => {
@@ -92,7 +95,7 @@ export function parseAskUserQuestionAnswers(
     throw new Error(`Invalid AskUserQuestion answers: ${z.prettifyError(result.error)}`);
   }
 
-  const expectedQuestions = new Set(questions.map(({ question }) => question));
+  const expectedQuestions = new Set(questions.map(({ id, question }) => id ?? question));
   for (const question of expectedQuestions) {
     if (!(question in result.data)) {
       throw new Error(`Missing answer for question: ${question}`);
