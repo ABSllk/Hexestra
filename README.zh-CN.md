@@ -10,7 +10,7 @@
 
 一款AI原生渗透测试工作台，让人与 Agent 无缝协作，加速你的渗透工作流。
 
-[下载桌面版](https://github.com/ABSllk/Hexestra/releases/latest) · [观看演示](docs/images/hexestra-tour-zh-CN.mp4) · [开始使用](docs/user-guide.zh-CN.md#1-快速开始)
+[下载桌面版](https://github.com/ABSllk/Hexestra/releases/latest) · [观看演示](docs/images/hexestra-tour-zh-CN.mp4) · [开始使用](docs/user-guide.zh-CN.md#1-快速开始) · [Discord 社区](https://discord.gg/jj6kwE8Zd)
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 

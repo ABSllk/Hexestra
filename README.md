@@ -10,7 +10,7 @@
 
 An AI-native penetration testing workbench where you and AI agents work together to accelerate your pentest workflow.
 
-[Download](https://github.com/ABSllk/Hexestra/releases/latest) · [Watch the demo](docs/images/hexestra-tour.mp4) · [Get started](docs/user-guide.md#1-quick-start)
+[Download](https://github.com/ABSllk/Hexestra/releases/latest) · [Watch the demo](docs/images/hexestra-tour.mp4) · [Get started](docs/user-guide.md#1-quick-start) · [Discord](https://discord.gg/jj6kwE8Zd)
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
