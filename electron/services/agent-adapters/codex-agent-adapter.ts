@@ -12,6 +12,7 @@ import { agentSettingsService } from '../agent-settings.service';
 import { windowsPathToWsl } from '../wsl-agent-runtime';
 import { CodexAppServer } from './codex-app-server';
 import { CodexToolBridge } from './codex-tool-bridge';
+import { resolveWslMcpHost } from './codex-mcp-network';
 import type { SubagentRun } from '../../agent-subagent-contract';
 import type { AgentSkillDescriptor } from '../../agent-command-contract';
 import type { CodexSkillItem, CodexSkillListResult, CodexSkillSaveInput, CodexSkillCopyInput, CodexMcpItem, CodexMcpListResult, CodexMcpSaveInput } from '../../contracts/codex-capabilities';
@@ -490,7 +491,7 @@ export class CodexAgentAdapter implements AgentAdapter {
     let server: CodexAppServer | null = null;
     let threadId: string | null = null;
     try {
-      const host = settings.executionMode === 'wsl' ? await wslHost(settings.wslDistribution) : '127.0.0.1';
+      const host = settings.executionMode === 'wsl' ? await resolveWslMcpHost(settings.wslDistribution) : '127.0.0.1';
       server = new CodexAppServer(settings, cwd, {
         'mcp_servers.hexestra.url': bridge.url(host),
         'mcp_servers.hexestra.bearer_token_env_var': 'HEXESTRA_MCP_TOKEN',
@@ -805,7 +806,7 @@ export class CodexAgentAdapter implements AgentAdapter {
     await bridge.start(input.tools);
     let server: CodexAppServer | null = null;
     try {
-      const host = settings.executionMode === 'wsl' ? await wslHost(settings.wslDistribution) : '127.0.0.1';
+      const host = settings.executionMode === 'wsl' ? await resolveWslMcpHost(settings.wslDistribution) : '127.0.0.1';
       server = new CodexAppServer(settings, input.cwd, {
         'mcp_servers.hexestra.url': bridge.url(host),
         'mcp_servers.hexestra.bearer_token_env_var': 'HEXESTRA_MCP_TOKEN',
@@ -855,13 +856,6 @@ function codexLaunchError(error: unknown, settings: ReturnType<typeof agentSetti
   );
 }
 
-async function wslHost(distribution: string) {
-  const { stdout } = await execFileAsync('wsl.exe', ['--distribution', distribution, '--exec', 'sh', '-lc',
-    "ip route show default | awk '{print $3; exit}'"], { timeout: 10_000, windowsHide: true });
-  const host = stdout.trim();
-  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) throw new Error('Could not resolve Windows host from WSL');
-  return host;
-}
 
 function asRecord(value: unknown): RecordValue {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as RecordValue : {};
