@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { EventEmitter } from 'events';
 import type { CodexConnectionSettings } from '../../contracts/agent-settings';
 import { windowsPathToWsl } from '../wsl-agent-runtime';
+import { withMcpProxyBypass } from './codex-mcp-network';
 
 type RpcMessage = { id?: number | string; method?: string; params?: unknown; result?: unknown; error?: { message?: string } };
 
@@ -20,10 +21,14 @@ export class CodexAppServer extends EventEmitter {
     if (this.child) return;
     const configArgs = Object.entries(this.config).flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`]);
     const args = ['app-server', '--stdio', ...configArgs];
-    const env = { ...process.env, ...this.environment };
+    const env = withMcpProxyBypass({ ...process.env, ...this.environment },
+      this.config['mcp_servers.hexestra.url']);
     if (this.settings.executionMode === 'wsl') {
       if (process.platform !== 'win32') throw new Error('WSL Codex requires Windows');
       const forwarded = Object.keys(this.environment).map((key) => `${key}/u`);
+      if (typeof this.config['mcp_servers.hexestra.url'] === 'string') {
+        forwarded.push('NO_PROXY/u', 'no_proxy/u');
+      }
       env.WSLENV = [env.WSLENV, ...forwarded].filter(Boolean).join(':');
       const wslArgs = ['--distribution', this.settings.wslDistribution];
       if (this.cwd) wslArgs.push('--cd', windowsPathToWsl(this.cwd, this.settings.wslDistribution));
