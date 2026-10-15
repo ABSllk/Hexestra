@@ -152,6 +152,10 @@
         "!mitmdump.exe"
       ]
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
     "linux": {
       "target": "AppImage",
       "icon": "src/assets/branding/hexestra-mark.png"
