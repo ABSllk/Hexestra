@@ -65,6 +65,8 @@ npm ci
 npm run electron:dev
 ```
 
+从源码构建的 Windows 安装包使用分步安装向导，支持选择安装目录。
+
 ## 深入了解
 
 [用户手册](docs/user-guide.zh-CN.md) · [架构说明](docs/architecture.zh-CN.md) · [智能体运行机制](docs/agent-runtime.zh-CN.md) · [参与贡献](CONTRIBUTING.md) · [更新记录](CHANGELOG.md)
