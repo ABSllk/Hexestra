@@ -65,8 +65,6 @@ npm ci
 npm run electron:dev
 ```
 
-Windows installers built from source use a step-by-step wizard that lets you choose the installation directory.
-
 ## Go further
 
 [User guide](docs/user-guide.md) · [Architecture](docs/architecture.md) · [Agent runtime](docs/agent-runtime.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
