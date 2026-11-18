@@ -2,6 +2,25 @@
 
 ## Unreleased / 未发布
 
+## [0.8.2] - 2026-11-18
+
+### Changed / 变更
+
+- Windows 安装包改为分步安装向导，支持选择安装目录。
+  Windows installers now use a setup wizard that lets you choose the installation directory.
+
+### Fixed / 修复
+
+- 修复 Codex 原生提问无法正常显示和回传答案的问题，支持选项、自定义答案和敏感输入遮挡；异步提问在当前回合结束后仍可回答。
+  Codex questions now appear in the app and return your answers correctly, with support for multiple-choice, free-text, and masked inputs. Pending asynchronous questions remain available after a turn ends.
+- 修复 WSL 镜像网络模式或配置 HTTP 代理时，Codex 无法连接 Hexestra MCP 服务的问题。
+  Fixed Codex failing to connect to Hexestra's MCP bridge under WSL mirrored networking or when HTTP proxies are configured.
+
+### Documentation / 文档
+
+- 更新 README 中的 Discord 社区入口。
+  Updated the Discord community link in the READMEs.
+
 ## [0.8.1] - 2026-10-01
 
 ### Added / 新增
